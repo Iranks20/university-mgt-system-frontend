@@ -1,0 +1,16 @@
+---
+description: TypeScript coding standards and type safety (KCU)
+globs: src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# TypeScript Standards (KCU)
+
+- **No Comments**: Do not write comments in code. Code should be self-documenting through clear naming and structure.
+- **No `any`**: Use `unknown` if type is truly unknown, then narrow with type guards. Use `Record<string, unknown>` for generic objects.
+- **Interfaces vs Types**: Prefer `interface` for object shapes that may be extended. Use `type` for unions, intersections, or computed types.
+- **Exports**: Use named exports for utilities/types. Use default exports for React components and main module files.
+- **Type imports**: Use `import type` for type-only imports to enable tree-shaking: `import type { QALectureRecord } from '@/types/qa'`.
+- **Enums**: Prefer const objects or union types over enums for better tree-shaking: `type Role = 'QA' | 'Lecturer' | 'Student'`.
+- **Null safety**: Use optional chaining (`?.`) and nullish coalescing (`??`). Prefer `undefined` over `null` for optional values.
+- **Function types**: Use function declarations for components, arrow functions for callbacks/handlers. Explicitly type function parameters and return types for exported functions.

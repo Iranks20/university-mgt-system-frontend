@@ -1,0 +1,164 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* King Ceasor University Palette */
+  --radius: 0.5rem;
+
+  /* Base Light Theme */
+  --background: 0 0% 100%; /* #FFFFFF */
+  --foreground: 0 0% 0%;   /* #000000 */
+
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 0%;
+
+  /* Primary: #015F2B (HSL approx 147 98% 19%) */
+  --primary: 147 98% 19%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary: #F6A000 (HSL approx 39 100% 48%) */
+  --secondary: 39 100% 48%;
+  --secondary-foreground: 0 0% 100%;
+
+  /* Muted: #F3F3F3 */
+  --muted: 0 0% 95%;
+  --muted-foreground: 220 9% 46%;
+
+  --accent: 0 0% 95%;
+  --accent-foreground: 147 98% 19%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+
+  /* Border: #E5E7EB */
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 147 98% 19%;
+
+  /* Generic Chart Colors (can be customized) */
+  --chart-1: 147 98% 19%;
+  --chart-2: 39 100% 48%;
+  --chart-3: 199 89% 48%;
+  --chart-4: 47 100% 50%;
+  --chart-5: 27 96% 61%;
+
+  /* Sidebar similar to background but slightly distinct if needed */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 147 98% 19%; /* Green text for sidebar links */
+  --sidebar-primary: 147 98% 19%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 96%;
+  --sidebar-accent-foreground: 147 98% 19%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 147 98% 19%;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  
+  --color-destructive: hsl(var(--destructive));
+  
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+}
+
+.dark {
+  /* Dark Mode Adjustments */
+  --background: 240 10% 4%;
+  --foreground: 0 0% 98%;
+
+  --card: 240 10% 4%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 240 10% 4%;
+  --popover-foreground: 0 0% 98%;
+
+  --primary: 147 60% 45%; /* Lighter green for dark mode visibility */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 39 90% 55%; /* Lighter orange */
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 98%;
+
+  --destructive: 0 63% 31%;
+  
+  --border: 240 4% 16%;
+  --input: 240 4% 16%;
+  --ring: 147 60% 45%;
+
+  --sidebar: 240 10% 4%;
+  --sidebar-foreground: 147 60% 45%;
+  --sidebar-primary: 147 60% 45%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 4% 16%;
+  --sidebar-accent-foreground: 147 60% 45%;
+  --sidebar-border: 240 4% 16%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

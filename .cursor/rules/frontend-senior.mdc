@@ -1,0 +1,19 @@
+---
+description: Senior frontend standards — React, TypeScript, architecture (KCU)
+globs: src/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend — Senior Standards (KCU)
+
+- **No Comments**: Do not write comments in code. Code should be self-documenting through clear naming and structure.
+- **Stack**: React 19 + TypeScript, Vite, Tailwind CSS, shadcn/ui (Radix UI). Follow ARCHITECTURE.md for domain-driven structure.
+- **Components**: Functional components with hooks. Extract reusable logic into custom hooks (`src/hooks/`). Use shadcn/ui base components from `src/components/ui/`. Domain-specific components in `src/features/{domain}/components/`.
+- **State**: Prefer local state (`useState`) for UI-only state. Use Context (`AuthContext`, `RoleProvider`) for auth/role. Services (`src/services/`) handle data fetching and business logic; components call services, not APIs directly.
+- **Types**: No `any`. Define types in `src/types/{domain}.ts` (e.g. `qa.ts`, `student.ts`). Reuse types across components/services. Match backend DTOs when integrating APIs.
+- **Services**: One service per domain (`qa.service.ts`, `student.service.ts`). Services return typed data matching `src/types/`. Replace mock data with API client calls (`src/lib/api.ts` or `src/services/api.client.ts`) when backend is ready.
+- **Routing**: React Router v7. Protected routes via `ProtectedRoute` with role checks. Routes in `src/App.tsx`; screens in `src/screens/`.
+- **Styling**: Tailwind CSS. Use design tokens (e.g. `bg-[#015F2B]` for primary). Responsive: mobile-first (`md:`, `lg:`). Keep styles colocated with components.
+- **Error handling**: Show user-friendly errors (toast or inline). Log errors for debugging but don't expose internals. Handle loading states (skeletons/spinners) and empty states.
+- **Performance**: Memoize expensive computations (`useMemo`). Avoid unnecessary re-renders (`React.memo` for pure components). Lazy load routes if needed.
+- **New feature**: Add types in `types/{domain}.ts`, service in `services/{domain}.service.ts`, components in `features/{domain}/components/`, screen in `screens/`, route in `App.tsx`. Follow existing patterns.

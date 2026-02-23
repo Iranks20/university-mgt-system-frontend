@@ -1,0 +1,16 @@
+---
+description: React component patterns and best practices (KCU)
+globs: src/**/*.tsx
+alwaysApply: false
+---
+
+# React Patterns (KCU)
+
+- **No Comments**: Do not write comments in code. Code should be self-documenting through clear naming and structure.
+- **Components**: Functional components only. Use TypeScript props interfaces. Extract sub-components when a component exceeds ~200 lines or has clear separation of concerns.
+- **Hooks**: Custom hooks for reusable logic (e.g. `useRole`, `useAuth`). Keep hooks focused (single responsibility). Use `useEffect` for side effects; clean up subscriptions/timeouts.
+- **Forms**: Controlled components with `useState`. Use shadcn/ui form components (`Input`, `Select`, `Button`). Validate on submit; show errors inline. For complex forms, consider `react-hook-form` if needed.
+- **Lists/Tables**: Use shadcn/ui `Table` component. For large lists, consider pagination or virtualization. Filter/search should be debounced (e.g. 300ms) to avoid excessive re-renders.
+- **Dialogs/Modals**: Use shadcn/ui `Dialog`. Keep dialog content focused; extract complex forms into separate components if needed. Handle close/escape correctly.
+- **Loading states**: Show skeletons or spinners during async operations. Use `isLoading` state. Avoid flash of empty content.
+- **Accessibility**: Use semantic HTML. Add ARIA labels where needed. Ensure keyboard navigation works. Test with screen readers if possible.
