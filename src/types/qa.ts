@@ -14,6 +14,9 @@ export interface QALectureRecord {
   date: Date | string; // Can be Date object or string like "8/25/2025" or "2025-01-09 00:00:00"
   lecturerName: string; // "LECTURER'S NAME"
   class: string; // "CLASS" - e.g., "BAE 1.1", "BBA,BAE, BPG & DBG 1.1"
+  classId?: string | null;
+  courseId?: string | null;
+  department?: string; // Derived department name when linked to a course
   courseUnit: string; // "COURSE UNIT" - e.g., "MATHEMATICS FOR ECONOMICS"
   timeForStarting: string; // "TIME FOR STARTING" - Scheduled start time e.g., "09:10:00"
   timeOutForEnding: string; // "TIME OUT FOR ENDING" - Scheduled end time e.g., "10:00:00"

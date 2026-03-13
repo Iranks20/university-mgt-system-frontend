@@ -47,7 +47,7 @@ export default function ManagementDepartments() {
               return {
                 id: d.id,
                 name: d.name || 'Unknown',
-                schoolName: schoolMap[d.schoolId] || 'Unknown',
+                schoolName: schoolMap[d.level?.schoolId ?? d.schoolId] || 'Unknown',
                 head: stats.headOfDepartment?.name || 'Not assigned',
                 staff: stats.staffCount.toString(),
                 students: stats.studentCount.toString(),
@@ -59,7 +59,7 @@ export default function ManagementDepartments() {
               return {
                 id: d.id,
                 name: d.name || 'Unknown',
-                schoolName: schoolMap[d.schoolId] || 'Unknown',
+                schoolName: schoolMap[d.level?.schoolId ?? d.schoolId] || 'Unknown',
                 head: 'Error loading',
                 staff: '—',
                 students: '—',

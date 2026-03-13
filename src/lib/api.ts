@@ -47,13 +47,21 @@ class ApiClient {
 
     if (!response.ok) {
       if (response.status === 401) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('kcu-token');
-          localStorage.removeItem('kcu-authenticated');
-          localStorage.removeItem('kcu-role');
-          window.location.href = '/login';
+        // For explicit auth endpoints (login, change-password), do NOT force redirect.
+        // Let callers show precise validation messages.
+        const isAuthEndpoint =
+          endpoint.startsWith('/auth/login') ||
+          endpoint.startsWith('/auth/change-password');
+
+        if (!isAuthEndpoint) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('kcu-token');
+            localStorage.removeItem('kcu-authenticated');
+            localStorage.removeItem('kcu-role');
+            window.location.href = '/login';
+          }
+          throw new Error('Unauthorized');
         }
-        throw new Error('Unauthorized');
       }
 
       const errorData: ApiError = await response.json().catch(() => ({

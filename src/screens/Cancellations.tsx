@@ -73,6 +73,10 @@ export default function Cancellations() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedTimetableId, setSelectedTimetableId] = useState<string>('');
   const [reason, setReason] = useState('');
+  const [compensationDate, setCompensationDate] = useState('');
+  const [compensationStartTime, setCompensationStartTime] = useState('');
+  const [compensationEndTime, setCompensationEndTime] = useState('');
+  const [compensationVenue, setCompensationVenue] = useState('');
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -92,6 +96,8 @@ export default function Cancellations() {
   const [pendingTotal, setPendingTotal] = useState(0);
   const [historyTotal, setHistoryTotal] = useState(0);
   const pageSize = 20;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<CancellationRequest | null>(null);
 
   const loadMyRequests = async () => {
     if (!isLecturer) return;
@@ -141,7 +147,7 @@ export default function Cancellations() {
     if (!isLecturer) return;
     setLoadingSessions(true);
     try {
-      const res = await timetableService.getMyScheduledSessions({ dateFrom, dateTo, limit: 100 });
+      const res = await timetableService.getMyScheduledSessions({ dateFrom, dateTo, limit: 50 });
       setSessions(res?.data ?? []);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load sessions');
@@ -171,12 +177,35 @@ export default function Cancellations() {
       toast.error('Select a session and enter a reason');
       return;
     }
+    const hasComp = compensationDate && compensationStartTime && compensationEndTime;
+    if (hasComp) {
+      const d = new Date(compensationDate + 'T00:00:00');
+      if (d.getTime() < Date.now() - 86400000) {
+        toast.error('Compensation date must be today or in the future');
+        return;
+      }
+    }
     setSubmitting(true);
     try {
-      await cancellationsService.submit({ timetableId: selectedTimetableId, reason: reason.trim() });
+      await cancellationsService.submit({
+        timetableId: selectedTimetableId,
+        reason: reason.trim(),
+        ...(hasComp
+          ? {
+              compensationDate,
+              compensationStartTime: compensationStartTime.trim(),
+              compensationEndTime: compensationEndTime.trim(),
+              compensationVenue: compensationVenue.trim() || undefined,
+            }
+          : {}),
+      });
       toast.success('Cancellation request submitted');
       setReason('');
       setSelectedTimetableId('');
+      setCompensationDate('');
+      setCompensationStartTime('');
+      setCompensationEndTime('');
+      setCompensationVenue('');
       setAddModalOpen(false);
       loadMyRequests();
       loadSessions();
@@ -200,6 +229,11 @@ export default function Cancellations() {
     } finally {
       setApprovingId(null);
     }
+  };
+
+  const openDetails = (request: CancellationRequest) => {
+    setSelectedRequest(request);
+    setDetailsOpen(true);
   };
 
   const handleReject = async (id: string) => {
@@ -274,7 +308,7 @@ export default function Cancellations() {
   };
 
   return (
-    <div className="p-4 space-y-6 max-w-6xl mx-auto">
+    <div className="p-4 space-y-6 w-full max-w-[1600px] mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Cancellation Requests</h1>
@@ -321,7 +355,7 @@ export default function Cancellations() {
                 Refresh
               </Button>
             </div>
-            <div className="rounded-md border">
+            <div className="rounded-md border bg-white overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -331,18 +365,19 @@ export default function Cancellations() {
                     <TableHead>Reason</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Reviewed</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingMine ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                         <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Loading…
                       </TableCell>
                     </TableRow>
                   ) : filteredMyRequests.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                         {myRequests.length === 0 ? 'No requests yet. Click Add cancellation to submit one.' : 'No records match the filters.'}
                       </TableCell>
                     </TableRow>
@@ -369,6 +404,11 @@ export default function Cancellations() {
                           {r.rejectionReason && (
                             <span className="block text-sm text-muted-foreground">Rejection: {r.rejectionReason}</span>
                           )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => openDetails(r)}>
+                            View
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -409,7 +449,7 @@ export default function Cancellations() {
                 Refresh
               </Button>
             </div>
-            <div className="rounded-md border">
+            <div className="rounded-md border bg-white overflow-x-auto">
               <Table>
               <TableHeader>
                 <TableRow>
@@ -487,6 +527,13 @@ export default function Cancellations() {
                             </Button>
                           </>
                         ) : null}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openDetails(r)}
+                        >
+                          View
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -515,10 +562,10 @@ export default function Cancellations() {
       )}
 
       <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-full max-w-2xl">
           <DialogHeader>
             <DialogTitle>Request cancellation</DialogTitle>
-            <DialogDescription>Select a session and provide a reason. QA will review your request.</DialogDescription>
+            <DialogDescription>Select a session, provide a reason, and optionally when you will compensate the lesson. QA will review your request.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -543,7 +590,7 @@ export default function Cancellations() {
                 onValueChange={setSelectedTimetableId}
                 disabled={loadingSessions}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue
                     placeholder={
                       loadingSessions
@@ -576,6 +623,44 @@ export default function Cancellations() {
                 onChange={(e) => setReason(e.target.value)}
                 rows={3}
               />
+            </div>
+            <div className="border-t pt-4 space-y-3">
+              <Label className="text-sm font-medium">Compensation (optional)</Label>
+              <p className="text-xs text-muted-foreground">When you will make up this lesson. If provided, QA will schedule it on approval.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Date</Label>
+                  <Input
+                    type="date"
+                    value={compensationDate}
+                    onChange={(e) => setCompensationDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Start time</Label>
+                  <Input
+                    type="time"
+                    value={compensationStartTime}
+                    onChange={(e) => setCompensationStartTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">End time</Label>
+                  <Input
+                    type="time"
+                    value={compensationEndTime}
+                    onChange={(e) => setCompensationEndTime(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs">Venue (optional, default: same as cancelled)</Label>
+                  <Input
+                    placeholder="e.g. Room 101"
+                    value={compensationVenue}
+                    onChange={(e) => setCompensationVenue(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -615,6 +700,123 @@ export default function Cancellations() {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={detailsOpen && !!selectedRequest} onOpenChange={setDetailsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Cancellation details</DialogTitle>
+            <DialogDescription>Full information about this cancellation request and any compensation session.</DialogDescription>
+          </DialogHeader>
+          {selectedRequest && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Original session date</Label>
+                  <p className="text-sm font-medium">{formatDate(selectedRequest.timetable.date)}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Original time</Label>
+                  <p className="text-sm font-medium">
+                    {formatTime(selectedRequest.timetable.startTime)}–{formatTime(selectedRequest.timetable.endTime)}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Class</Label>
+                  <p className="text-sm font-medium">
+                    {selectedRequest.className ?? '—'}
+                    {(selectedRequest.courseCode ?? selectedRequest.courseName) && (
+                      <span className="text-muted-foreground"> ({selectedRequest.courseCode ?? selectedRequest.courseName})</span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Venue</Label>
+                  <p className="text-sm font-medium">{selectedRequest.timetable.venue}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Requested by</Label>
+                  <p className="text-sm font-medium">
+                    {selectedRequest.requestedBy.firstName} {selectedRequest.requestedBy.lastName}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Badge
+                    variant={
+                      selectedRequest.status === 'Approved'
+                        ? 'default'
+                        : selectedRequest.status === 'Rejected'
+                        ? 'destructive'
+                        : 'secondary'
+                    }
+                  >
+                    {selectedRequest.status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Requested at</Label>
+                  <p className="text-sm font-medium">{formatDate(selectedRequest.requestedAt)}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Reviewed at</Label>
+                  <p className="text-sm font-medium">
+                    {selectedRequest.reviewedAt ? formatDate(selectedRequest.reviewedAt) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Reason</Label>
+                <p className="text-sm">{selectedRequest.reason}</p>
+                {selectedRequest.rejectionReason && (
+                  <>
+                    <Label className="text-xs text-muted-foreground mt-2">Rejection reason</Label>
+                    <p className="text-sm text-muted-foreground">{selectedRequest.rejectionReason}</p>
+                  </>
+                )}
+              </div>
+
+              <div className="border-t pt-4 space-y-2">
+                <Label className="text-sm font-medium">Compensation details</Label>
+                {selectedRequest.compensationDate && selectedRequest.compensationStartTime && selectedRequest.compensationEndTime ? (
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Requested compensation date</Label>
+                      <p className="font-medium">{formatDate(selectedRequest.compensationDate)}</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Requested time</Label>
+                      <p className="font-medium">
+                        {selectedRequest.compensationStartTime}–{selectedRequest.compensationEndTime}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Requested venue</Label>
+                      <p className="font-medium">
+                        {selectedRequest.compensationVenue || 'Same as cancelled session'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No compensation date/time was provided on this request.</p>
+                )}
+
+                {selectedRequest.compensationTimetable && (
+                  <div className="mt-3 rounded-md border p-3 bg-muted/30 text-sm">
+                    <Label className="text-xs text-muted-foreground">Scheduled compensation slot</Label>
+                    <p>
+                      {formatDate(selectedRequest.compensationTimetable.date)}{' '}
+                      {formatTime(selectedRequest.compensationTimetable.startTime)}–
+                      {formatTime(selectedRequest.compensationTimetable.endTime)}{' '}
+                      at {selectedRequest.compensationTimetable.venue}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

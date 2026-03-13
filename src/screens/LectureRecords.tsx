@@ -9,7 +9,7 @@ import {
   Search, Filter, Plus, FileSpreadsheet, MoreHorizontal, 
   Calendar as CalendarIcon, Clock, User, BookOpen, MapPin, 
   Trash2, Edit, CheckCircle, XCircle, AlertCircle, Download, Upload, LogIn, LogOut,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, UserCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { qaService } from '@/services/qa.service';
-import { academicService, staffService } from '@/services';
+import { academicService, staffService, enrollmentService, studentService } from '@/services';
 import { exportLectureRecordsToCSV, importLectureRecordsFromCSV, downloadLectureRecordsImportTemplateExcel, LECTURE_RECORDS_IMPORT_CSV_HEADER } from '@/utils/excel';
 import { toast } from 'sonner';
 import type { QALectureRecord } from '@/types/qa';
@@ -56,9 +56,27 @@ export default function LectureRecords() {
   const lectureImportFileRef = useRef<HTMLInputElement>(null);
   const [allLecturers, setAllLecturers] = useState<string[]>([]);
   const [allClasses, setAllClasses] = useState<string[]>([]);
+  const [selectedLecturerName, setSelectedLecturerName] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const commentOptions = ['TAUGHT', 'UNTAUGHT', 'COMPENSATION', 'MEETING', 'SDL', 'STUDENTS_ORIENTATION'];
+  const [sessionAttendanceOpen, setSessionAttendanceOpen] = useState(false);
+  const [sessionRecord, setSessionRecord] = useState<{ classId: string; date: string; className: string } | null>(null);
+  const [sessionEnrollments, setSessionEnrollments] = useState<Array<{ studentId: string; student?: { id: string; firstName: string; lastName: string; studentNumber: string } }>>([]);
+  const [sessionStatusMap, setSessionStatusMap] = useState<Record<string, string>>({});
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionSaving, setSessionSaving] = useState(false);
+  const [selectedClassName, setSelectedClassName] = useState('');
+  const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
+  const [selectedLecturerId, setSelectedLecturerId] = useState('');
+  const [selectedDepartmentName, setSelectedDepartmentName] = useState('');
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [lecturerAssignments, setLecturerAssignments] = useState<{
+    lecturerId: string;
+    departments: Array<{ id: string; name: string; classes: Array<{ id: string; label: string; className: string; courseUnit: string }> }>;
+  } | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
 
   // Debounce search term
   useEffect(() => {
@@ -83,6 +101,65 @@ export default function LectureRecords() {
     loadRecords();
   }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page]);
 
+  useEffect(() => {
+    if (sessionAttendanceOpen && sessionRecord) {
+      setSessionLoading(true);
+      enrollmentService.getClassEnrollments(sessionRecord.classId)
+        .then((list: any[]) => {
+          setSessionEnrollments(list);
+          setSessionStatusMap({});
+        })
+        .catch(() => {
+          toast.error('Failed to load enrolled students.');
+          setSessionEnrollments([]);
+        })
+        .finally(() => setSessionLoading(false));
+    }
+  }, [sessionAttendanceOpen, sessionRecord]);
+
+  const openSessionAttendance = (record: QALectureRecord & { classId?: string | null }) => {
+    const classId = (record as any).classId;
+    if (!classId) {
+      toast.error('This lecture record has no class linked. Cannot record student attendance.');
+      return;
+    }
+    const date = typeof record.date === 'string' 
+      ? record.date.slice(0, 10) 
+      : new Date(record.date).toISOString().slice(0, 10);
+    const className = record.class || (record as any).className || 'Class';
+    setSessionRecord({ classId, date, className });
+    setSessionStatusMap({});
+    setSessionAttendanceOpen(true);
+  };
+
+  const setSessionStudentStatus = (studentId: string, status: string) => {
+    setSessionStatusMap(prev => ({ ...prev, [studentId]: status }));
+  };
+
+  const handleSessionAttendanceSubmit = async () => {
+    if (!sessionRecord || sessionEnrollments.length === 0) return;
+    setSessionSaving(true);
+    try {
+      await studentService.createSessionAttendance({
+        classId: sessionRecord.classId,
+        date: sessionRecord.date,
+        records: sessionEnrollments.map(e => ({
+          studentId: e.studentId,
+          status: sessionStatusMap[e.studentId] || 'Absent',
+        })),
+      });
+      toast.success('Student attendance recorded for this session.');
+      setSessionAttendanceOpen(false);
+      setSessionRecord(null);
+      setSessionEnrollments([]);
+      setSessionStatusMap({});
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save attendance.');
+    } finally {
+      setSessionSaving(false);
+    }
+  };
+
   const loadLecturers = async () => {
     try {
       const response = await staffService.getLecturers();
@@ -90,9 +167,21 @@ export default function LectureRecords() {
         `${lecturer.firstName} ${lecturer.lastName}`.trim()
       );
       setAllLecturers([...new Set(lecturerNames)].sort());
+      const options = response.data.map((lecturer: any) => ({
+        id: lecturer.id,
+        name: `${lecturer.firstName} ${lecturer.lastName}`.trim(),
+        departmentName: lecturer.departmentName || lecturer.department?.name,
+      }));
+      setLecturerOptions(options);
+      const deptNames = options
+        .map(o => o.departmentName)
+        .filter((n): n is string => !!n);
+      setDepartments([...new Set(deptNames)].sort());
     } catch (error) {
       console.error('Error loading lecturers:', error);
       setAllLecturers([]);
+      setLecturerOptions([]);
+      setDepartments([]);
     }
   };
 
@@ -245,6 +334,10 @@ export default function LectureRecords() {
   // Handle Form Submit
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedLecturerName?.trim()) {
+      toast.error('Please select a lecturer.');
+      return;
+    }
     const formData = new FormData(e.target as HTMLFormElement);
     
     const startTime = formData.get('timeForStarting') as string;
@@ -263,15 +356,38 @@ export default function LectureRecords() {
       duration = calculateDuration(startTime, endTime);
     }
     
+    // Derive course unit from selected class assignment if available
+    let courseUnit = '';
+    let classCourseId: string | null | undefined = null;
+    if (lecturerAssignments && selectedDepartmentId && selectedClassId) {
+      const dept = lecturerAssignments.departments.find(d => d.id === selectedDepartmentId);
+      const cls: any = dept?.classes.find((c: any) => c.id === selectedClassId);
+      if (cls) {
+        courseUnit = cls.courseUnit;
+        classCourseId = cls.courseId;
+      }
+    }
+    // Fallback: derive roughly from class text if no structured mapping
+    if (!courseUnit && selectedClassName) {
+      const parts = selectedClassName.split('–');
+      if (parts.length > 1) {
+        courseUnit = parts[1].split('(')[0].trim();
+      } else {
+        courseUnit = selectedClassName.trim();
+      }
+    }
+
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
-      lecturerName: formData.get('lecturerName') as string,
-      class: formData.get('class') as string,
-      courseUnit: formData.get('courseUnit') as string,
+      lecturerName: selectedLecturerName.trim(),
+      class: selectedClassName.trim() || (formData.get('class') as string),
+      classId: selectedClassId || undefined,
+      courseId: classCourseId || undefined,
+      courseUnit: courseUnit || (formData.get('courseUnit') as string) || '',
       timeForStarting: startTime,
       timeOutForEnding: endTime,
       duration: duration,
-      timeLost: formData.get('timeLost') as string || '0',
+      timeLost: '0',
       comment: formData.get('comment') as string,
       checkInTime: checkInTime || undefined,
       checkOutTime: checkOutTime || undefined,
@@ -287,6 +403,7 @@ export default function LectureRecords() {
       await loadRecords();
       setIsDialogOpen(false);
       setCurrentRecordId(null);
+      setSelectedLecturerName('');
     } catch (error) {
       console.error('Error saving record:', error);
       toast.error('Failed to save record. Please try again.');
@@ -309,7 +426,9 @@ export default function LectureRecords() {
     setCurrentRecordId(id);
     const record = records.find(r => r.id === id);
     if (!record) return;
-    
+    setSelectedLecturerName(record.lecturerName || '');
+    setSelectedClassName(record.class || '');
+
     // Try to determine school from the record's class asynchronously
     if (record.class) {
       qaService.getSchools().then(allSchools => {
@@ -340,6 +459,8 @@ export default function LectureRecords() {
     setCurrentRecordId(null);
     setSelectedSchool('');
     setClasses([]);
+    setSelectedLecturerName('');
+    setSelectedClassName('');
     setIsDialogOpen(true);
   };
 
@@ -604,6 +725,7 @@ export default function LectureRecords() {
                   <TableHead>LECTURER'S NAME</TableHead>
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
+                  <TableHead>DEPARTMENT</TableHead>
                   <TableHead>TIME FOR STARTING</TableHead>
                   <TableHead>TIME OUT FOR ENDING</TableHead>
                   <TableHead>CHECK-IN</TableHead>
@@ -618,13 +740,13 @@ export default function LectureRecords() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="h-24 text-center">
+                    <TableCell colSpan={14} className="h-24 text-center">
                       Loading records...
                     </TableCell>
                   </TableRow>
                 ) : filteredRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="h-24 text-center">
+                    <TableCell colSpan={14} className="h-24 text-center">
                       No records found.
                     </TableCell>
                   </TableRow>
@@ -637,6 +759,7 @@ export default function LectureRecords() {
                       <TableCell className="font-medium">{record.lecturerName}</TableCell>
                       <TableCell>{record.class || (record as any).className || '-'}</TableCell>
                       <TableCell className="max-w-xs truncate">{record.courseUnit}</TableCell>
+                      <TableCell className="max-w-xs truncate">{(record as any).department || '—'}</TableCell>
                       <TableCell className="whitespace-nowrap text-sm">{record.timeForStarting}</TableCell>
                       <TableCell className="whitespace-nowrap text-sm">{record.timeOutForEnding}</TableCell>
                       <TableCell className="whitespace-nowrap">
@@ -705,6 +828,11 @@ export default function LectureRecords() {
                             <DropdownMenuItem onClick={() => record.id && openEdit(record.id)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
+                            {(record as any).classId && (
+                              <DropdownMenuItem onClick={() => openSessionAttendance(record)}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Record student attendance
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => record.id && handleDelete(record.id)}>
                               <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -734,6 +862,77 @@ export default function LectureRecords() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Record student attendance</DialogTitle>
+            <DialogDescription>
+              {sessionRecord ? `${sessionRecord.className} — ${sessionRecord.date}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {sessionLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading enrolled students...</div>
+          ) : (
+            <>
+              <div className="overflow-auto flex-1 min-h-0 rounded border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Student number</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sessionEnrollments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-6 text-muted-foreground">
+                          No enrolled students for this class.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sessionEnrollments.map((enr: any) => {
+                        const student = enr.student;
+                        const name = student ? `${student.firstName || ''} ${student.lastName || ''}`.trim() || '—' : '—';
+                        const num = student?.studentNumber || '—';
+                        const status = sessionStatusMap[enr.studentId] || 'Absent';
+                        return (
+                          <TableRow key={enr.studentId}>
+                            <TableCell className="font-medium">{name}</TableCell>
+                            <TableCell className="text-muted-foreground">{num}</TableCell>
+                            <TableCell>
+                              <Select value={status} onValueChange={(v) => setSessionStudentStatus(enr.studentId, v)}>
+                                <SelectTrigger className="w-[130px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Present">Present</SelectItem>
+                                  <SelectItem value="Absent">Absent</SelectItem>
+                                  <SelectItem value="Late">Late</SelectItem>
+                                  <SelectItem value="Excused">Excused</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setSessionAttendanceOpen(false); setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); }}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSessionAttendanceSubmit} disabled={sessionSaving || sessionEnrollments.length === 0} className="bg-[#015F2B] hover:bg-[#014022]">
+                  {sessionSaving ? 'Saving…' : 'Save attendance'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Import Lecture Records Dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
@@ -768,16 +967,17 @@ export default function LectureRecords() {
 
       {/* Record/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSave}>
             <DialogHeader>
               <DialogTitle>{currentRecordId !== null ? 'Edit Lecture Record' : 'Record New Lecture'}</DialogTitle>
               <DialogDescription>
-                Enter the details matching the CSV format. Click save when you're done.
+                Capture one lecture session with school, class, course unit and both scheduled and actual times.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-6 py-4">
+              {/* Row 1: Date + Lecturer */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="date">DATE *</Label>
                   <Input 
@@ -790,94 +990,114 @@ export default function LectureRecords() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lecturerName">LECTURER'S NAME *</Label>
-                  <Input 
-                    id="lecturerName" 
-                    name="lecturerName" 
-                    placeholder="e.g. Mr. Wagima Christopher" 
-                    required 
-                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.lecturerName || '' : ''} 
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="school">SCHOOL *</Label>
-                  <Select 
-                    value={selectedSchool} 
-                    onValueChange={(value) => {
-                      setSelectedSchool(value);
-                      // Reset class selection when school changes
-                      const classInput = document.getElementById('class') as HTMLInputElement;
-                      if (classInput) classInput.value = '';
+                  <Select
+                    value={selectedLecturerName}
+                    onValueChange={async (value) => {
+                      setSelectedLecturerName(value);
+                      const opt = lecturerOptions.find(l => l.name === value);
+                      const id = opt?.id || '';
+                      setSelectedLecturerId(id);
+                      setSelectedDepartmentId('');
+                      setSelectedDepartmentName('');
+                      setSelectedClassId('');
+                      setSelectedClassName('');
+                      if (id) {
+                        const assignments = await qaService.getLecturerAssignments(id);
+                        if (assignments) {
+                          setLecturerAssignments(assignments);
+                        } else {
+                          setLecturerAssignments(null);
+                        }
+                      } else {
+                        setLecturerAssignments(null);
+                      }
                     }}
-                    required
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a school" />
+                    <SelectTrigger id="lecturerName">
+                      <SelectValue placeholder="Select a lecturer" />
                     </SelectTrigger>
                     <SelectContent>
-                      {schools.map(school => (
-                        <SelectItem key={school} value={school}>{school}</SelectItem>
+                      {allLecturers.map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Row 2: Department + Class */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="class">CLASS *</Label>
-                  {selectedSchool && classes.length > 0 ? (
-                    <Select 
-                      name="class"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.class || '' : ''}
-                      required
+                  <Label>DEPARTMENT</Label>
+                  {lecturerAssignments && lecturerAssignments.departments.length > 0 ? (
+                    <Select
+                      value={selectedDepartmentId}
+                      onValueChange={(value) => {
+                        setSelectedDepartmentId(value);
+                        setSelectedClassId('');
+                        setSelectedClassName('');
+                        const dept = lecturerAssignments?.departments.find(d => d.id === value);
+                        setSelectedDepartmentName(dept?.name || '');
+                      }}
                     >
-                      <SelectTrigger id="class-select">
-                        <SelectValue placeholder="Select a class" />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a department" />
                       </SelectTrigger>
                       <SelectContent>
-                        {classes.map(cls => (
-                          <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                        {lecturerAssignments.departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : selectedSchool && classes.length === 0 ? (
-                    <div className="space-y-2">
-                      <Input 
-                        id="class" 
-                        name="class" 
-                        placeholder="No classes found. Enter class manually" 
-                        required 
-                        defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.class || '' : ''} 
-                      />
-                      <p className="text-xs text-gray-500">No classes found for this school. You can enter the class manually.</p>
-                    </div>
                   ) : (
-                    <Input 
-                      id="class" 
-                      name="class" 
-                      placeholder="Select a school first" 
-                      required 
-                      disabled={!selectedSchool}
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.class || '' : ''} 
+                    <Input
+                      value="Lecturer not assigned to any department"
+                      readOnly
+                      disabled
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="class">CLASS *</Label>
+                  {lecturerAssignments &&
+                   selectedDepartmentId &&
+                   lecturerAssignments.departments.find(d => d.id === selectedDepartmentId)?.classes.length ? (
+                    <Select
+                      name="class"
+                      value={selectedClassId}
+                      onValueChange={(value) => {
+                        setSelectedClassId(value);
+                        const dept = lecturerAssignments.departments.find(d => d.id === selectedDepartmentId);
+                        const cls = dept?.classes.find((c: { id: string; label: string }) => c.id === value);
+                        setSelectedClassName(cls?.label || '');
+                      }}
+                      required
+                    >
+                      <SelectTrigger id="class">
+                        <SelectValue placeholder="Select a class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lecturerAssignments.departments
+                          .find(d => d.id === selectedDepartmentId)
+                          ?.classes.map(cls => (
+                            <SelectItem key={cls.id} value={cls.id}>{cls.label}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value="Lecturer not assigned to any class"
+                      readOnly
+                      disabled
                     />
                   )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="courseUnit">COURSE UNIT *</Label>
-                  <Input 
-                    id="courseUnit" 
-                    name="courseUnit" 
-                    placeholder="e.g. MATHEMATICS FOR ECONOMICS" 
-                    required 
-                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.courseUnit || '' : ''} 
-                  />
-                </div>
-              </div>
+              {/* Row 3 removed (course unit and derived department) per new flow */}
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Row 4: Scheduled time */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="timeForStarting">TIME FOR STARTING (Scheduled) *</Label>
                   <Input 
@@ -948,15 +1168,6 @@ export default function LectureRecords() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="timeLost">TIME LOST</Label>
-                  <Input 
-                    id="timeLost" 
-                    name="timeLost" 
-                    placeholder="e.g. 00:50:00 or 0" 
-                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeLost || '0' : '0'} 
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="comment">COMMENT *</Label>
                   <Select 

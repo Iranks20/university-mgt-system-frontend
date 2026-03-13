@@ -102,11 +102,11 @@ function AppRoutes() {
 				} 
 			/>
 			
-			{/* Lecturer Routes */}
+			{/* Timetable Routes */}
 			<Route 
 				path="/timetable" 
 				element={
-					<ProtectedRoute allowedRoles={['Lecturer']}>
+					<ProtectedRoute allowedRoles={['Lecturer', 'QA']}>
 						<Timetable />
 					</ProtectedRoute>
 				} 

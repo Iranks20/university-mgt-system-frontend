@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Filter, MoreHorizontal, FileSpreadsheet,
   User, CheckCircle, XCircle, Clock, MapPin,
-  Trash2, Edit, ChevronLeft, ChevronRight
+  Trash2, Edit, ChevronLeft, ChevronRight, Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ import { exportAttendanceRecordsToExcel } from '@/utils/excel';
 import type { AttendanceRecordRow } from '@/types/student';
 import type { School } from '@/types';
 import type { Course } from '@/types';
+import type { Student } from '@/types';
+import type { Class } from '@/types';
 import { toast } from 'sonner';
 
 const STATUS_OPTIONS = ['Present', 'Absent', 'Late', 'Excused'] as const;
@@ -48,6 +50,14 @@ export default function StudentRecords() {
   const [exporting, setExporting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [currentRecord, setCurrentRecord] = useState<AttendanceRecordRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStudentId, setAddStudentId] = useState('');
+  const [addClassId, setAddClassId] = useState('');
+  const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [addStatus, setAddStatus] = useState<string>('Present');
+  const [addSaving, setAddSaving] = useState(false);
+  const [studentsForAdd, setStudentsForAdd] = useState<Student[]>([]);
+  const [classesForAdd, setClassesForAdd] = useState<Class[]>([]);
 
   useEffect(() => {
     studentService.getProgramCodes().then(codes => setProgramCodes(codes));
@@ -98,6 +108,45 @@ export default function StudentRecords() {
   useEffect(() => {
     loadAttendanceRecords();
   }, [loadAttendanceRecords]);
+
+  useEffect(() => {
+    if (addOpen) {
+      studentService.getStudents({ limit: 50 }).then(r => setStudentsForAdd(r.data || []));
+      academicService.getClasses({ limit: 50 }).then(r => setClassesForAdd(r.data || []));
+    }
+  }, [addOpen]);
+
+  const openAdd = () => {
+    setAddStudentId('');
+    setAddClassId('');
+    setAddDate(new Date().toISOString().slice(0, 10));
+    setAddStatus('Present');
+    setAddOpen(true);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addStudentId || !addClassId || !addDate) {
+      toast.error('Please select student, class, and date.');
+      return;
+    }
+    setAddSaving(true);
+    try {
+      await studentService.createAttendanceRecord({
+        studentId: addStudentId,
+        classId: addClassId,
+        date: addDate,
+        status: addStatus,
+      });
+      toast.success('Attendance record added.');
+      setAddOpen(false);
+      loadAttendanceRecords();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add record.');
+    } finally {
+      setAddSaving(false);
+    }
+  };
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -216,6 +265,9 @@ export default function StudentRecords() {
           </Select>
           <Button variant="outline" className="gap-2" onClick={handleExportExcel} disabled={exporting}>
             <FileSpreadsheet size={16} /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </Button>
+          <Button className="bg-[#015F2B] hover:bg-[#014022] gap-2" onClick={openAdd}>
+            <Plus size={16} /> Add attendance record
           </Button>
         </div>
       </div>
@@ -433,6 +485,80 @@ export default function StudentRecords() {
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B] hover:bg-[#014022]">Update</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add attendance record</DialogTitle>
+            <DialogDescription>
+              Record attendance for a student in a class on a given date.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-student">Student</Label>
+                <Select value={addStudentId} onValueChange={setAddStudentId} required>
+                  <SelectTrigger id="add-student">
+                    <SelectValue placeholder="Select student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {studentsForAdd.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.firstName} {s.lastName}{s.studentNumber ? ` (${s.studentNumber})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-class">Class</Label>
+                <Select value={addClassId} onValueChange={setAddClassId} required>
+                  <SelectTrigger id="add-class">
+                    <SelectValue placeholder="Select class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classesForAdd.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name || c.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-date">Date</Label>
+                <Input
+                  id="add-date"
+                  type="date"
+                  value={addDate}
+                  onChange={e => setAddDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-status">Status</Label>
+                <Select value={addStatus} onValueChange={setAddStatus}>
+                  <SelectTrigger id="add-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B] hover:bg-[#014022]" disabled={addSaving}>
+                {addSaving ? 'Saving…' : 'Add record'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

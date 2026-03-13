@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { useRole } from '@/components/RoleProvider';
 import { qaService, academicService, timetableService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,10 +46,14 @@ export default function Timetable() {
   const [viewMode, setViewMode] = useState<'list' | 'week'>('week');
   const [selectedDay, setSelectedDay] = useState('Monday');
   const [timetableData, setTimetableData] = useState<TimetableItem[]>([]);
+  const [qaPage, setQaPage] = useState(1);
+  const [qaTotal, setQaTotal] = useState(0);
+  const qaPageSize = 50;
   const [loading, setLoading] = useState(true);
   const [activeCheckIns, setActiveCheckIns] = useState<Record<string, { checkIn: string; checkOut?: string }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
+  const [qaFilters, setQaFilters] = useState({ day: 'all', search: '' });
 
   const refreshCheckInState = async () => {
     if (role === 'Lecturer') {
@@ -79,6 +85,19 @@ export default function Timetable() {
     return hours * 60 + minutes;
   };
 
+  const formatTimeDisplay = (value: string | null | undefined): string => {
+    if (!value) return '';
+    // If ISO datetime, format to local HH:MM
+    if (value.includes('T')) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+    // Already HH:MM or similar
+    return value;
+  };
+
   const isClassLive = (startTime: string, endTime: string, dayOfWeek: number | null): boolean => {
     if (!startTime || !endTime || dayOfWeek === null) return false;
     const now = new Date();
@@ -95,25 +114,43 @@ export default function Timetable() {
     try {
       setLoading(true);
       let data: any[] = [];
-      if (role === 'Student') {
+      if (role === 'Student' || role === 'Lecturer') {
         data = await timetableService.getMyTimetable();
+      } else if (role === 'QA') {
+        const result = await timetableService.getTimetable({ page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' });
+        data = result.data || [];
+        setQaTotal(result.total || 0);
       } else {
         data = await academicService.getTimetable();
       }
       const dayNamesFull = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const formatted = data.map((item: any) => {
-        const dayOfWeek = item.dayOfWeek !== null && item.dayOfWeek !== undefined ? item.dayOfWeek : null;
-        const dayName = item.day || (dayOfWeek !== null ? dayNamesFull[dayOfWeek] : null);
-        const live = isClassLive(item.startTime || '', item.endTime || '', dayOfWeek);
+        const fromScheduled = item.courseName !== undefined || item.courseCode !== undefined;
+        let dayOfWeek: number | null = null;
+        if (fromScheduled) {
+          if (item.date) {
+            const d = new Date(item.date);
+            const dNum = d.getDay();
+            dayOfWeek = isNaN(dNum) ? null : dNum;
+          }
+        } else {
+          dayOfWeek = item.dayOfWeek !== null && item.dayOfWeek !== undefined ? item.dayOfWeek : null;
+        }
+        const dayName = fromScheduled
+          ? (dayOfWeek !== null ? dayNamesFull[dayOfWeek] : null)
+          : (item.day || (dayOfWeek !== null ? dayNamesFull[dayOfWeek] : null));
+        const startDisplay = formatTimeDisplay(item.startTime || '');
+        const endDisplay = formatTimeDisplay(item.endTime || '');
+        const live = isClassLive(startDisplay, endDisplay, dayOfWeek);
         return {
           id: item.id,
           day: dayName,
           dayOfWeek,
-          time: item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : 'TBA',
-          course: item.course?.name || 'Unknown Course',
-          code: item.course?.code || '—',
-          venue: item.venue?.name || 'TBA',
-          lecturer: item.lecturer?.name || 'TBA',
+          time: startDisplay && endDisplay ? `${startDisplay} - ${endDisplay}` : 'TBA',
+          course: fromScheduled ? (item.courseName || 'Unknown Course') : (item.course?.name || 'Unknown Course'),
+          code: fromScheduled ? (item.courseCode || '—') : (item.course?.code || '—'),
+          venue: fromScheduled ? (item.venue || 'TBA') : (item.venue?.name || 'TBA'),
+          lecturer: fromScheduled ? (item.lecturerName || 'TBA') : (item.lecturer?.name || 'TBA'),
           type: 'Lecture',
           startTime: item.startTime,
           endTime: item.endTime,
@@ -138,7 +175,18 @@ export default function Timetable() {
 
   useEffect(() => {
     loadTimetable();
-  }, [user, role]);
+  }, [user, role, qaPage]);
+
+  useEffect(() => {
+    if (role === 'QA') {
+      const now = new Date();
+      const dayIndex = now.getDay(); // 0-6
+      const mondayBasedIndex = dayIndex === 0 ? 6 : dayIndex - 1; // 0=Mon,...,6=Sun
+      const todayName = DAYS[mondayBasedIndex] ?? 'Monday';
+      setViewMode('list');
+      setSelectedDay(todayName);
+    }
+  }, [role]);
 
   useEffect(() => {
     if (role !== 'Lecturer') return;
@@ -268,6 +316,24 @@ export default function Timetable() {
     ? timetableData.filter(t => t.day === selectedDay)
     : timetableData;
 
+  const qaFilteredTimetable = timetableData.filter((t) => {
+    if (qaFilters.day !== 'all' && t.day !== qaFilters.day) return false;
+    if (qaFilters.search.trim()) {
+      const q = qaFilters.search.toLowerCase();
+      if (
+        !(
+          (t.course || '').toLowerCase().includes(q) ||
+          (t.code || '').toLowerCase().includes(q) ||
+          (t.lecturer || '').toLowerCase().includes(q) ||
+          (t.venue || '').toLowerCase().includes(q)
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   if (loading) {
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -278,12 +344,135 @@ export default function Timetable() {
     );
   }
 
+  if ((role as string) === 'QA') {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              University Timetable
+            </h1>
+            <p className="text-gray-500">
+              View all timetable classes across the university with filters by day, course and lecturer.
+            </p>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle className="text-base">Timetable classes</CardTitle>
+                <CardDescription>
+                  Showing {qaFilteredTimetable.length} class{qaFilteredTimetable.length === 1 ? '' : 'es'} from the imported university timetable.
+                </CardDescription>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                <div className="flex items-center gap-2 sm:w-auto">
+                  <Label className="text-sm text-muted-foreground">Day</Label>
+                  <Select
+                    value={qaFilters.day}
+                    onValueChange={(v) => setQaFilters((f) => ({ ...f, day: v }))}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="All days" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All days</SelectItem>
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((d) => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Input
+                    placeholder="Search course, code, lecturer or venue"
+                    value={qaFilters.search}
+                    onChange={(e) => setQaFilters((f) => ({ ...f, search: e.target.value }))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {qaFilteredTimetable.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarIcon className="mx-auto h-10 w-10 mb-2 text-gray-300" />
+                <p>No classes match the current filters.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>DAY</TableHead>
+                      <TableHead>TIME</TableHead>
+                      <TableHead>COURSE</TableHead>
+                      <TableHead>CODE</TableHead>
+                      <TableHead>VENUE</TableHead>
+                      <TableHead>LECTURER</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {qaFilteredTimetable.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell>{t.day || '—'}</TableCell>
+                        <TableCell>{t.time}</TableCell>
+                        <TableCell className="font-medium">{t.course}</TableCell>
+                        <TableCell>{t.code}</TableCell>
+                        <TableCell>{t.venue}</TableCell>
+                        <TableCell>{t.lecturer}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            {qaTotal > qaPageSize && (
+              <div className="flex justify-between items-center mt-4 text-sm text-muted-foreground">
+                <span>
+                  Page {qaPage} of {Math.max(1, Math.ceil(qaTotal / qaPageSize))}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={qaPage === 1}
+                    onClick={() => setQaPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={qaPage >= Math.ceil(qaTotal / qaPageSize)}
+                    onClick={() => setQaPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Timetable</h1>
-            <p className="text-gray-500">View your weekly class schedule and venues.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              {role === 'QA' ? 'University Timetable' : 'My Timetable'}
+            </h1>
+            <p className="text-gray-500">
+              {role === 'QA'
+                ? "View all classes scheduled for today across the university."
+                : 'View your weekly class schedule and venues.'}
+            </p>
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg">
             <Button 

@@ -146,6 +146,50 @@ export const qaService = {
     }
   },
 
+  getCompensationTrackingReport: async (dateFrom: string, dateTo: string): Promise<{
+    cancelledSessions: number;
+    compensationSessions: number;
+    uncompensatedCancellations: Array<{
+      id: string;
+      requestId: string;
+      timetableId: string;
+      classId: string;
+      date: string;
+      className: string;
+      courseUnit: string;
+      lecturerName: string;
+      status: string;
+    }>;
+    compensatedCancellations: Array<{
+      id: string;
+      requestId: string;
+      timetableId: string;
+      classId: string;
+      date: string;
+      className: string;
+      courseUnit: string;
+      lecturerName: string;
+      status: string;
+      compensationSessions: Array<{
+        id: string;
+        date: string;
+        startTime: string;
+        endTime: string;
+        venue: string;
+        className: string;
+      }>;
+    }>;
+  }> => {
+    const raw = await api.get<unknown>('/qa/compensation-tracking-report', { dateFrom, dateTo });
+    const data = (raw as { data?: unknown })?.data ?? raw;
+    return data as {
+      cancelledSessions: number;
+      compensationSessions: number;
+      uncompensatedCancellations: Array<{ id: string; requestId: string; timetableId: string; classId: string; date: string; className: string; courseUnit: string; lecturerName: string; status: string }>;
+      compensatedCancellations: Array<{ id: string; requestId: string; timetableId: string; classId: string; date: string; className: string; courseUnit: string; lecturerName: string; status: string; compensationSessions: Array<{ id: string; date: string; startTime: string; endTime: string; venue: string; className: string }> }>;
+    };
+  },
+
   /**
    * Import lecture records from CSV data
    */
@@ -280,6 +324,24 @@ export const qaService = {
     } catch (error) {
       console.error('Error fetching all classes:', error);
       return [];
+    }
+  },
+
+  getLecturerAssignments: async (lecturerId: string): Promise<{
+    lecturerId: string;
+    departments: Array<{
+      id: string;
+      name: string;
+      classes: Array<{ id: string; label: string; className: string; courseUnit: string; courseId: string | null }>;
+    }>;
+  } | null> => {
+    try {
+      const res = await api.get<any>('/qa/lecturer-assignments', { lecturerId });
+      const data = (res as any)?.data ?? res;
+      return data;
+    } catch (error) {
+      console.error('Error fetching lecturer assignments:', error);
+      return null;
     }
   },
 

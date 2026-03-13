@@ -58,13 +58,21 @@ export interface School {
   description?: string;
 }
 
-export interface Department {
+export interface Level {
   id: string;
   name: string;
   code: string;
   schoolId: string;
+  sortOrder?: number;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  code: string;
+  levelId: string;
   head?: string;
-  duration?: number; // Program duration in years (e.g., 3 for 3-year programs, 4 for 4-year programs)
+  duration?: number;
 }
 
 export interface Course {
@@ -72,13 +80,15 @@ export interface Course {
   code: string;
   name: string;
   departmentId: string;
+  programId?: string | null;
   credits: number;
-  level: number; // Year level
+  level: number;
   semester: number;
 }
 
 export interface Class {
   id: string;
+  name?: string;
   courseId: string;
   lecturerId: string;
   venueId: string;

@@ -58,7 +58,9 @@ export const studentService = {
 
   getStudentAttendance: async (studentId: string, params?: { startDate?: string; endDate?: string; courseCode?: string; status?: string; classId?: string }): Promise<StudentAttendance[]> => {
     try {
-      return await api.get<StudentAttendance[]>(`/students/${studentId}/attendance`, params);
+      const res = await api.get<StudentAttendance[] | { data: StudentAttendance[] }>(`/students/${studentId}/attendance`, params);
+      const data = Array.isArray(res) ? res : (res as any)?.data;
+      return Array.isArray(data) ? data : [];
     } catch (error) {
       console.error('Error fetching student attendance:', error);
       return [];
@@ -143,11 +145,22 @@ export const studentService = {
     }
   },
 
-  createAttendanceRecord: async (record: StudentAttendanceRecord): Promise<StudentAttendanceRecord> => {
+  createAttendanceRecord: async (record: { studentId: string; classId: string; date: string; status?: string; remarks?: string | null }): Promise<StudentAttendanceRecord> => {
     try {
       return await api.post<StudentAttendanceRecord>('/students/attendance', record);
     } catch (error) {
       console.error('Error creating attendance record:', error);
+      throw error;
+    }
+  },
+
+  createSessionAttendance: async (payload: { classId: string; date: string; records: Array<{ studentId: string; status: string; remarks?: string | null }> }): Promise<{ date: string; classId: string; count: number; results: Array<{ studentId: string; status: string; created: boolean }> }> => {
+    try {
+      const res = await api.post<any>('/students/attendance/session', payload);
+      const data = (res as any)?.data ?? res;
+      return data;
+    } catch (error) {
+      console.error('Error creating session attendance:', error);
       throw error;
     }
   },
@@ -230,11 +243,20 @@ export const studentService = {
     }
   },
 
-  importStudents: async (file: File, createAccounts: boolean = false): Promise<{ imported: number; failed: number; errors?: string[] }> => {
+  importStudents: async (
+    file: File,
+    createAccounts: boolean = false,
+    scope?: { programId: string; year: number; semester: number }
+  ): Promise<{ imported: number; failed: number; errors?: string[] }> => {
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('createAccounts', String(createAccounts));
+      if (scope) {
+        formData.append('programId', scope.programId);
+        formData.append('year', String(scope.year));
+        formData.append('semester', String(scope.semester));
+      }
       return await api.post<{ imported: number; failed: number; errors?: string[] }>('/students/import', formData);
     } catch (error) {
       console.error('Error importing students:', error);

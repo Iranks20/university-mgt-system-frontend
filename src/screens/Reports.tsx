@@ -58,6 +58,22 @@ export default function Reports() {
   const [lecturerDateRange, setLecturerDateRange] = useState<'all' | 'last_30_days' | 'this_term'>('all');
   const [studentAttendDateRange, setStudentAttendDateRange] = useState<'all' | 'last_30_days' | 'this_term'>('all');
   const [studentAttendLimit, setStudentAttendLimit] = useState<number>(100);
+  const [compDateFrom, setCompDateFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [compDateTo, setCompDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [compReport, setCompReport] = useState<{
+    cancelledSessions: number;
+    compensationSessions: number;
+    uncompensatedCancellations: Array<{ id: string; requestId: string; date: string; className: string; courseUnit: string; lecturerName: string }>;
+    compensatedCancellations: Array<{
+      id: string; date: string; className: string; courseUnit: string; lecturerName: string;
+      compensationSessions: Array<{ id: string; date: string; startTime: string; endTime: string; venue: string; className: string }>;
+    }>;
+  } | null>(null);
+  const [compReportLoading, setCompReportLoading] = useState(false);
 
   const getSchoolPerfDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
     const now = new Date();
@@ -345,6 +361,7 @@ export default function Reports() {
             <TabsTrigger value="schools">School Performance</TabsTrigger>
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
+            <TabsTrigger value="compensation">Compensation Tracking</TabsTrigger>
           </TabsList>
 
           <TabsContent value="reconciliation" className="space-y-4">
@@ -881,6 +898,119 @@ export default function Reports() {
                   </Table>
                 </CardContent>
               </Card>
+          </TabsContent>
+
+          <TabsContent value="compensation" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Compensation Tracking Report</CardTitle>
+                <CardDescription>Approved cancellations and their scheduled compensation sessions (from lecturer-submitted compensation date/time on cancellation request).</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Date from (cancelled session date)</label>
+                    <Input type="date" value={compDateFrom} onChange={(e) => setCompDateFrom(e.target.value)} className="w-[160px]" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 block mb-1">Date to</label>
+                    <Input type="date" value={compDateTo} onChange={(e) => setCompDateTo(e.target.value)} className="w-[160px]" />
+                  </div>
+                  <Button
+                    className="bg-[#015F2B]"
+                    onClick={async () => {
+                      setCompReportLoading(true);
+                      try {
+                        const data = await qaService.getCompensationTrackingReport(compDateFrom, compDateTo);
+                        setCompReport(data);
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Failed to load report');
+                        setCompReport(null);
+                      } finally {
+                        setCompReportLoading(false);
+                      }
+                    }}
+                    disabled={compReportLoading}
+                  >
+                    {compReportLoading ? 'Loading…' : 'Load report'}
+                  </Button>
+                </div>
+                {compReport && (
+                  <>
+                    <div className="flex gap-4 text-sm">
+                      <span><strong>{compReport.cancelledSessions}</strong> approved cancellations</span>
+                      <span><strong>{compReport.compensationSessions}</strong> compensation sessions scheduled</span>
+                      <span className="text-amber-600"><strong>{compReport.uncompensatedCancellations.length}</strong> without compensation</span>
+                    </div>
+                    {compReport.uncompensatedCancellations.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-2">Cancellations without compensation</h4>
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Class</TableHead>
+                                <TableHead>Course</TableHead>
+                                <TableHead>Lecturer</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {compReport.uncompensatedCancellations.map((u) => (
+                                <TableRow key={u.id}>
+                                  <TableCell>{u.date}</TableCell>
+                                  <TableCell>{u.className}</TableCell>
+                                  <TableCell>{u.courseUnit}</TableCell>
+                                  <TableCell>{u.lecturerName}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                    {compReport.compensatedCancellations.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-2">Cancellations with compensation scheduled</h4>
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Cancelled date</TableHead>
+                                <TableHead>Class</TableHead>
+                                <TableHead>Course</TableHead>
+                                <TableHead>Lecturer</TableHead>
+                                <TableHead>Compensation</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {compReport.compensatedCancellations.map((c) => (
+                                <TableRow key={c.id}>
+                                  <TableCell>{c.date}</TableCell>
+                                  <TableCell>{c.className}</TableCell>
+                                  <TableCell>{c.courseUnit}</TableCell>
+                                  <TableCell>{c.lecturerName}</TableCell>
+                                  <TableCell>
+                                    {c.compensationSessions.map((s) => (
+                                      <div key={s.id} className="text-sm">
+                                        {s.date} {s.startTime}–{s.endTime} @ {s.venue}
+                                      </div>
+                                    ))}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                    {compReport.cancelledSessions === 0 && (
+                      <p className="text-muted-foreground text-sm">No approved cancellations in this date range.</p>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 

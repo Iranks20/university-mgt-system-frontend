@@ -69,18 +69,22 @@ function StudentsTab({
   const [departments, setDepartments] = useState<{ id: string; name: string; code?: string; schoolId?: string; schoolName?: string }[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', program: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
   const [addPreviewCourses, setAddPreviewCourses] = useState<any[]>([]);
   const [addPreviewLoading, setAddPreviewLoading] = useState(false);
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', program: '', year: 'Year 1', semester: '1' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1' });
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
   const [previewCourses, setPreviewCourses] = useState<any[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [currentEnrollments, setCurrentEnrollments] = useState<string[]>([]);
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
+  const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
+  const [importPrograms, setImportPrograms] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,19 +119,42 @@ function StudentsTab({
     loadData();
   }, []);
 
+  // Load all programs once when the import dialog is opened
   useEffect(() => {
-    if (addForm.program) {
-      const duration = 4;
-      const currentYear = parseInt(addForm.year.replace('Year ', ''));
+    if (!importOpen) return;
+    academicService.getPrograms().then((raw: any) => {
+      const arr = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      setImportPrograms(arr);
+    }).catch(() => setImportPrograms([]));
+  }, [importOpen]);
+
+  useEffect(() => {
+    const deptId = addOpen ? addForm.departmentId : (editOpen ? editForm.departmentId : '');
+    if (!deptId) {
+      setPrograms([]);
+      return;
+    }
+    setProgramsLoading(true);
+    academicService.getPrograms(deptId).then((raw: any) => {
+      const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
+      setPrograms(arr);
+    }).finally(() => setProgramsLoading(false));
+  }, [addOpen, editOpen, addForm.departmentId, editForm.departmentId]);
+
+  useEffect(() => {
+    if (addForm.programId) {
+      const prog = programs.find((p: any) => p.id === addForm.programId);
+      const duration = prog?.duration ?? 4;
+      const currentYear = parseInt(addForm.year.replace('Year ', ''), 10) || 1;
       if (currentYear > duration) {
         setAddForm(prev => ({ ...prev, year: 'Year 1' }));
       }
     }
-  }, [addForm.program]);
+  }, [addForm.programId, addForm.year, programs]);
 
   useEffect(() => {
     const loadAddPreview = async () => {
-      if (!addForm.program || !addForm.year || !addOpen) {
+      if (!addForm.programId || !addForm.year || !addOpen) {
         setAddPreviewCourses([]);
         setAddSelectedCourseIds([]);
         return;
@@ -135,19 +162,18 @@ function StudentsTab({
 
       setAddPreviewLoading(true);
       try {
-        const dept = departments.find(d => d.id === addForm.program);
         const year = parseInt(addForm.year.replace('Year ', ''));
         const semester = parseInt(addForm.semester);
 
         const courses = await enrollmentService.previewCourses({
-          departmentId: dept?.id,
-          program: dept?.name || '',
+          departmentId: addForm.departmentId || undefined,
+          programId: addForm.programId,
           year,
           semester,
         });
 
         setAddPreviewCourses(courses);
-        setAddSelectedCourseIds(courses.map((c: any) => c.id));
+        setAddSelectedCourseIds((courses as any[]).filter((c: any) => !c.noClass).map((c: any) => c.id));
       } catch (error) {
         console.error('Error loading preview courses:', error);
         setAddPreviewCourses([]);
@@ -160,21 +186,22 @@ function StudentsTab({
     if (addOpen) {
       loadAddPreview();
     }
-  }, [addForm.program, addForm.year, addForm.semester, addOpen, departments]);
+  }, [addForm.programId, addForm.departmentId, addForm.year, addForm.semester, addOpen]);
 
   useEffect(() => {
-    if (editForm.program) {
-      const duration = 4;
-      const currentYear = parseInt(editForm.year.replace('Year ', ''));
+    if (editForm.programId) {
+      const prog = programs.find((p: any) => p.id === editForm.programId);
+      const duration = prog?.duration ?? 4;
+      const currentYear = parseInt(editForm.year.replace('Year ', ''), 10) || 1;
       if (currentYear > duration) {
         setEditForm(prev => ({ ...prev, year: 'Year 1' }));
       }
     }
-  }, [editForm.program]);
+  }, [editForm.programId, editForm.year, programs]);
 
   useEffect(() => {
     const loadPreview = async () => {
-      if (!editForm.program || !editForm.year || !editingStudent) {
+      if (!editForm.programId || !editForm.year || !editingStudent) {
         setPreviewCourses([]);
         setSelectedCourseIds([]);
         return;
@@ -182,14 +209,13 @@ function StudentsTab({
 
       setPreviewLoading(true);
       try {
-        const dept = departments.find(d => d.id === editForm.program);
         const year = parseInt(editForm.year.replace('Year ', ''));
         const semester = parseInt(editForm.semester);
 
         const [courses, enrollments] = await Promise.all([
           enrollmentService.previewCourses({
-            departmentId: dept?.id,
-            program: dept?.name || editForm.program,
+            departmentId: editForm.departmentId || undefined,
+            programId: editForm.programId,
             year,
             semester,
           }),
@@ -199,7 +225,8 @@ function StudentsTab({
         setPreviewCourses(courses);
         const enrolledClassIds = (enrollments as any[]).map((e: any) => e.classId || e.class?.id).filter(Boolean);
         setCurrentEnrollments(enrolledClassIds);
-        setSelectedCourseIds(enrolledClassIds);
+        const enrollableIds = (courses as any[]).filter((c: any) => !c.noClass).map((c: any) => c.id);
+        setSelectedCourseIds(enrolledClassIds.filter((id: string) => enrollableIds.includes(id)));
       } catch (error) {
         console.error('Error loading preview courses:', error);
         setPreviewCourses([]);
@@ -212,7 +239,16 @@ function StudentsTab({
     if (editOpen && editingStudent) {
       loadPreview();
     }
-  }, [editForm.program, editForm.year, editForm.semester, editOpen, editingStudent, departments]);
+  }, [editForm.programId, editForm.departmentId, editForm.year, editForm.semester, editOpen, editingStudent]);
+
+  useEffect(() => {
+    if (editOpen && editingStudent && programs.length > 0 && !editForm.programId && editingStudent.dept) {
+      const match = programs.find((p: any) => p.name === editingStudent.dept || (p.name && editingStudent.dept && String(p.name).includes(editingStudent.dept)));
+      if (match) {
+        setEditForm(f => ({ ...f, programId: match.id }));
+      }
+    }
+  }, [editOpen, editingStudent, programs, editForm.programId]);
 
   const filteredStudents = students.filter(s =>
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -228,10 +264,10 @@ function StudentsTab({
       const year = parseInt(addForm.year.replace('Year ', ''));
       const semester = parseInt(addForm.semester);
 
-      const dept = departments.find(d => d.id === addForm.program);
+      const prog = programs.find(p => p.id === addForm.programId);
 
-      if (!dept) {
-        toast.error('Please select a school and program');
+      if (!prog) {
+        toast.error('Please select a school, department and program');
         return;
       }
 
@@ -240,15 +276,15 @@ function StudentsTab({
         lastName,
         email: addForm.email,
         studentNumber: addForm.studentId,
-        programId: null,
-        program: dept.name,
+        programId: prog.id,
+        program: prog.name,
         year,
         semester,
-        departmentId: dept.id,
+        departmentId: prog.departmentId ?? addForm.departmentId,
         createAccount: true,
         tempPassword: addForm.tempPassword || undefined,
       } as any);
-
+      
       // Handle enrollments if courses are selected
       if (addSelectedCourseIds.length > 0) {
         let enrollmentSuccessCount = 0;
@@ -256,17 +292,17 @@ function StudentsTab({
         const enrollmentErrors: string[] = [];
 
         for (const classId of addSelectedCourseIds) {
-          try {
-            await enrollmentService.createEnrollment({
+        try {
+          await enrollmentService.createEnrollment({
               studentId: newStudent.id,
-              classId,
-              status: 'Active',
-            });
+            classId,
+            status: 'Active',
+          });
             enrollmentSuccessCount++;
-          } catch (error: any) {
-            if (error?.code === 'ENROLLMENT_ALREADY_EXISTS') {
+        } catch (error: any) {
+          if (error?.code === 'ENROLLMENT_ALREADY_EXISTS') {
               enrollmentSkippedCount++;
-            } else {
+          } else {
               enrollmentErrors.push(error?.message || 'Failed to enroll in class');
             }
           }
@@ -293,7 +329,7 @@ function StudentsTab({
       }
       setEnrollmentsByClassId(allEnrollments);
       
-      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', program: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
       setAddOpen(false);
@@ -311,7 +347,8 @@ function StudentsTab({
     if (!file) { toast.error('Please select a CSV or Excel file.'); return; }
     
     try {
-      const result = await studentService.importStudents(file, importCreateAccounts);
+      const scope = importScope.programId ? importScope : undefined;
+      const result = await studentService.importStudents(file, importCreateAccounts, scope);
       const resultData = result as { imported: number; failed: number; errors?: string[]; enrolled?: number; enrollmentSkipped?: number; enrollmentErrors?: string[] };
       const enrolledMsg = (resultData.enrolled ?? 0) > 0 ? `, Enrolled: ${resultData.enrolled}` : '';
       const skippedMsg = (resultData.enrollmentSkipped ?? 0) > 0 ? `, Skipped: ${resultData.enrollmentSkipped}` : '';
@@ -328,7 +365,7 @@ function StudentsTab({
     }
   };
 
-  const studentTemplateCsv = 'name,email,studentId,school,program,year,semester,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,School of Business,Business Administration,Year 1,1,TempPassword123!\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,School of Medicine,Medicine and Surgery,Year 1,2,TempPassword123!';
+  const studentTemplateCsv = 'name,email,studentId,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,TempPassword123!\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,TempPassword123!';
 
   return (
     <div className="space-y-4">
@@ -391,7 +428,8 @@ function StudentsTab({
                           email: student.email,
                           studentId: student.studentId,
                           schoolId: dept?.schoolId ?? '',
-                          program: dept?.id ?? '',
+                          departmentId: studentData?.departmentId ?? dept?.id ?? '',
+                          programId: studentData?.programId ?? '',
                           year: student.year,
                           semester: String(studentData?.semester ?? 1),
                         });
@@ -466,18 +504,18 @@ function StudentsTab({
                   <Input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. John Doe" className="w-full" />
                 </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Email</Label>
+                <Label>Email</Label>
                   <Input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@student.kcu.ac.ug" className="w-full" />
-                </div>
+              </div>
                 <div className="space-y-2 min-w-0">
                   <Label>Registration / Student ID</Label>
                   <Input value={addForm.studentId} onChange={e => setAddForm(f => ({ ...f, studentId: e.target.value }))} required placeholder="e.g. 2100123" className="w-full" />
-                </div>
+            </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Password (for account creation)</Label>
-                  <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave empty for default password" className="w-full" />
-                  <p className="text-xs text-gray-500">Default: TempPassword123! (if left empty)</p>
-                </div>
+                  <Label>Temporary password (for first login)</Label>
+                  <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave empty for default" className="w-full" />
+                  <p className="text-xs text-gray-500">Default: TempPassword123! if left empty</p>
+              </div>
               </div>
             </div>
 
@@ -494,7 +532,7 @@ function StudentsTab({
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                     </div>
                   ) : (
-                    <Select value={addForm.schoolId} onValueChange={v => setAddForm(f => ({ ...f, schoolId: v, program: '' }))} required>
+                    <Select value={addForm.schoolId} onValueChange={v => setAddForm(f => ({ ...f, schoolId: v, departmentId: '', programId: '' }))} required>
                       <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select school" /></SelectTrigger>
                       <SelectContent className="max-h-[300px]">
                         {schools.map((school) => (
@@ -507,14 +545,14 @@ function StudentsTab({
                   )}
                 </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Program</Label>
+                  <Label>Department</Label>
                   {departmentsLoading ? (
                     <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                     </div>
                   ) : (
-                    <Select value={addForm.program} onValueChange={v => setAddForm(f => ({ ...f, program: v }))} required>
-                      <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
+                    <Select value={addForm.departmentId} onValueChange={v => setAddForm(f => ({ ...f, departmentId: v, programId: '' }))} required>
+                      <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select department" /></SelectTrigger>
                       <SelectContent className="max-h-[300px]">
                         {addForm.schoolId ? (
                           departments
@@ -528,33 +566,60 @@ function StudentsTab({
                           <div className="px-2 py-1.5 text-sm text-gray-500">Select a school first</div>
                         )}
                         {addForm.schoolId && departments.filter(d => String(d.schoolId) === String(addForm.schoolId)).length === 0 && (
-                          <div className="px-2 py-1.5 text-sm text-gray-500">No programs in this school</div>
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No departments in this school</div>
                         )}
                       </SelectContent>
                     </Select>
                   )}
                 </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Year</Label>
-                  <Select value={addForm.year} onValueChange={v => setAddForm(f => ({ ...f, year: v }))}>
+                  <Label>Program</Label>
+                  {programsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+                    </div>
+                  ) : (
+                    <Select value={addForm.programId} onValueChange={v => setAddForm(f => ({ ...f, programId: v }))} required>
+                      <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {addForm.departmentId ? (
+                          programs.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} {p.code ? `(${p.code})` : ''}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">Select a department first</div>
+                        )}
+                        {addForm.departmentId && programs.length === 0 && !programsLoading && (
+                          <div className="px-2 py-1.5 text-sm text-gray-500">No programs in this department</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="space-y-2 min-w-0">
+                <Label>Year</Label>
+                <Select value={addForm.year} onValueChange={v => setAddForm(f => ({ ...f, year: v }))}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Select year" /></SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 4 }, (_, i) => i + 1).map((year) => (
+                  <SelectContent>
+                      {(addForm.programId ? Array.from({ length: Math.max(1, programs.find((p: any) => p.id === addForm.programId)?.duration ?? 4) }, (_, i) => i + 1) : [1, 2, 3, 4]).map((year) => (
                         <SelectItem key={year} value={`Year ${year}`}>
                           Year {year}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  {addForm.program && (() => {
-                    const selectedDept = departments.find(d => d.id === addForm.program);
-                    return (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {selectedDept ? `${selectedDept.name} (4-year program)` : ''}
-                      </p>
-                    );
-                  })()}
-                </div>
+                  </SelectContent>
+                </Select>
+                  {addForm.programId && (() => {
+                    const selectedProg = programs.find((p: any) => p.id === addForm.programId);
+                    const dur = selectedProg?.duration ?? 4;
+                  return (
+                    <p className="text-xs text-gray-500 mt-1">
+                        {selectedProg ? `${selectedProg.name} (${dur}-year program)` : ''}
+                    </p>
+                  );
+                })()}
+              </div>
                 <div className="space-y-2 min-w-0">
                   <Label>Semester</Label>
                   <Select value={addForm.semester} onValueChange={v => setAddForm(f => ({ ...f, semester: v }))}>
@@ -564,12 +629,12 @@ function StudentsTab({
                       <SelectItem value="2">Semester 2</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+            </div>
               </div>
             </div>
 
             {/* Course Enrollment Section */}
-            {addForm.program && addForm.year && (
+            {addForm.programId && addForm.year && (
               <div className="space-y-4">
                 <div className="border-b pb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-900">Course Enrollment</h3>
@@ -578,10 +643,11 @@ function StudentsTab({
                 {addPreviewLoading ? (
                   <div className="text-sm text-gray-500 py-8 text-center">Loading available courses...</div>
                 ) : addPreviewCourses.length === 0 ? (
-                  <div className="text-sm text-gray-500 py-8 text-center border rounded-md bg-gray-50">
-                    No courses found for {departments.find(d => d.id === addForm.program)?.name || addForm.program} - Year {addForm.year.replace('Year ', '')} - Semester {addForm.semester}
-                  </div>
-                ) : (
+                  <div className="text-sm text-gray-500 py-8 text-center border rounded-md bg-gray-50 space-y-1">
+                    <p>No classes found for {programs.find((p: any) => p.id === addForm.programId)?.name || 'selected program'} — Year {addForm.year.replace('Year ', '')} — Semester {addForm.semester}.</p>
+                    <p className="text-xs">Add courses under this program on the Schools page, then create classes in the Classes tab to enroll students.</p>
+                </div>
+              ) : (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs text-gray-600">
                       <span>Select courses to enroll the student in:</span>
@@ -603,20 +669,25 @@ function StudentsTab({
                           </TableHeader>
                           <TableBody>
                             {addPreviewCourses.map((cls) => {
-                              const isChecked = addSelectedCourseIds.includes(cls.id);
-                              return (
+                              const isCourseOnly = (cls as any).noClass === true;
+                              const isChecked = !isCourseOnly && addSelectedCourseIds.includes(cls.id);
+                        return (
                                 <TableRow key={cls.id} className={isChecked ? 'bg-green-50/50' : ''}>
                                   <TableCell className="px-3">
-                                    <Checkbox
-                                      checked={isChecked}
-                                      onCheckedChange={(checked) => {
-                                        if (checked) {
-                                          setAddSelectedCourseIds(prev => [...prev, cls.id]);
-                                        } else {
-                                          setAddSelectedCourseIds(prev => prev.filter(id => id !== cls.id));
-                                        }
-                                      }}
-                                    />
+                                    {isCourseOnly ? (
+                                      <span className="text-xs text-muted-foreground">—</span>
+                                    ) : (
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          if (checked) {
+                                            setAddSelectedCourseIds(prev => [...prev, cls.id]);
+                                          } else {
+                                            setAddSelectedCourseIds(prev => prev.filter(id => id !== cls.id));
+                                          }
+                                        }}
+                                      />
+                                    )}
                                   </TableCell>
                                   <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                                   <TableCell className="px-3">
@@ -624,17 +695,23 @@ function StudentsTab({
                                     {cls.course && (
                                       <div className="text-xs text-gray-500 mt-0.5">
                                         {cls.course.credits} credit{cls.course.credits !== 1 ? 's' : ''}
-                                      </div>
+                            </div>
                                     )}
                                   </TableCell>
-                                  <TableCell className="text-sm px-3 break-words">{cls.name}</TableCell>
+                                  <TableCell className="text-sm px-3 break-words">
+                                    {isCourseOnly ? (
+                                      <span className="text-amber-600">No class — create in Classes tab</span>
+                                    ) : (
+                                      cls.name
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-sm px-3 break-words">{cls.lecturer?.name || '—'}</TableCell>
                                   <TableCell className="text-sm px-3 whitespace-nowrap">
                                     {cls.dayOfWeek !== null && cls.startTime && cls.endTime ? (
                                       <div>
                                         <div className="font-medium">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]}</div>
                                         <div className="text-xs text-gray-500">{cls.startTime} - {cls.endTime}</div>
-                                      </div>
+                          </div>
                                     ) : (
                                       '—'
                                     )}
@@ -644,7 +721,7 @@ function StudentsTab({
                                       <div>
                                         <div>{cls.venue.name}</div>
                                         {cls.venue.code && <div className="text-xs text-gray-500">{cls.venue.code}</div>}
-                                      </div>
+                        </div>
                                     ) : (
                                       '—'
                                     )}
@@ -659,47 +736,43 @@ function StudentsTab({
                     <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
                       <span>
                         {addSelectedCourseIds.length > 0 
-                          ? `${addSelectedCourseIds.length} course${addSelectedCourseIds.length !== 1 ? 's' : ''} will be enrolled`
-                          : 'No courses selected'}
+                          ? `${addSelectedCourseIds.length} class${addSelectedCourseIds.length !== 1 ? 'es' : ''} selected for enrollment`
+                          : 'No classes selected'}
                       </span>
-                      {addSelectedCourseIds.length !== addPreviewCourses.length && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setAddSelectedCourseIds(addPreviewCourses.map(c => c.id))}
-                        >
-                          Select All
-                        </Button>
-                      )}
-                      {addSelectedCourseIds.length > 0 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setAddSelectedCourseIds([])}
-                        >
-                          Deselect All
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                      {(() => {
+                        const enrollableIds = addPreviewCourses.filter((c: any) => !c.noClass).map((c: any) => c.id);
+                        return (
+                          <>
+                            {addSelectedCourseIds.length !== enrollableIds.length && enrollableIds.length > 0 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => setAddSelectedCourseIds(enrollableIds)}
+                              >
+                                Select All
+                              </Button>
+                            )}
+                            {addSelectedCourseIds.length > 0 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => setAddSelectedCourseIds([])}
+                              >
+                                Deselect All
+                              </Button>
+                            )}
+                          </>
+                        );
+                      })()}
+            </div>
+            </div>
                 )}
               </div>
             )}
-
-            {/* Account Settings */}
-            <div className="space-y-4">
-              <div className="border-b pb-2">
-                <h3 className="text-sm font-semibold text-gray-900">Account Settings</h3>
-              </div>
-              <div className="space-y-2">
-                <Label>Temporary password (for first login)</Label>
-                <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave blank to send reset link" />
-              </div>
-            </div>
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button 
@@ -735,12 +808,67 @@ function StudentsTab({
 
       {/* Import Students Dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import Students</DialogTitle>
-            <DialogDescription>Upload a CSV or Excel (.xlsx) file with columns: name, email, studentId, dept, program, year, semester, password. Password column is optional - if not provided, default password "TempPassword123!" will be used. Students will be automatically enrolled in courses matching their program, year, and semester. Optionally create login accounts.</DialogDescription>
+            <DialogDescription>
+              Choose the program, year and semester for this list, then upload a CSV/Excel file with columns: <strong>name, email, studentId, password</strong>. All imported students will be created and auto-enrolled into that semester&apos;s courses.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <Label>Program</Label>
+                <Select
+                  value={importScope.programId || '__all__'}
+                  onValueChange={(v) =>
+                    setImportScope(s => ({
+                      ...s,
+                      programId: v === '__all__' ? '' : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Optional: select program" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All programs (use file columns)</SelectItem>
+                    {importPrograms.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Year</Label>
+                  <Select
+                    value={String(importScope.year)}
+                    onValueChange={(v) => setImportScope(s => ({ ...s, year: parseInt(v, 10) || 1 }))}
+                    disabled={!importScope.programId}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, i) => i + 1).map((y) => (
+                        <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Semester</Label>
+                  <Select
+                    value={String(importScope.semester)}
+                    onValueChange={(v) => setImportScope(s => ({ ...s, semester: parseInt(v, 10) || 1 }))}
+                    disabled={!importScope.programId}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Semester" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">Semester 1</SelectItem>
+                      <SelectItem value="2">Semester 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(studentTemplateCsv)}`} download="students_template.csv" className="flex items-center gap-2 text-sm text-[#015F2B] hover:underline">
                 <Download className="h-4 w-4" /> Download CSV template
@@ -790,25 +918,25 @@ function StudentsTab({
               const year = parseInt(editForm.year.replace('Year ', ''));
               const semester = parseInt(editForm.semester);
               
-              const dept = departments.find(d => d.id === editForm.program);
+              const prog = programs.find(p => p.id === editForm.programId);
 
-              if (!dept) {
-                toast.error('Please select a school and program');
+              if (!prog) {
+                toast.error('Please select a school, department and program');
                 return;
               }
-
+              
               await studentService.updateStudent(editingStudent.id, {
                 firstName,
                 lastName,
                 email: editForm.email,
                 studentNumber: editForm.studentId,
-                programId: null,
-                program: dept.name,
-                departmentId: dept.id,
+                programId: prog.id,
+                program: prog.name,
+                departmentId: prog.departmentId ?? editForm.departmentId,
                 year,
                 semester,
               } as any);
-
+              
               // Handle enrollments
               const toRemove = currentEnrollments.filter(cid => !selectedCourseIds.includes(cid));
               const toAdd = selectedCourseIds.filter(cid => !currentEnrollments.includes(cid));
@@ -888,17 +1016,17 @@ function StudentsTab({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   <div className="space-y-2 min-w-0">
-                    <Label>Full Name</Label>
+                  <Label>Full Name</Label>
                     <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. John Doe" className="w-full" />
-                  </div>
+                </div>
                   <div className="space-y-2 min-w-0">
-                    <Label>Email</Label>
+                  <Label>Email</Label>
                     <Input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@student.kcu.ac.ug" className="w-full" />
-                  </div>
+                </div>
                   <div className="space-y-2 min-w-0">
                     <Label>Registration / Student ID</Label>
                     <Input value={editForm.studentId} onChange={e => setEditForm(f => ({ ...f, studentId: e.target.value }))} required placeholder="e.g. 2100123" className="w-full" />
-                  </div>
+              </div>
                 </div>
               </div>
 
@@ -915,7 +1043,7 @@ function StudentsTab({
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                       </div>
                     ) : (
-                      <Select value={editForm.schoolId} onValueChange={v => setEditForm(f => ({ ...f, schoolId: v, program: '' }))} required>
+                      <Select value={editForm.schoolId} onValueChange={v => setEditForm(f => ({ ...f, schoolId: v, departmentId: '', programId: '' }))} required>
                         <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select school" /></SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                           {schools.map((school) => (
@@ -928,14 +1056,14 @@ function StudentsTab({
                     )}
                   </div>
                   <div className="space-y-2 min-w-0">
-                    <Label>Program</Label>
+                    <Label>Department</Label>
                     {departmentsLoading ? (
                       <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                       </div>
                     ) : (
-                      <Select value={editForm.program} onValueChange={v => setEditForm(f => ({ ...f, program: v }))} required>
-                        <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
+                      <Select value={editForm.departmentId} onValueChange={v => setEditForm(f => ({ ...f, departmentId: v, programId: '' }))} required>
+                        <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select department" /></SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                           {editForm.schoolId ? (
                             departments
@@ -949,33 +1077,60 @@ function StudentsTab({
                             <div className="px-2 py-1.5 text-sm text-gray-500">Select a school first</div>
                           )}
                           {editForm.schoolId && departments.filter(d => String(d.schoolId) === String(editForm.schoolId)).length === 0 && (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No programs in this school</div>
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No departments in this school</div>
                           )}
                         </SelectContent>
                       </Select>
                     )}
                   </div>
                   <div className="space-y-2 min-w-0">
-                    <Label>Year</Label>
-                    <Select value={editForm.year} onValueChange={v => setEditForm(f => ({ ...f, year: v }))}>
+                    <Label>Program</Label>
+                    {programsLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+                      </div>
+                    ) : (
+                      <Select value={editForm.programId} onValueChange={v => setEditForm(f => ({ ...f, programId: v }))} required>
+                        <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                          {editForm.departmentId ? (
+                            programs.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name} {p.code ? `(${p.code})` : ''}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">Select a department first</div>
+                          )}
+                          {editForm.departmentId && programs.length === 0 && !programsLoading && (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No programs in this department</div>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="space-y-2 min-w-0">
+                  <Label>Year</Label>
+                  <Select value={editForm.year} onValueChange={v => setEditForm(f => ({ ...f, year: v }))}>
                       <SelectTrigger className="w-full"><SelectValue placeholder="Select year" /></SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 4 }, (_, i) => i + 1).map((year) => (
+                    <SelectContent>
+                        {(editForm.programId ? Array.from({ length: Math.max(1, programs.find((p: any) => p.id === editForm.programId)?.duration ?? 4) }, (_, i) => i + 1) : [1, 2, 3, 4]).map((year) => (
                           <SelectItem key={year} value={`Year ${year}`}>
                             Year {year}
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                    {editForm.program && (() => {
-                      const selectedDept = departments.find(d => d.id === editForm.program);
-                      return selectedDept ? (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {selectedDept.name} (4-year program)
-                        </p>
+                    </SelectContent>
+                  </Select>
+                    {editForm.programId && (() => {
+                      const selectedProg = programs.find((p: any) => p.id === editForm.programId);
+                      const dur = selectedProg?.duration ?? 4;
+                      return selectedProg ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                          {selectedProg.name} ({dur}-year program)
+                      </p>
                       ) : null;
-                    })()}
-                  </div>
+                  })()}
+                </div>
                   <div className="space-y-2 min-w-0">
                     <Label>Semester</Label>
                     <Select value={editForm.semester} onValueChange={v => setEditForm(f => ({ ...f, semester: v }))}>
@@ -985,12 +1140,12 @@ function StudentsTab({
                         <SelectItem value="2">Semester 2</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
+              </div>
                 </div>
               </div>
 
               {/* Course Enrollment Section */}
-              {editForm.program && editForm.year && (
+              {editForm.programId && editForm.year && (
                 <div className="space-y-4">
                   <div className="border-b pb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">Course Enrollment</h3>
@@ -999,14 +1154,15 @@ function StudentsTab({
                   {previewLoading ? (
                     <div className="text-sm text-gray-500 py-8 text-center">Loading available courses...</div>
                   ) : previewCourses.length === 0 ? (
-                    <div className="text-sm text-gray-500 py-8 text-center border rounded-md bg-gray-50">
-                      No courses found for {departments.find(d => d.id === editForm.program)?.name || editForm.program} - Year {editForm.year.replace('Year ', '')} - Semester {editForm.semester}
-                    </div>
-                  ) : (
+                    <div className="text-sm text-gray-500 py-8 text-center border rounded-md bg-gray-50 space-y-1">
+                      <p>No classes found for {programs.find((p: any) => p.id === editForm.programId)?.name || 'selected program'} — Year {editForm.year.replace('Year ', '')} — Semester {editForm.semester}.</p>
+                      <p className="text-xs">Add courses under this program on the Schools page, then create classes in the Classes tab to enroll students.</p>
+                  </div>
+                ) : (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>Select courses to enroll the student in:</span>
-                        <span className="font-medium">{selectedCourseIds.length} of {previewCourses.length} selected</span>
+                        <span>Select classes to enroll the student in:</span>
+                        <span className="font-medium">{selectedCourseIds.length} of {previewCourses.filter((c: any) => !c.noClass).length} selected</span>
                       </div>
                       <div className="max-h-[60vh] overflow-y-auto border rounded-md">
                         <div className="overflow-x-visible">
@@ -1024,20 +1180,25 @@ function StudentsTab({
                             </TableHeader>
                             <TableBody>
                               {previewCourses.map((cls) => {
-                                const isChecked = selectedCourseIds.includes(cls.id);
-                                return (
+                                const isCourseOnly = (cls as any).noClass === true;
+                                const isChecked = !isCourseOnly && selectedCourseIds.includes(cls.id);
+                          return (
                                   <TableRow key={cls.id} className={isChecked ? 'bg-green-50/50' : ''}>
                                     <TableCell className="px-3">
-                                      <Checkbox
-                                        checked={isChecked}
-                                        onCheckedChange={(checked) => {
-                                          if (checked) {
-                                            setSelectedCourseIds(prev => [...prev, cls.id]);
-                                          } else {
-                                            setSelectedCourseIds(prev => prev.filter(id => id !== cls.id));
-                                          }
-                                        }}
-                                      />
+                                      {isCourseOnly ? (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      ) : (
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onCheckedChange={(checked) => {
+                                            if (checked) {
+                                              setSelectedCourseIds(prev => [...prev, cls.id]);
+                                            } else {
+                                              setSelectedCourseIds(prev => prev.filter(id => id !== cls.id));
+                                            }
+                                          }}
+                                        />
+                                      )}
                                     </TableCell>
                                     <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                                     <TableCell className="px-3">
@@ -1045,17 +1206,23 @@ function StudentsTab({
                                       {cls.course && (
                                         <div className="text-xs text-gray-500 mt-0.5">
                                           {cls.course.credits} credit{cls.course.credits !== 1 ? 's' : ''}
-                                        </div>
+                              </div>
                                       )}
                                     </TableCell>
-                                    <TableCell className="text-sm px-3 break-words">{cls.name}</TableCell>
+                                    <TableCell className="text-sm px-3 break-words">
+                                      {isCourseOnly ? (
+                                        <span className="text-amber-600">No class — create in Classes tab</span>
+                                      ) : (
+                                        cls.name
+                                      )}
+                                    </TableCell>
                                     <TableCell className="text-sm px-3 break-words">{cls.lecturer?.name || '—'}</TableCell>
                                     <TableCell className="text-sm px-3 whitespace-nowrap">
                                       {cls.dayOfWeek !== null && cls.startTime && cls.endTime ? (
                                         <div>
                                           <div className="font-medium">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]}</div>
                                           <div className="text-xs text-gray-500">{cls.startTime} - {cls.endTime}</div>
-                                        </div>
+                            </div>
                                       ) : (
                                         '—'
                                       )}
@@ -1065,7 +1232,7 @@ function StudentsTab({
                                         <div>
                                           <div>{cls.venue.name}</div>
                                           {cls.venue.code && <div className="text-xs text-gray-500">{cls.venue.code}</div>}
-                                        </div>
+                          </div>
                                       ) : (
                                         '—'
                                       )}
@@ -1080,33 +1247,40 @@ function StudentsTab({
                       <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
                         <span>
                           {selectedCourseIds.length > 0 
-                            ? `${selectedCourseIds.length} course${selectedCourseIds.length !== 1 ? 's' : ''} will be enrolled`
-                            : 'No courses selected'}
+                            ? `${selectedCourseIds.length} class${selectedCourseIds.length !== 1 ? 'es' : ''} selected for enrollment`
+                            : 'No classes selected'}
                         </span>
-                        {selectedCourseIds.length !== previewCourses.length && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => setSelectedCourseIds(previewCourses.map(c => c.id))}
-                          >
-                            Select All
-                          </Button>
-                        )}
-                        {selectedCourseIds.length > 0 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => setSelectedCourseIds([])}
-                          >
-                            Deselect All
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                        {(() => {
+                          const enrollableIds = previewCourses.filter((c: any) => !c.noClass).map((c: any) => c.id);
+                          return (
+                            <>
+                              {selectedCourseIds.length !== enrollableIds.length && enrollableIds.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => setSelectedCourseIds(enrollableIds)}
+                                >
+                                  Select All
+                                </Button>
+                              )}
+                              {selectedCourseIds.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => setSelectedCourseIds([])}
+                                >
+                                  Deselect All
+                                </Button>
+                              )}
+                            </>
+                          );
+                        })()}
+              </div>
+            </div>
                   )}
                 </div>
               )}
@@ -1588,21 +1762,21 @@ function LecturersTab({
   );
 
   const refreshLecturerData = async () => {
-    setDepartmentsLoading(true);
-    try {
+      setDepartmentsLoading(true);
+      try {
       await loadStaff(1);
-      const depts = await academicService.getDepartments();
-      setDepartments(Array.isArray(depts) ? depts.map((d: any) => ({ id: d.id || d.name, name: d.name })) : []);
-      if (depts.length > 0 && !addForm.dept) {
-        const firstDept = Array.isArray(depts) ? depts[0] : null;
-        setAddForm(prev => ({ ...prev, dept: firstDept?.id || firstDept?.name || '' }));
-      }
-    } catch (error) {
+        const depts = await academicService.getDepartments();
+        setDepartments(Array.isArray(depts) ? depts.map((d: any) => ({ id: d.id || d.name, name: d.name })) : []);
+        if (depts.length > 0 && !addForm.dept) {
+          const firstDept = Array.isArray(depts) ? depts[0] : null;
+          setAddForm(prev => ({ ...prev, dept: firstDept?.id || firstDept?.name || '' }));
+        }
+      } catch (error) {
       console.error('Error refreshing lecturer data:', error);
-    } finally {
-      setDepartmentsLoading(false);
-    }
-  };
+      } finally {
+        setDepartmentsLoading(false);
+      }
+    };
 
   useEffect(() => {
     refreshLecturerData();
@@ -1668,7 +1842,14 @@ function LecturersTab({
     }
     try {
       const result = await staffService.importStaff(file, importCreateAccounts);
-      toast.success(`Import completed! Imported: ${result.imported}, Failed: ${result.failed}${result.errors && result.errors.length > 0 ? `. Errors: ${result.errors.slice(0, 3).join(', ')}${result.errors.length > 3 ? '...' : ''}` : ''}`);
+      if (result.imported === 0 && result.failed > 0) {
+        const firstError = result.errors && result.errors.length > 0 ? result.errors[0] : 'Please check that your file matches the lecturer import template (name, email, role, dept).';
+        toast.error(`Lecturer import failed. ${firstError}`);
+      } else if (result.failed > 0) {
+        toast.success(`Imported ${result.imported} lecturers. Some rows could not be imported. Please review your file and try again.`);
+      } else {
+        toast.success(`Successfully imported ${result.imported} lecturers.`);
+      }
       await refreshLecturerData();
       setImportOpen(false);
     } catch (error: any) {
@@ -2745,50 +2926,97 @@ function SettingsTab() {
 }
 
 // -----------------------------------------------------------------------------
-// SUB-COMPONENT: Schools / Departments Tab
+// SUB-COMPONENT: Schools / Departments Tab (Moodle-like tree: School → Department → Program → Year/Semester → Courses)
 // -----------------------------------------------------------------------------
 type SchoolsTabRow = { id: string; name: string; dean: string | null; code?: string; deptCount?: number; studentCount?: number; staffCount?: number };
-type DepartmentRow = { id: string; name: string; code: string; schoolId: string; head: string | null; duration?: number };
+type LevelRow = { id: string; name: string; schoolId: string };
+type DepartmentRow = { id: string; name: string; schoolId: string; levelId: string; head: string | null; duration?: number };
+type ProgramRow = { id: string; name: string; code: string; departmentId: string; duration: number };
+type SelectedNode = { type: 'yearSemester'; programId: string; departmentId: string; level: number; semester: number; programName: string; programCode: string };
 function SchoolsTab() {
   const [schools, setSchools] = useState<SchoolsTabRow[]>([]);
+  const [levels, setLevels] = useState<LevelRow[]>([]);
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
   const [departmentsBySchool, setDepartmentsBySchool] = useState<Record<string, DepartmentRow[]>>({});
+  const [programsByDepartment, setProgramsByDepartment] = useState<Record<string, ProgramRow[]>>({});
   const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set());
+  const [expandedLevels, setExpandedLevels] = useState<Set<string>>(new Set());
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set());
+  const [expandedPrograms, setExpandedPrograms] = useState<Set<string>>(new Set());
+  const [expandedProgramYears, setExpandedProgramYears] = useState<Set<string>>(new Set());
   const [deptCountBySchool, setDeptCountBySchool] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [schoolSearchTerm, setSchoolSearchTerm] = useState('');
   const [addSchoolOpen, setAddSchoolOpen] = useState(false);
   const [editSchoolOpen, setEditSchoolOpen] = useState(false);
+  const [addLevelOpen, setAddLevelOpen] = useState(false);
+  const [editLevelOpen, setEditLevelOpen] = useState(false);
   const [addDeptOpen, setAddDeptOpen] = useState(false);
   const [editDeptOpen, setEditDeptOpen] = useState(false);
+  const [addProgramOpen, setAddProgramOpen] = useState(false);
+  const [editProgramOpen, setEditProgramOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<{ id: string; name: string; dean: string | null; code?: string } | null>(null);
+  const [editingLevel, setEditingLevel] = useState<LevelRow | null>(null);
   const [editingDept, setEditingDept] = useState<DepartmentRow | null>(null);
+  const [editingProgram, setEditingProgram] = useState<ProgramRow | null>(null);
   const [selectedSchoolForDept, setSelectedSchoolForDept] = useState<string>('');
-  const [schoolForm, setSchoolForm] = useState({ name: '', code: '', dean: '' });
-  const [deptForm, setDeptForm] = useState({ name: '', code: '', head: '', schoolId: '', duration: 4 });
+  const [selectedDeptForProgram, setSelectedDeptForProgram] = useState<string>('');
+  const [schoolForm, setSchoolForm] = useState({ name: '', dean: '' });
+  const [levelForm, setLevelForm] = useState({ name: '', schoolId: '' });
+  const [deptForm, setDeptForm] = useState({ name: '', head: '', schoolId: '', levelId: '', duration: 4 });
+  const [programForm, setProgramForm] = useState({ name: '', code: '', departmentId: '', duration: 4 });
+  const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
+  const [coursesInNode, setCoursesInNode] = useState<any[]>([]);
+  const [coursesInNodeLoading, setCoursesInNodeLoading] = useState(false);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState<string>('');
+  const [moveCoursesLoading, setMoveCoursesLoading] = useState(false);
+  const [addCourseOpen, setAddCourseOpen] = useState(false);
+  const [addCourseForm, setAddCourseForm] = useState({ code: '', name: '', credits: 3 });
+  const [addCourseSaving, setAddCourseSaving] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<{ id: string; code: string; name: string; credits: number } | null>(null);
+  const [moveTargetOptions, setMoveTargetOptions] = useState<{ value: string; label: string }[]>([]);
 
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const schoolList = await academicService.getSchools();
+      const [schoolList, levelsRaw, deptsRaw] = await Promise.all([
+        academicService.getSchools(),
+        academicService.getLevels(),
+        academicService.getDepartments(),
+      ]);
       const list = Array.isArray(schoolList) ? schoolList : (schoolList as any)?.data ?? [];
-      const depts = await academicService.getDepartments();
-      const deptList = Array.isArray(depts) ? depts : (depts as any)?.data ?? [];
-      
-      // Map departments by school
+      const levelList = Array.isArray(levelsRaw) ? levelsRaw : (levelsRaw as any)?.data ?? [];
+      const deptList = Array.isArray(deptsRaw) ? deptsRaw : (deptsRaw as any)?.data ?? [];
+
+      const levelById: Record<string, LevelRow> = {};
+      const levelsBySchool: Record<string, LevelRow[]> = {};
+      levelList.forEach((l: any) => {
+      const row: LevelRow = { id: l.id, name: l.name, schoolId: l.schoolId };
+        levelById[row.id] = row;
+        if (!levelsBySchool[row.schoolId]) levelsBySchool[row.schoolId] = [];
+        levelsBySchool[row.schoolId].push(row);
+      });
+
       const deptMap: Record<string, DepartmentRow[]> = {};
       const count: Record<string, number> = {};
+      const deptRows: DepartmentRow[] = [];
       deptList.forEach((d: any) => {
-        if (!deptMap[d.schoolId]) deptMap[d.schoolId] = [];
-        deptMap[d.schoolId].push({
+        const level = levelById[d.levelId];
+        const schoolId = level?.schoolId;
+        if (!schoolId) return;
+        const row: DepartmentRow = {
           id: d.id,
           name: d.name,
-          code: d.code,
-          schoolId: d.schoolId,
+          schoolId,
+          levelId: d.levelId,
           head: d.head ?? null,
-          duration: d.duration ?? 4, // Default to 4 years
-        });
-        count[d.schoolId] = (count[d.schoolId] || 0) + 1;
+          duration: d.duration ?? 4,
+        };
+        deptRows.push(row);
+        if (!deptMap[schoolId]) deptMap[schoolId] = [];
+        deptMap[schoolId].push(row);
+        count[schoolId] = (count[schoolId] || 0) + 1;
       });
       
       const withStats = await Promise.all(
@@ -2798,7 +3026,6 @@ function SchoolsTab() {
             id: s.id,
             name: s.name,
             dean: s.dean ?? null,
-            code: s.code,
             deptCount: count[s.id] ?? 0,
             studentCount: stats?.studentCount,
             staffCount: stats?.staffCount,
@@ -2806,17 +3033,25 @@ function SchoolsTab() {
         })
       );
       
-      setDepartments(deptList.map((d: any) => ({
-        id: d.id,
-        name: d.name,
-        code: d.code,
-        schoolId: d.schoolId,
-        head: d.head ?? null,
-        duration: d.duration ?? 4, // Default to 4 years
-      })));
+      setLevels(Object.values(levelById));
+      setDepartments(deptRows);
       setDepartmentsBySchool(deptMap);
       setDeptCountBySchool(count);
       setSchools(withStats);
+
+      const programMap: Record<string, ProgramRow[]> = {};
+      for (const d of deptList) {
+        const progs = await academicService.getPrograms(d.id);
+        const arr = Array.isArray(progs) ? progs : (progs as any)?.data ?? [];
+        programMap[d.id] = arr.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          departmentId: p.departmentId,
+          duration: p.duration ?? 4,
+        }));
+      }
+      setProgramsByDepartment(programMap);
     } catch (error) {
       console.error('Error loading schools:', error);
     } finally {
@@ -2833,40 +3068,269 @@ function SchoolsTab() {
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
 
+  useEffect(() => {
+    if (!selectedNode) {
+      setCoursesInNode([]);
+      return;
+    }
+    setCoursesInNodeLoading(true);
+    academicService.getCourses({
+      programId: selectedNode.programId,
+      level: selectedNode.level,
+      semester: selectedNode.semester,
+      limit: 100,
+    }).then(r => {
+      setCoursesInNode(r.data ?? []);
+    }).catch(() => setCoursesInNode([])).finally(() => setCoursesInNodeLoading(false));
+  }, [selectedNode]);
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setMoveTargetOptions([]);
+      return;
+    }
+    const opts: { value: string; label: string }[] = [];
+    departments.forEach(dept => {
+      const progs = programsByDepartment[dept.id] ?? [];
+      progs.forEach((prog: ProgramRow) => {
+        for (let y = 1; y <= prog.duration; y++) {
+          for (let s = 1; s <= 2; s++) {
+            if (prog.id === selectedNode.programId && y === selectedNode.level && s === selectedNode.semester) continue;
+            opts.push({
+              value: `${prog.id}|${y}|${s}|${prog.departmentId}`,
+              label: `${prog.name} (${prog.code}) — Year ${y} Sem ${s}`,
+            });
+          }
+        }
+      });
+    });
+    setMoveTargetOptions(opts);
+    if (opts.length) setMoveTarget(opts[0].value);
+  }, [selectedNode, departments, programsByDepartment]);
+
   const toggleSchool = (schoolId: string) => {
     setExpandedSchools(prev => {
       const next = new Set(prev);
-      if (next.has(schoolId)) {
-        next.delete(schoolId);
+      if (next.has(schoolId)) next.delete(schoolId);
+      else next.add(schoolId);
+      return next;
+    });
+  };
+
+  const toggleLevel = (levelId: string) => {
+    setExpandedLevels(prev => {
+      const next = new Set(prev);
+      if (next.has(levelId)) next.delete(levelId);
+      else next.add(levelId);
+      return next;
+    });
+  };
+
+  const toggleDepartment = (deptId: string) => {
+    setExpandedDepartments(prev => {
+      const next = new Set(prev);
+      if (next.has(deptId)) next.delete(deptId);
+      else next.add(deptId);
+      return next;
+    });
+  };
+
+  const toggleProgram = (programId: string) => {
+    setExpandedPrograms(prev => {
+      const next = new Set(prev);
+      if (next.has(programId)) next.delete(programId);
+      else next.add(programId);
+      return next;
+    });
+  };
+
+  const toggleProgramYear = (programId: string, year: number) => {
+    const key = `${programId}|${year}`;
+    setExpandedProgramYears(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const openAddProgram = (departmentId: string) => {
+    setEditingProgram(null);
+    setProgramForm({ name: '', code: '', departmentId, duration: 4 });
+    setAddProgramOpen(true);
+  };
+
+  const openEditProgram = (prog: ProgramRow) => {
+    setEditingProgram(prog);
+    setProgramForm({ name: prog.name, code: prog.code, departmentId: prog.departmentId, duration: prog.duration });
+    setEditProgramOpen(true);
+  };
+
+  const handleSaveProgram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingProgram) {
+        await academicService.updateProgram(editingProgram.id, {
+          name: programForm.name,
+          code: programForm.code,
+          departmentId: programForm.departmentId,
+          duration: programForm.duration,
+        });
       } else {
-        next.add(schoolId);
+        await academicService.createProgram({
+          name: programForm.name,
+          code: programForm.code,
+          departmentId: programForm.departmentId,
+          duration: programForm.duration,
+        });
       }
+      await loadSchools();
+      setAddProgramOpen(false);
+      setEditProgramOpen(false);
+      setEditingProgram(null);
+      toast.success(`Degree program ${editingProgram ? 'updated' : 'created'} successfully`);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save program');
+    }
+  };
+
+  const refreshCoursesInNode = async () => {
+    if (!selectedNode) return;
+    const r = await academicService.getCourses({
+      programId: selectedNode.programId,
+      level: selectedNode.level,
+      semester: selectedNode.semester,
+      limit: 100,
+    });
+    setCoursesInNode(r.data ?? []);
+  };
+
+  const handleAddCourseInNode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addCourseForm.code.trim() || !addCourseForm.name.trim()) return;
+    if (editingCourse) {
+      setAddCourseSaving(true);
+      try {
+        await academicService.updateCourse(editingCourse.id, {
+          code: addCourseForm.code.trim(),
+          name: addCourseForm.name.trim(),
+          credits: addCourseForm.credits,
+        });
+        toast.success('Course updated');
+        setAddCourseOpen(false);
+        setEditingCourse(null);
+        setAddCourseForm({ code: '', name: '', credits: 3 });
+        await refreshCoursesInNode();
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to update course');
+      } finally {
+        setAddCourseSaving(false);
+      }
+      return;
+    }
+    if (!selectedNode) return;
+    setAddCourseSaving(true);
+    try {
+      await academicService.createCourse({
+        code: addCourseForm.code.trim(),
+        name: addCourseForm.name.trim(),
+        departmentId: selectedNode.departmentId,
+        programId: selectedNode.programId,
+        level: selectedNode.level,
+        semester: selectedNode.semester,
+        credits: addCourseForm.credits,
+      });
+      toast.success('Course created');
+      setAddCourseOpen(false);
+      setAddCourseForm({ code: '', name: '', credits: 3 });
+      await refreshCoursesInNode();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create course');
+    } finally {
+      setAddCourseSaving(false);
+    }
+  };
+
+  const handleMoveCourses = async () => {
+    if (!selectedNode || selectedCourseIds.size === 0 || !moveTarget) return;
+    const [programId, levelStr, semesterStr, departmentId] = moveTarget.split('|');
+    setMoveCoursesLoading(true);
+    try {
+      await academicService.moveCourses({
+        courseIds: Array.from(selectedCourseIds),
+        targetProgramId: programId,
+        targetDepartmentId: departmentId,
+        targetLevel: parseInt(levelStr, 10),
+        targetSemester: parseInt(semesterStr, 10),
+      });
+      toast.success('Courses moved');
+      setSelectedCourseIds(new Set());
+      const r = await academicService.getCourses({
+        programId: selectedNode.programId,
+        level: selectedNode.level,
+        semester: selectedNode.semester,
+        limit: 100,
+      });
+      setCoursesInNode(r.data ?? []);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to move courses');
+    } finally {
+      setMoveCoursesLoading(false);
+    }
+  };
+
+  const toggleCourseSelection = (id: string) => {
+    setSelectedCourseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const openAddSchool = () => {
     setEditingSchool(null);
-    setSchoolForm({ name: '', code: '', dean: '' });
+    setSchoolForm({ name: '', dean: '' });
     setAddSchoolOpen(true);
+  };
+
+  const openAddLevel = (schoolId: string) => {
+    setEditingLevel(null);
+    setLevelForm({ name: '', schoolId });
+    setAddLevelOpen(true);
   };
 
   const openEditSchool = (school: { id: string; name: string; dean: string | null; code?: string }) => {
     setEditingSchool(school);
-    setSchoolForm({ name: school.name, code: school.code || '', dean: school.dean || '' });
+    setSchoolForm({ name: school.name, dean: school.dean || '' });
     setEditSchoolOpen(true);
   };
 
-  const openAddDept = (schoolId: string) => {
+  const openEditLevel = (level: LevelRow) => {
+    setEditingLevel(level);
+    setLevelForm({ name: level.name, schoolId: level.schoolId });
+    setEditLevelOpen(true);
+  };
+
+  const openAddDept = (schoolId: string, levelId?: string) => {
     setEditingDept(null);
     setSelectedSchoolForDept(schoolId);
-    setDeptForm({ name: '', code: '', head: '', schoolId, duration: 4 });
+    const targetLevel = levelId
+      ? levels.find(l => l.id === levelId)
+      : levels.find(l => l.schoolId === schoolId);
+    setDeptForm({ name: '', head: '', schoolId, levelId: targetLevel?.id ?? '', duration: 4 });
     setAddDeptOpen(true);
   };
 
   const openEditDept = (dept: DepartmentRow) => {
     setEditingDept(dept);
-    setDeptForm({ name: dept.name, code: dept.code, head: dept.head || '', schoolId: dept.schoolId, duration: dept.duration || 4 });
+    setDeptForm({
+      name: dept.name,
+      head: dept.head || '',
+      schoolId: dept.schoolId,
+      levelId: dept.levelId,
+      duration: dept.duration || 4,
+    });
     setEditDeptOpen(true);
   };
 
@@ -2876,13 +3340,12 @@ function SchoolsTab() {
       if (editingSchool) {
         await academicService.updateSchool(editingSchool.id, {
           name: schoolForm.name,
-          code: schoolForm.code || undefined,
           dean: schoolForm.dean || undefined,
         });
       } else {
         await academicService.createSchool({
           name: schoolForm.name,
-          code: schoolForm.code,
+          code: schoolForm.name,
           dean: schoolForm.dean || undefined,
         });
       }
@@ -2898,22 +3361,46 @@ function SchoolsTab() {
     }
   };
 
+  const handleSaveLevel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingLevel) {
+        await academicService.updateLevel(editingLevel.id, {
+          name: levelForm.name,
+          schoolId: levelForm.schoolId,
+        });
+      } else {
+        await academicService.createLevel({
+          name: levelForm.name,
+          code: levelForm.name,
+          schoolId: levelForm.schoolId,
+        });
+      }
+      await loadSchools();
+      setAddLevelOpen(false);
+      setEditLevelOpen(false);
+      setEditingLevel(null);
+      toast.success(`Level ${editingLevel ? 'updated' : 'created'} successfully`);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save level');
+    }
+  };
+
   const handleSaveDept = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingDept) {
         await academicService.updateDepartment(editingDept.id, {
           name: deptForm.name,
-          code: deptForm.code,
-          schoolId: deptForm.schoolId,
+          levelId: deptForm.levelId,
           head: deptForm.head || undefined,
           duration: deptForm.duration || 4,
         });
       } else {
         await academicService.createDepartment({
           name: deptForm.name,
-          code: deptForm.code,
-          schoolId: deptForm.schoolId,
+          code: deptForm.name,
+          levelId: deptForm.levelId,
           head: deptForm.head || undefined,
           duration: deptForm.duration || 4,
         });
@@ -2922,20 +3409,23 @@ function SchoolsTab() {
       setAddDeptOpen(false);
       setEditDeptOpen(false);
       setEditingDept(null);
-      toast.success(`Program ${editingDept ? 'updated' : 'created'} successfully`);
+      toast.success(`Department ${editingDept ? 'updated' : 'created'} successfully`);
       window.dispatchEvent(new CustomEvent('department-updated'));
     } catch (error: any) {
-      console.error('Error saving program:', error);
-      toast.error(`Failed to save program: ${error?.message || 'Unknown error'}`);
+      console.error('Error saving department:', error);
+      toast.error(`Failed to save department: ${error?.message || 'Unknown error'}`);
     }
   };
 
   const filteredSchools = schools.filter(
     (s) =>
       s.name.toLowerCase().includes(schoolSearchTerm.toLowerCase()) ||
-      (s.code ?? '').toLowerCase().includes(schoolSearchTerm.toLowerCase()) ||
       (s.dean ?? '').toLowerCase().includes(schoolSearchTerm.toLowerCase())
   );
+
+  const currentProgram = selectedNode
+    ? (programsByDepartment[selectedNode.departmentId] ?? []).find(p => p.id === selectedNode.programId) ?? null
+    : null;
 
   return (
     <div className="space-y-4">
@@ -2943,7 +3433,7 @@ function SchoolsTab() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search schools and programs..."
+            placeholder="Search schools, departments..."
             className="pl-8"
             value={schoolSearchTerm}
             onChange={(e) => setSchoolSearchTerm(e.target.value)}
@@ -2952,16 +3442,17 @@ function SchoolsTab() {
         <Button className="bg-[#015F2B]" onClick={openAddSchool}><Plus className="mr-2 h-4 w-4" /> Add School</Button>
       </div>
       
+      <div className="grid grid-cols-1 gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Schools & Programs</CardTitle>
-          <CardDescription>Manage academic structure: Schools contain Programs.</CardDescription>
+            <CardTitle>Schools, Levels, Departments & Courses</CardTitle>
+            <CardDescription>School → Level (Undergraduate/Masters/PhD) → Department → Degree program → Year/Semester → Courses.</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-              Loading schools and programs...
+                Loading...
             </div>
           ) : filteredSchools.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No schools found.</div>
@@ -2969,123 +3460,377 @@ function SchoolsTab() {
             <div className="space-y-2">
               {filteredSchools.map((school) => {
                 const schoolDepts = departmentsBySchool[school.id] || [];
-                const isExpanded = expandedSchools.has(school.id);
+                  const schoolLevels = levels.filter(l => l.schoolId === school.id);
+                  const isSchoolExpanded = expandedSchools.has(school.id);
                 return (
                   <div key={school.id} className="border rounded-lg">
-                    {/* School Row */}
                     <div className="flex items-center justify-between p-4 hover:bg-gray-50">
                       <div className="flex items-center gap-3 flex-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => toggleSchool(school.id)}
-                        >
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => toggleSchool(school.id)}>
+                            {isSchoolExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                         </Button>
                         <Building className="h-5 w-5 text-[#015F2B]" />
                         <div className="flex-1">
                           <div className="font-semibold text-gray-900">{school.name}</div>
                           <div className="text-sm text-gray-500">
-                            Code: {school.code || '—'} • Dean: {school.dean || 'Not assigned'} •
-                            {school.deptCount ?? 0} Program{school.deptCount !== 1 ? 's' : ''} •
-                            {school.studentCount != null ? `${school.studentCount} Students` : '—'} •
-                            {school.staffCount != null ? `${school.staffCount} Staff` : '—'}
+                            {school.deptCount ?? 0} Dept{school.deptCount !== 1 ? 's' : ''} • {school.studentCount != null ? `${school.studentCount} students` : '—'}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openAddDept(school.id)}
-                          className="text-[#015F2B] border-[#015F2B]"
-                        >
-                          <Plus className="h-4 w-4 mr-1" /> Add Program
+                          <Button variant="outline" size="sm" onClick={() => openAddLevel(school.id)} className="text-[#015F2B] border-[#015F2B]">
+                            <Plus className="h-4 w-4 mr-1" /> Add Level
                         </Button>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditSchool(school)}>
-                              <Edit className="mr-2 h-4 w-4" /> Edit School
-                            </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEditSchool(school)}><Edit className="mr-2 h-4 w-4" /> Edit School</DropdownMenuItem>
                             <DropdownMenuItem className="text-red-600" onClick={async () => {
-                              if (confirm(`Delete school "${school.name}"? This will also delete all programs under this school.`)) {
+                                if (confirm(`Delete school "${school.name}"?`)) {
                                 try {
                                   await academicService.deleteSchool(school.id);
                                   await loadSchools();
-                                  toast.success('School deleted successfully');
-                                } catch (error: any) {
-                                  console.error('Error deleting school:', error);
-                                  toast.error(`Failed to delete school: ${error?.message || 'Unknown error'}`);
+                                    toast.success('School deleted');
+                                  } catch (err: any) { toast.error(err?.message); }
                                 }
-                              }
-                            }}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete School
-                            </DropdownMenuItem>
+                              }}><Trash2 className="mr-2 h-4 w-4" /> Delete School</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                     </div>
-                    
-                    {/* Programs list (collapsible) */}
-                    {isExpanded && (
+                      {isSchoolExpanded && (
                       <div className="border-t bg-gray-50/50">
-                        {schoolDepts.length === 0 ? (
-                          <div className="p-4 text-center text-sm text-gray-500">
-                            No programs yet. Click &quot;Add Program&quot; to create one.
-                          </div>
+                          {schoolLevels.length === 0 ? (
+                            <div className="p-4 text-center text-sm text-gray-500">No levels for this school. Add a level (e.g. Undergraduate, Masters) before departments.</div>
                         ) : (
                           <div className="divide-y">
-                            {schoolDepts.map((dept) => (
-                              <div key={dept.id} className="flex items-center justify-between p-3 pl-12 hover:bg-white">
+                              {schoolLevels.map(level => {
+                                const levelDepts = schoolDepts.filter(d => d.levelId === level.id);
+                                const isLevelExpanded = expandedLevels.has(level.id);
+                                return (
+                                  <div key={level.id}>
+                                    <div className="flex items-center justify-between p-3 pl-12 hover:bg-white">
                                 <div className="flex items-center gap-3 flex-1">
+                                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => toggleLevel(level.id)}>
+                                          {isLevelExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                        </Button>
                                   <School className="h-4 w-4 text-gray-400" />
                                   <div>
-                                    <div className="font-medium text-gray-900">{dept.name}</div>
-                                    <div className="text-xs text-gray-500">
-                                      Code: {dept.code} {dept.head ? `• Head: ${dept.head}` : ''} {dept.duration ? `• ${dept.duration}-year` : ''}
+                                          <div className="font-medium text-gray-900">{level.name}</div>
+                                                <div className="text-xs text-gray-500">{level.name}</div>
                                     </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 pr-2">
                                   <Button
-                                    variant="ghost"
+                                          variant="outline"
                                     size="sm"
-                                    onClick={() => openEditDept(dept)}
+                                          onClick={() => openAddDept(school.id, level.id)}
+                                          className="text-[#015F2B] border-[#015F2B] text-xs"
                                   >
-                                    <Edit className="h-4 w-4" />
+                                          <Plus className="h-3 w-3 mr-1" /> Add Department
                                   </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => openEditLevel(level)}><Edit className="h-4 w-4" /></Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="text-red-600 hover:text-red-700"
+                                          className="text-red-600"
                                     onClick={async () => {
-                                      if (confirm(`Delete program "${dept.name}"?`)) {
+                                            if (confirm(`Delete level "${level.name}"?`)) {
+                                              try {
+                                                await academicService.deleteLevel(level.id);
+                                                await loadSchools();
+                                                toast.success('Level deleted');
+                                              } catch (err: any) {
+                                                toast.error(err?.message || 'Failed to delete level');
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    {isLevelExpanded && (
+                                      <div className="pl-16 pr-4 pb-2 space-y-1">
+                                        {levelDepts.length === 0 ? (
+                                          <div className="text-xs text-gray-500 py-2">
+                                            No departments under this level. Use &quot;Add Department&quot; to create one.
+                                          </div>
+                                        ) : (
+                                          levelDepts.map((dept) => {
+                                            const progs = programsByDepartment[dept.id] ?? [];
+                                            const isDeptExpanded = expandedDepartments.has(dept.id);
+                                            return (
+                                              <div key={dept.id} className="border rounded bg-white">
+                                                <div className="flex items-center justify-between p-3">
+                                                  <div className="flex items-center gap-3 flex-1">
+                                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => toggleDepartment(dept.id)}>
+                                                      {isDeptExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                    </Button>
+                                                    <School className="h-4 w-4 text-gray-400" />
+                                                    <div>
+                                                      <div className="font-medium text-gray-900">{dept.name}</div>
+                        <div className="text-xs text-gray-500">{dept.head ? dept.head : ''}</div>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-1">
+                                                    <Button variant="outline" size="sm" onClick={() => openAddProgram(dept.id)} className="text-[#015F2B] border-[#015F2B] text-xs">
+                                                      <Plus className="h-3 w-3 mr-1" /> Degree
+                                                    </Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => openEditDept(dept)}><Edit className="h-4 w-4" /></Button>
+                                                    <Button variant="ghost" size="sm" className="text-red-600" onClick={async () => {
+                                      if (confirm(`Delete department "${dept.name}"?`)) {
                                         try {
                                           await academicService.deleteDepartment(dept.id);
                                           await loadSchools();
-                                          toast.success('Program deleted successfully');
-                                        } catch (error: any) {
-                                          console.error('Error deleting program:', error);
-                                          toast.error(`Failed to delete program: ${error?.message || 'Unknown error'}`);
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
+                                                          toast.success('Department deleted');
+                                                        } catch (err: any) { toast.error(err?.message); }
+                                                      }
+                                                    }}><Trash2 className="h-4 w-4" /></Button>
+                                                  </div>
+                                                </div>
+                                                {isDeptExpanded && (
+                                                  <div className="pl-8 pr-4 pb-2 space-y-1">
+                                                    {progs.length === 0 ? (
+                                                      <div className="text-xs text-gray-500 py-2">No degree programs. Add one with &quot;Degree&quot;.</div>
+                                                    ) : (
+                                                      progs.map((prog: ProgramRow) => {
+                                                        const isProgExpanded = expandedPrograms.has(prog.id);
+                                                        return (
+                                                          <div key={prog.id} className="border rounded bg-white">
+                                                            <div className="flex items-center justify-between p-2">
+                                                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => toggleProgram(prog.id)}>
+                                                                {isProgExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                              </Button>
+                                                              <span className="font-medium text-sm">{prog.name} ({prog.code})</span>
+                                                              <div className="flex gap-1">
+                                                                <Button variant="ghost" size="sm" className="h-7" onClick={() => openEditProgram(prog)}><Edit className="h-3 w-3" /></Button>
+                                                                <Button variant="ghost" size="sm" className="h-7 text-red-600" onClick={async () => {
+                                                                  if (confirm(`Delete degree program "${prog.name}"?`)) {
+                                                                    try {
+                                                                      await academicService.deleteProgram(prog.id);
+                                                                      await loadSchools();
+                                                                      toast.success('Program deleted');
+                                                                    } catch (err: any) { toast.error(err?.message); }
+                                                                  }
+                                                                }}><Trash2 className="h-3 w-3" /></Button>
+                                                              </div>
+                                                            </div>
+                                                            {isProgExpanded && (
+                                                              <div className="pl-6 pb-3 space-y-2">
+                                                                {Array.from({ length: prog.duration }, (_, i) => i + 1).map((year) => {
+                                                                  const yearKey = `${prog.id}|${year}`;
+                                                                  const isYearExpanded = expandedProgramYears.has(yearKey);
+                                                                  return (
+                                                                    <div key={yearKey} className="border rounded bg-gray-50">
+                                                                      <div className="flex items-center justify-between p-3 pl-6">
+                                                                        <div className="flex items-center gap-3 flex-1">
+                                                                          <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-7 w-7 p-0"
+                                                                            onClick={() => toggleProgramYear(prog.id, year)}
+                                                                          >
+                                                                            {isYearExpanded ? (
+                                                                              <ChevronDown className="h-3 w-3" />
+                                                                            ) : (
+                                                                              <ChevronRight className="h-3 w-3" />
+                                                                            )}
+                                                                          </Button>
+                                                                          <div>
+                                                                            <div className="font-medium text-gray-900">Year {year}</div>
+                                                                          </div>
+                                                                        </div>
+                                                                      </div>
+                                                                      {isYearExpanded && (
+                                                                        <div className="pl-6 pr-2 pb-2 space-y-1">
+                                                                          {[1, 2].map((sem) => {
+                                                                            const active =
+                                                                              selectedNode?.programId === prog.id &&
+                                                                              selectedNode.level === year &&
+                                                                              selectedNode.semester === sem;
+                                                                            return (
+                                                                              <div key={`${year}-${sem}`} className="border rounded bg-white">
+                                                                                <div
+                                                                                  className={`flex items-center justify-between p-3 pl-6 ${
+                                                                                    active ? 'bg-gray-100' : 'hover:bg-gray-50'
+                                                                                  }`}
+                                                                                >
+                                                                                  <div
+                                                                                    role="button"
+                                                                                    tabIndex={0}
+                                                                                    className="flex items-center gap-3 flex-1 text-left min-w-0 cursor-pointer"
+                                                                                    onClick={() =>
+                                                                                      setSelectedNode({
+                                                                                        type: 'yearSemester',
+                                                                                        programId: prog.id,
+                                                                                        departmentId: prog.departmentId,
+                                                                                        level: year,
+                                                                                        semester: sem,
+                                                                                        programName: prog.name,
+                                                                                        programCode: prog.code,
+                                                                                      })
+                                                                                    }
+                                                                                    onKeyDown={(e) => {
+                                                                                      if (e.key === 'Enter' || e.key === ' ') {
+                                                                                        e.preventDefault();
+                                                                                        setSelectedNode({
+                                                                                          type: 'yearSemester',
+                                                                                          programId: prog.id,
+                                                                                          departmentId: prog.departmentId,
+                                                                                          level: year,
+                                                                                          semester: sem,
+                                                                                          programName: prog.name,
+                                                                                          programCode: prog.code,
+                                                                                        });
+                                                                                      }
+                                                                                    }}
+                                                                                  >
+                                                                                    {active ? (
+                                                                                      <ChevronDown className="h-3 w-3 shrink-0" />
+                                                                                    ) : (
+                                                                                      <ChevronRight className="h-3 w-3 shrink-0" />
+                                                                                    )}
+                                                                                    <div>
+                                                                                      <div className="font-medium text-gray-900">Y{year} S{sem}</div>
+                                                                                    </div>
+                                                                                  </div>
+                                                                                  {active && (
+                                                                                    <Button
+                                                                                      size="sm"
+                                                                                      className="bg-[#015F2B] hover:bg-[#014022] h-7 text-xs shrink-0"
+                                                                                      onClick={() => {
+                                                                                        setAddCourseForm({ code: '', name: '', credits: 3 });
+                                                                                        setAddCourseOpen(true);
+                                                                                      }}
+                                                                                    >
+                                                                                      <Plus className="h-3 w-3 mr-1" /> Course
                                   </Button>
+                                                                                  )}
+                                                                                </div>
+                                                                                {active && (
+                                                                                  <div className="px-2 pb-2 space-y-2">
+                                                                                    {coursesInNodeLoading ? (
+                                                                                      <div className="py-2 text-center">
+                                                                                        <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                                                                      </div>
+                                                                                    ) : coursesInNode.length === 0 ? (
+                                                                                      <p className="text-xs text-muted-foreground">
+                                                                                        No courses in this semester yet.
+                                                                                      </p>
+                                                                                    ) : (
+                                                                                      <>
+                                                                                        <div className="rounded border divide-y max-h-40 overflow-auto">
+                                                                                          {coursesInNode.map((c: any) => (
+                                                                                            <div
+                                                                                              key={c.id}
+                                                                                              className="flex items-center gap-2 p-1.5 hover:bg-gray-50"
+                                                                                            >
+                                                                                              <Checkbox
+                                                                                                checked={selectedCourseIds.has(c.id)}
+                                                                                                onCheckedChange={() => toggleCourseSelection(c.id)}
+                                                                                              />
+                                                                                              <div className="flex-1 min-w-0">
+                                                                                                <div className="text-xs font-medium truncate">
+                                                                                                  {c.name}
+                                                                                                </div>
+                                                                                                <div className="text-[10px] text-muted-foreground">
+                                                                                                  {c.code}
+                                                                                                </div>
+                                                                                              </div>
+                                                                                              <div className="flex items-center gap-1 shrink-0">
+                                                                                                <Button
+                                                                                                  variant="ghost"
+                                                                                                  size="sm"
+                                                                                                  className="h-7 w-7 p-0"
+                                                                                                  onClick={() => {
+                                                                                                    setEditingCourse({ id: c.id, code: c.code, name: c.name, credits: c.credits ?? 3 });
+                                                                                                    setAddCourseForm({ code: c.code, name: c.name, credits: c.credits ?? 3 });
+                                                                                                    setAddCourseOpen(true);
+                                                                                                  }}
+                                                                                                >
+                                                                                                  <Edit className="h-3 w-3" />
+                                                                                                </Button>
+                                                                                                <Button
+                                                                                                  variant="ghost"
+                                                                                                  size="sm"
+                                                                                                  className="h-7 w-7 p-0 text-red-600"
+                                                                                                  onClick={async () => {
+                                                                                                    if (!confirm(`Delete course "${c.name}" (${c.code})?`)) return;
+                                                                                                    try {
+                                                                                                      await academicService.deleteCourse(c.id);
+                                                                                                      toast.success('Course deleted');
+                                                                                                      await refreshCoursesInNode();
+                                                                                                    } catch (err: any) {
+                                                                                                      toast.error(err?.message || 'Failed to delete course');
+                                                                                                    }
+                                                                                                  }}
+                                                                                                >
+                                                                                                  <Trash2 className="h-3 w-3" />
+                                                                                                </Button>
                                 </div>
                               </div>
                             ))}
+                                                                                        </div>
+                                                                                        {selectedCourseIds.size > 0 && moveTargetOptions.length > 0 && (
+                                                                                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t mt-1">
+                                                                                            <Select
+                                                                                              value={moveTarget || moveTargetOptions[0]?.value}
+                                                                                              onValueChange={setMoveTarget}
+                                                                                            >
+                                                                                              <SelectTrigger className="w-[200px] h-8 text-xs">
+                                                                                                <SelectValue placeholder="Move to..." />
+                                                                                              </SelectTrigger>
+                                                                                              <SelectContent>
+                                                                                                {moveTargetOptions.map((o) => (
+                                                                                                  <SelectItem key={o.value} value={o.value}>
+                                                                                                    {o.label}
+                                                                                                  </SelectItem>
+                                                                                                ))}
+                                                                                              </SelectContent>
+                                                                                            </Select>
+                                                                                            <Button
+                                                                                              size="sm"
+                                                                                              variant="outline"
+                                                                                              disabled={moveCoursesLoading}
+                                                                                              onClick={handleMoveCourses}
+                                                                                              className="h-8 text-xs"
+                                                                                            >
+                                                                                              {moveCoursesLoading
+                                                                                                ? 'Moving...'
+                                                                                                : `Move ${selectedCourseIds.size} course(s)`}
+                                                                                            </Button>
+                                                                                          </div>
+                                                                                        )}
+                                                                                      </>
+                                                                                    )}
+                                                                                  </div>
+                                                                                )}
+                                                                              </div>
+                                                                            );
+                                                                          })}
+                                                                        </div>
+                                                                      )}
+                                                                    </div>
+                                                                  );
+                                                                })}
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                        );
+                                                      })
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                           </div>
                         )}
                       </div>
@@ -3097,6 +3842,7 @@ function SchoolsTab() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* Add School Dialog */}
       <Dialog open={addSchoolOpen} onOpenChange={setAddSchoolOpen}>
@@ -3109,10 +3855,6 @@ function SchoolsTab() {
             <div>
               <Label>School Name *</Label>
               <Input value={schoolForm.name} onChange={e => setSchoolForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. School of Computing & Forensics" />
-            </div>
-            <div>
-              <Label>Code *</Label>
-              <Input value={schoolForm.code} onChange={e => setSchoolForm(f => ({ ...f, code: e.target.value }))} required placeholder="e.g. SCF" />
             </div>
             <div>
               <Label>Dean / Head</Label>
@@ -3138,10 +3880,6 @@ function SchoolsTab() {
               <Input value={schoolForm.name} onChange={e => setSchoolForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
             <div>
-              <Label>Code *</Label>
-              <Input value={schoolForm.code} onChange={e => setSchoolForm(f => ({ ...f, code: e.target.value }))} required />
-            </div>
-            <div>
               <Label>Dean / Head</Label>
               <Input value={schoolForm.dean} onChange={e => setSchoolForm(f => ({ ...f, dean: e.target.value }))} placeholder="e.g. Dr. John Doe" />
             </div>
@@ -3153,114 +3891,315 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Program Dialog */}
+      {/* Add Level Dialog */}
+      <Dialog open={addLevelOpen} onOpenChange={setAddLevelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Level</DialogTitle>
+            <DialogDescription>Create an academic level (e.g. Undergraduate, Masters, PhD) under a school.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveLevel} className="space-y-4">
+            <div>
+              <Label>School *</Label>
+              <Select
+                value={levelForm.schoolId}
+                onValueChange={v => setLevelForm(f => ({ ...f, schoolId: v }))}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select a school" /></SelectTrigger>
+                <SelectContent>
+                  {schools.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Level Name *</Label>
+              <Input
+                value={levelForm.name}
+                onChange={e => setLevelForm(f => ({ ...f, name: e.target.value }))}
+                required
+                placeholder="e.g. Undergraduate, Masters"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddLevelOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]">Create Level</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Level Dialog */}
+      <Dialog open={editLevelOpen} onOpenChange={setEditLevelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Level</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveLevel} className="space-y-4">
+            <div>
+              <Label>School *</Label>
+              <Select
+                value={levelForm.schoolId}
+                onValueChange={v => setLevelForm(f => ({ ...f, schoolId: v }))}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select a school" /></SelectTrigger>
+                <SelectContent>
+                  {schools.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Level Name *</Label>
+              <Input
+                value={levelForm.name}
+                onChange={e => setLevelForm(f => ({ ...f, name: e.target.value }))}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditLevelOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]">Update Level</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Department Dialog */}
       <Dialog open={addDeptOpen} onOpenChange={setAddDeptOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Program</DialogTitle>
-            <DialogDescription>Create a new program under a school.</DialogDescription>
+            <DialogTitle>Add Department</DialogTitle>
+            <DialogDescription>Create a new department under a school and level.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveDept} className="space-y-4">
             <div>
               <Label>School *</Label>
-              <Select value={deptForm.schoolId} onValueChange={v => setDeptForm(f => ({ ...f, schoolId: v }))} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a school" />
-                </SelectTrigger>
+              <Select
+                value={deptForm.schoolId}
+                onValueChange={v => {
+                  const firstLevel = levels.find(l => l.schoolId === v);
+                  setDeptForm(f => ({ ...f, schoolId: v, levelId: firstLevel?.id ?? '' }));
+                }}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select a school" /></SelectTrigger>
                 <SelectContent>
-                  {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  {schools.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Level *</Label>
+              <Select
+                value={deptForm.levelId}
+                onValueChange={v => setDeptForm(f => ({ ...f, levelId: v }))}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select level (e.g. Undergraduate, Masters)" /></SelectTrigger>
+                <SelectContent>
+                  {levels
+                    .filter(l => !deptForm.schoolId || l.schoolId === deptForm.schoolId)
+                    .map(l => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Department Name *</Label>
+              <Input value={deptForm.name} onChange={e => setDeptForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Computing" />
+            </div>
+            <div>
+              <Label>Head of Department</Label>
+              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} placeholder="e.g. Prof. Jane Smith" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddDeptOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]">Create Department</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Department Dialog */}
+      <Dialog open={editDeptOpen} onOpenChange={setEditDeptOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Department</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveDept} className="space-y-4">
+            <div>
+              <Label>School *</Label>
+              <Select
+                value={deptForm.schoolId}
+                onValueChange={v => {
+                  const firstLevel = levels.find(l => l.schoolId === v);
+                  setDeptForm(f => ({ ...f, schoolId: v, levelId: firstLevel?.id ?? '' }));
+                }}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select a school" /></SelectTrigger>
+                <SelectContent>
+                  {schools.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Level *</Label>
+              <Select
+                value={deptForm.levelId}
+                onValueChange={v => setDeptForm(f => ({ ...f, levelId: v }))}
+                required
+              >
+                <SelectTrigger><SelectValue placeholder="Select level (e.g. Undergraduate, Masters)" /></SelectTrigger>
+                <SelectContent>
+                  {levels
+                    .filter(l => !deptForm.schoolId || l.schoolId === deptForm.schoolId)
+                    .map(l => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Department Name *</Label>
+              <Input value={deptForm.name} onChange={e => setDeptForm(f => ({ ...f, name: e.target.value }))} required />
+            </div>
+            <div>
+              <Label>Head of Department</Label>
+              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditDeptOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]">Update Department</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Degree Program Dialog */}
+      <Dialog open={addProgramOpen} onOpenChange={setAddProgramOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Degree Program</DialogTitle>
+            <DialogDescription>Create a degree program (e.g. BSc, BCFCI) under this department.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveProgram} className="space-y-4">
+            <div>
+              <Label>Department *</Label>
+              <Select value={programForm.departmentId} onValueChange={v => setProgramForm(f => ({ ...f, departmentId: v }))} required>
+                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                <SelectContent>
+                  {departments.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>Program Name *</Label>
-              <Input value={deptForm.name} onChange={e => setDeptForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Computer Science" />
+              <Input value={programForm.name} onChange={e => setProgramForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Bachelor of Computer Forensics" />
             </div>
             <div>
               <Label>Program Code *</Label>
-              <Input value={deptForm.code} onChange={e => setDeptForm(f => ({ ...f, code: e.target.value }))} required placeholder="e.g. CS" />
+              <Input value={programForm.code} onChange={e => setProgramForm(f => ({ ...f, code: e.target.value }))} required placeholder="e.g. BCFCI" />
             </div>
             <div>
-              <Label>Head of Program</Label>
-              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} placeholder="e.g. Prof. Jane Smith" />
-            </div>
-            <div>
-              <Label>Duration (Years) *</Label>
-              <Select value={deptForm.duration.toString()} onValueChange={v => setDeptForm(f => ({ ...f, duration: parseInt(v) }))} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
+              <Label>Duration (years) *</Label>
+              <Select value={programForm.duration.toString()} onValueChange={v => setProgramForm(f => ({ ...f, duration: parseInt(v, 10) }))} required>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((years) => (
-                    <SelectItem key={years} value={years.toString()}>
-                      {years} {years === 1 ? 'Year' : 'Years'}
-                    </SelectItem>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6].map(y => (<SelectItem key={y} value={y.toString()}>{y} year{y !== 1 ? 's' : ''}</SelectItem>))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 mt-1">Number of year levels for this program</p>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddDeptOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setAddProgramOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">Create Program</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Program Dialog */}
-      <Dialog open={editDeptOpen} onOpenChange={setEditDeptOpen}>
+      {/* Edit Degree Program Dialog */}
+      <Dialog open={editProgramOpen} onOpenChange={setEditProgramOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Program</DialogTitle>
+            <DialogTitle>Edit Degree Program</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSaveDept} className="space-y-4">
+          <form onSubmit={handleSaveProgram} className="space-y-4">
             <div>
-              <Label>School *</Label>
-              <Select value={deptForm.schoolId} onValueChange={v => setDeptForm(f => ({ ...f, schoolId: v }))} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a school" />
-                </SelectTrigger>
+              <Label>Department *</Label>
+              <Select value={programForm.departmentId} onValueChange={v => setProgramForm(f => ({ ...f, departmentId: v }))} required>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
+                  {departments.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>Program Name *</Label>
-              <Input value={deptForm.name} onChange={e => setDeptForm(f => ({ ...f, name: e.target.value }))} required />
+              <Input value={programForm.name} onChange={e => setProgramForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
             <div>
               <Label>Program Code *</Label>
-              <Input value={deptForm.code} onChange={e => setDeptForm(f => ({ ...f, code: e.target.value }))} required />
+              <Input value={programForm.code} onChange={e => setProgramForm(f => ({ ...f, code: e.target.value }))} required />
             </div>
             <div>
-              <Label>Head of Program</Label>
-              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} placeholder="e.g. Prof. Jane Smith" />
-            </div>
-            <div>
-              <Label>Duration (Years) *</Label>
-              <Select value={deptForm.duration.toString()} onValueChange={v => setDeptForm(f => ({ ...f, duration: parseInt(v) }))} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
+              <Label>Duration (years) *</Label>
+              <Select value={programForm.duration.toString()} onValueChange={v => setProgramForm(f => ({ ...f, duration: parseInt(v, 10) }))} required>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((years) => (
-                    <SelectItem key={years} value={years.toString()}>
-                      {years} {years === 1 ? 'Year' : 'Years'}
-                    </SelectItem>
-                  ))}
+                  {[1, 2, 3, 4, 5, 6].map(y => (<SelectItem key={y} value={y.toString()}>{y} year{y !== 1 ? 's' : ''}</SelectItem>))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 mt-1">Number of year levels for this program</p>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditDeptOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setEditProgramOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">Update Program</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create course in selected semester */}
+      <Dialog open={addCourseOpen} onOpenChange={(open) => {
+        setAddCourseOpen(open);
+        if (!open) setEditingCourse(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCourse ? 'Edit course' : 'Create course'}</DialogTitle>
+            <DialogDescription>
+              {editingCourse ? `Update course details` : selectedNode ? `Add to ${selectedNode.programName} — Year ${selectedNode.level} Semester ${selectedNode.semester}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddCourseInNode} className="space-y-4">
+            <div>
+              <Label>Course code *</Label>
+              <Input value={addCourseForm.code} onChange={e => setAddCourseForm(f => ({ ...f, code: e.target.value }))} required placeholder="e.g. CS101" />
+            </div>
+            <div>
+              <Label>Course name *</Label>
+              <Input value={addCourseForm.name} onChange={e => setAddCourseForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Introduction to Programming" />
+            </div>
+            <div>
+              <Label>Credits</Label>
+              <Select value={addCourseForm.credits.toString()} onValueChange={v => setAddCourseForm(f => ({ ...f, credits: parseInt(v, 10) }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6].map(c => (<SelectItem key={c} value={c.toString()}>{c}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setAddCourseOpen(false); setEditingCourse(null); }}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]" disabled={addCourseSaving}>
+                {addCourseSaving ? (editingCourse ? 'Updating...' : 'Creating...') : (editingCourse ? 'Update course' : 'Create course')}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -3343,7 +4282,7 @@ function ClassesTab({
   const lecturers = staff.filter(s => s.role === 'Lecturer');
   const filteredClasses = classes.filter(c => {
     const matchesSearch =
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.course.toLowerCase().includes(searchTerm.toLowerCase());
     if (!matchesSearch) return false;
     if (lecturerFilter !== 'all' && c.lecturerId !== lecturerFilter) return false;
@@ -3420,7 +4359,7 @@ function ClassesTab({
       const course = adminCourses.find(co => co.id === form.courseId);
       const lecturer = lecturers.find(l => l.id === form.lecturerId);
       const venue = venues.find(v => v.id === form.venueId);
-
+      
       if (editingClass) {
         await academicService.updateClass(editingClass.id, {
           courseId: form.courseId,
@@ -3434,7 +4373,7 @@ function ClassesTab({
         await refreshClassData();
       } else {
         await academicService.createClass({
-          name: form.name,
+              name: form.name,
           courseId: form.courseId,
           lecturerId: form.lecturerId || '',
           venueId: form.venueId || '',
@@ -3790,15 +4729,18 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  const [importScope, setImportScope] = useState({ programId: '', year: 1, semester: 1 });
+  const [allPrograms, setAllPrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<TimetableClass | null>(null);
-  const [editForm, setEditForm] = useState({ lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
+  const [editForm, setEditForm] = useState({ dayOfWeek: 1, lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingClass, setDeletingClass] = useState<TimetableClass | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
-  const [filters, setFilters] = useState({ program: '', year: '', semester: '', day: '', courseCode: '' });
+  const [filters, setFilters] = useState({ programId: '', program: '', year: '', semester: '', day: '', courseCode: '' });
+  const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -3807,15 +4749,16 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     setLoading(true);
     try {
       const query: any = { page, limit: 20 };
-      if (filters.program) query.program = filters.program;
-      if (filters.year) query.year = parseInt(filters.year);
-      if (filters.semester) query.semester = parseInt(filters.semester);
+      if (filters.programId && filters.programId !== '__all__') query.programId = filters.programId;
+      else if (filters.program) query.program = filters.program;
+      if (filters.year) query.year = parseInt(filters.year, 10);
+      if (filters.semester) query.semester = parseInt(filters.semester, 10);
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
       const result = await timetableService.getTimetable(query);
       setClasses(result.data);
       setTotal(result.total);
-    } catch (error: any) {
+                            } catch (error: any) {
       toast.error(`Failed to load timetable: ${error?.message || 'Unknown error'}`);
       setClasses([]);
     } finally {
@@ -3868,15 +4811,39 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     loadLecturers();
   }, []);
 
+  useEffect(() => {
+    academicService.getPrograms().then((res: any) => {
+      const arr = res?.data ?? (Array.isArray(res) ? res : []);
+      setTimetablePrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code || '', duration: p.duration ?? 4 })));
+    }).catch(() => setTimetablePrograms([]));
+  }, []);
+
+  useEffect(() => {
+    if (importOpen) {
+      academicService.getPrograms().then((res: any) => {
+        const arr = res?.data ?? (Array.isArray(res) ? res : []);
+        setAllPrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code || '', duration: p.duration ?? 4 })));
+      }).catch(() => setAllPrograms([]));
+    }
+  }, [importOpen]);
+
   const handleImport = async (file: File) => {
+    if (!importScope.programId) {
+      toast.error('Select a program, year and semester first');
+        return;
+      }
     setImporting(true);
     setImportResult(null);
     try {
-      const result = await timetableService.importTimetable(file, false);
+      const result = await timetableService.importTimetable(file, false, {
+        programId: importScope.programId,
+        year: importScope.year,
+        semester: importScope.semester,
+      });
       setImportResult(result);
+      setFilters(f => ({ ...f, programId: importScope.programId, year: String(importScope.year), semester: String(importScope.semester), program: '' }));
       toast.success(`Import completed! ${result.summary.classesCreated} classes created, ${result.summary.classesUpdated} updated.`);
-      await loadTimetable();
-      await loadLecturers();
+      loadLecturers();
       window.dispatchEvent(new CustomEvent('timetable-import-complete', { detail: result }));
     } catch (error: any) {
       toast.error(`Import failed: ${error?.message || 'Unknown error'}`);
@@ -3888,6 +4855,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const handleEdit = (cls: TimetableClass) => {
     setEditingClass(cls);
     setEditForm({
+      dayOfWeek: cls.dayOfWeek ?? 1,
       lecturerId: cls.lecturerId || '',
       venueId: cls.venueId || '',
       capacity: cls.capacity,
@@ -3901,6 +4869,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     if (!editingClass) return;
     try {
       await timetableService.updateClass(editingClass.id, {
+        dayOfWeek: editForm.dayOfWeek,
         lecturerId: editForm.lecturerId || null,
         venueId: editForm.venueId || null,
         capacity: parseInt(String(editForm.capacity)),
@@ -3943,12 +4912,20 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     <div className="space-y-4">
       <div className="flex justify-between gap-4 flex-wrap">
         <div className="flex gap-2 flex-wrap">
-          <Input
-            placeholder="Program"
-            value={filters.program}
-            onChange={(e) => setFilters({ ...filters, program: e.target.value })}
-            className="w-[150px]"
-          />
+          <div className="w-[200px]">
+            <Select
+              value={filters.programId || 'all'}
+              onValueChange={(v) => setFilters({ ...filters, programId: v === 'all' ? '__all__' : v, program: '' })}
+            >
+              <SelectTrigger><SelectValue placeholder="Program" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All programs</SelectItem>
+                {timetablePrograms.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <Select value={filters.year || "all"} onValueChange={(v) => setFilters({ ...filters, year: v === "all" ? "" : v })}>
             <SelectTrigger className="w-[100px]">
               <SelectValue placeholder="Year" />
@@ -3977,18 +4954,18 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Days</SelectItem>
-              {DAY_NAMES.map((d, i) => (
-                <SelectItem key={i} value={d.toLowerCase()}>{d}</SelectItem>
+              {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d) => (
+                <SelectItem key={d} value={d.toLowerCase()}>{d}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Input
+              <Input
             placeholder="Course Code"
             value={filters.courseCode}
             onChange={(e) => setFilters({ ...filters, courseCode: e.target.value })}
             className="w-[150px]"
-          />
-        </div>
+              />
+            </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <Upload className="mr-2 h-4 w-4" /> Import File
@@ -4011,7 +4988,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
           <Button className="bg-[#015F2B]" onClick={onScheduleClass}>
             <Plus className="mr-2 h-4 w-4" /> Schedule Class
           </Button>
-        </div>
+          </div>
       </div>
 
       <Card>
@@ -4020,9 +4997,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
           <CardDescription>View and manage all class schedules. Total: {total} classes</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
+            <Table>
+              <TableHeader>
+                <TableRow>
                 <TableHead>Program</TableHead>
                 <TableHead>Year</TableHead>
                 <TableHead>Semester</TableHead>
@@ -4032,18 +5009,20 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 <TableHead>Time</TableHead>
                 <TableHead>Venue</TableHead>
                 <TableHead>Lecturer</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
                 <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : classes.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">No classes found. Import a timetable CSV file.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                  {!((filters.programId && filters.programId !== '__all__') || filters.year || filters.semester) ? 'Select program, year and semester to view timetable.' : 'No classes found for this scope. Import a timetable or add courses in Schools.'}
+                </TableCell></TableRow>
               ) : (
                 classes.map((cls) => (
                   <TableRow key={cls.id}>
-                    <TableCell>{cls.course.department.name}</TableCell>
+                    <TableCell>{(cls.course as any).program?.name ?? cls.course.department?.name ?? '—'}</TableCell>
                     <TableCell>{cls.course.level}</TableCell>
                     <TableCell>{cls.course.semester}</TableCell>
                     <TableCell>{cls.course.code}</TableCell>
@@ -4052,86 +5031,178 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                     <TableCell>{cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : '—'}</TableCell>
                     <TableCell>{cls.venue?.name || '—'}</TableCell>
                     <TableCell className={cls.lecturer ? '' : 'text-amber-600 font-medium'}>{cls.lecturer?.name || 'Not assigned'}</TableCell>
-                    <TableCell className="text-right">
+                      <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(cls)}>
                           <Edit className="h-4 w-4" />
-                        </Button>
+                            </Button>
                         <Button variant="ghost" size="sm" onClick={() => handleDelete(cls)} className="text-red-600 hover:text-red-700">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          {total > 50 && (
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          {total > 20 && (
             <div className="flex justify-between items-center mt-4">
               <Button variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
               <span className="text-sm text-muted-foreground">Page {page} of {Math.max(1, Math.ceil(total / 20))}</span>
               <Button variant="outline" disabled={page >= Math.ceil(total / 20)} onClick={() => setPage(p => p + 1)}>Next</Button>
-            </div>
+          </div>
           )}
         </CardContent>
       </Card>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Import Timetable</DialogTitle>
-            <DialogDescription>
-              Upload a CSV or Excel file with timetable data. Format: Program, Year, Semester, Course Code, Course Name, Class Name, Lecturer Name, Day, Start Time, End Time, Venue, Capacity
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => timetableService.downloadTemplate('csv').catch((e: any) => toast.error(e.message))}>
-                <Download className="h-4 w-4 mr-2" /> CSV Template
-              </Button>
-              <Button variant="outline" onClick={() => timetableService.downloadTemplate('excel').catch((e: any) => toast.error(e.message))}>
-                <Download className="h-4 w-4 mr-2" /> Excel Template
-              </Button>
+        <DialogContent className="w-[95vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
+          <div className="p-5 sm:p-6 border-b bg-muted/30">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">Import Timetable</DialogTitle>
+              <DialogDescription className="text-sm mt-1">
+                Set the program and semester, then upload a CSV or Excel file. Columns: Course Code, Course Name, Class Name, Lecturer Name, Day, Start Time, End Time, Venue, Capacity.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="p-5 sm:p-6 space-y-5">
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <p className="text-sm font-medium text-foreground">Timetable scope</p>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-muted-foreground">Program</Label>
+                  <Select
+                    value={importScope.programId}
+                    onValueChange={(v) => setImportScope(s => ({ ...s, programId: v }))}
+                  >
+                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select program" /></SelectTrigger>
+                    <SelectContent>
+                      {allPrograms.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-muted-foreground">Year</Label>
+                    <Select
+                      value={String(importScope.year)}
+                      onValueChange={(v) => setImportScope(s => ({ ...s, year: parseInt(v, 10) }))}
+                    >
+                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: Math.max(1, allPrograms.find(p => p.id === importScope.programId)?.duration ?? 5) }, (_, i) => i + 1).map((y) => (
+                          <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Semester</Label>
+                    <Select
+                      value={String(importScope.semester)}
+                      onValueChange={(v) => setImportScope(s => ({ ...s, semester: parseInt(v, 10) }))}
+                    >
+                      <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Semester 1</SelectItem>
+                        <SelectItem value="2">Semester 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-                  const isCsv = /\.csv$/i.test(file.name);
-                  if (!isExcel && !isCsv) {
-                    toast.error('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
-                    return;
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <p className="text-sm font-medium text-foreground">File</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => timetableService.downloadTemplate('csv').catch((e: any) => toast.error(e.message))}
+                  className="shrink-0"
+                >
+                  <Download className="h-4 w-4 mr-1.5" /> Download CSV template
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => timetableService.downloadTemplate('excel').catch((e: any) => toast.error(e.message))}
+                  className="shrink-0"
+                >
+                  <Download className="h-4 w-4 mr-1.5" /> Download Excel template
+                </Button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+                    const isCsv = /\.csv$/i.test(file.name);
+                    if (!isExcel && !isCsv) {
+                      toast.error('Please select a CSV or Excel file (.csv, .xlsx, .xls)');
+                      return;
+                    }
+                    handleImport(file);
                   }
-                  handleImport(file);
-                }
-              }}
-            />
-            <Button onClick={() => fileInputRef.current?.click()} disabled={importing} className="w-full">
-              {importing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-              {importing ? 'Importing...' : 'Select CSV or Excel File'}
-            </Button>
-            {importResult && (
-              <div className="space-y-2 p-4 bg-gray-50 rounded">
-                <div className="font-semibold">Import Summary:</div>
-                <div>Total Rows: {importResult.summary.totalRows}</div>
-                <div>Departments: {importResult.summary.departmentsCreated || 0} created, {importResult.summary.departmentsMatched || 0} matched</div>
-                <div>Courses: {importResult.summary.coursesCreated || 0} created, {importResult.summary.coursesMatched || 0} matched</div>
-                <div>Lecturers: {importResult.summary.lecturersCreated || 0} created, {importResult.summary.lecturersMatched || 0} matched</div>
-                <div>Classes: {importResult.summary.classesCreated || 0} created, {importResult.summary.classesUpdated || 0} updated</div>
-                {importResult.errors?.length > 0 && (
-                  <div className="text-red-600">Errors: {importResult.errors.length}</div>
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing || !importScope.programId}
+                className="w-full flex flex-col items-center justify-center gap-2 min-h-[100px] rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/30 hover:bg-muted/50 hover:border-[#015F2B]/50 transition-colors disabled:opacity-50 disabled:pointer-events-none text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[#015F2B] focus-visible:ring-offset-2"
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin text-[#015F2B]" />
+                    <span className="text-sm font-medium">Importing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <span className="text-sm font-medium">Choose CSV or Excel file</span>
+                    <span className="text-xs">.csv, .xlsx, .xls</span>
+                  </>
                 )}
-                {importResult.warnings?.length > 0 && (
-                  <div className="text-yellow-600">Warnings: {importResult.warnings.length}</div>
+              </button>
+            </div>
+            {importResult && (
+              <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                <p className="text-sm font-medium text-foreground">Import summary</p>
+                <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                  <dt className="text-muted-foreground">Rows</dt>
+                  <dd className="font-medium">{importResult.summary.totalRows}</dd>
+                  <dt className="text-muted-foreground">Courses</dt>
+                  <dd className="font-medium">{importResult.summary.coursesCreated || 0} created, {importResult.summary.coursesMatched || 0} matched</dd>
+                  <dt className="text-muted-foreground">Lecturers</dt>
+                  <dd className="font-medium">{importResult.summary.lecturersCreated || 0} created, {importResult.summary.lecturersMatched || 0} matched</dd>
+                  <dt className="text-muted-foreground">Classes</dt>
+                  <dd className="font-medium">{importResult.summary.classesCreated || 0} created, {importResult.summary.classesUpdated || 0} updated</dd>
+                </dl>
+                {(importResult.errors?.length > 0 || importResult.warnings?.length > 0) && (
+                  <div className="flex flex-wrap gap-3 pt-2 border-t text-sm">
+                    {importResult.errors?.length > 0 && (
+                      <span className="text-destructive font-medium">{importResult.errors.length} error(s)</span>
+                    )}
+                    {importResult.warnings?.length > 0 && (
+                      <span className="text-amber-600 dark:text-amber-500 font-medium">{importResult.warnings.length} warning(s)</span>
+                    )}
+                  </div>
                 )}
               </div>
             )}
+          </div>
+          <div className="p-5 sm:p-6 pt-0 flex justify-end">
+            <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -4163,6 +5234,17 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             <DialogDescription>Update class details</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+                  <div>
+              <Label>Day</Label>
+              <Select value={String(editForm.dayOfWeek)} onValueChange={(v) => setEditForm({ ...editForm, dayOfWeek: parseInt(v, 10) })}>
+                <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                <SelectContent>
+                  {DAY_OPTIONS.filter(o => o.value !== 'all').map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Lecturer</Label>
               <Combobox
@@ -4179,9 +5261,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 searchPlaceholder="Search lecturers..."
                 emptyText="No lecturer found."
                 initialDisplayCount={10}
-              />
-            </div>
-            <div>
+                    />
+                  </div>
+                  <div>
               <Label>Venue</Label>
               <Combobox
                 options={[
@@ -4197,12 +5279,12 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 searchPlaceholder="Search venues..."
                 emptyText="No venue found."
                 initialDisplayCount={10}
-              />
-            </div>
+                    />
+                  </div>
             <div>
               <Label>Start Time (HH:MM)</Label>
               <Input value={editForm.startTime} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} placeholder="08:00" />
-            </div>
+                </div>
             <div>
               <Label>End Time (HH:MM)</Label>
               <Input value={editForm.endTime} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} placeholder="10:00" />
@@ -4212,10 +5294,10 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               <Input type="number" value={editForm.capacity} onChange={(e) => setEditForm({ ...editForm, capacity: parseInt(e.target.value) || 50 })} />
             </div>
           </div>
-          <DialogFooter>
+            <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveEdit}>Save</Button>
-          </DialogFooter>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -5004,9 +6086,9 @@ export default function AdminView({ defaultTab = 'students' }: { defaultTab?: st
         const enrollmentsData = (res as any)?.data || res;
         const arr = Array.isArray(enrollmentsData) ? enrollmentsData : [];
         arr.forEach((e: any) => {
-          if (!enrollmentsMap[e.classId]) enrollmentsMap[e.classId] = [];
-          enrollmentsMap[e.classId].push(e.studentId);
-        });
+        if (!enrollmentsMap[e.classId]) enrollmentsMap[e.classId] = [];
+        enrollmentsMap[e.classId].push(e.studentId);
+      });
         if (arr.length < LIST_PAGE_SIZE) break;
         enrollmentsPage++;
       }
@@ -5040,7 +6122,7 @@ export default function AdminView({ defaultTab = 'students' }: { defaultTab?: st
         <TabsContent value="staff" className="mt-0">
           <StaffTab staff={staff} setStaff={setStaff} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} />
         </TabsContent>
-        
+
         <TabsContent value="lecturers" className="mt-0">
           <LecturersTab staff={staff} setStaff={setStaff} classes={classes} setClasses={setClasses} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} />
         </TabsContent>

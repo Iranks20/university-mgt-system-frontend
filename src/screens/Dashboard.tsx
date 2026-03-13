@@ -44,12 +44,6 @@ export default function Dashboard() {
 function DashboardContent() {
   const { role } = useRole();
 
-  // Debug: Log role to help diagnose issues
-  useEffect(() => {
-    console.log('Dashboard - Current role:', role);
-  }, [role]);
-
-  // Show loading state if role is not yet determined
   if (!role) {
     return (
       <div className="p-8 text-center">

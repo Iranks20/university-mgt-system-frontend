@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { School, Department, Course, Class, Venue } from '@/types';
+import type { School, Level, Department, Course, Class, Venue } from '@/types';
 
 export const academicService = {
   getSchools: async (): Promise<School[]> => {
@@ -56,10 +56,64 @@ export const academicService = {
     }
   },
 
-  getDepartments: async (schoolId?: string): Promise<Department[]> => {
+  getLevels: async (schoolId?: string): Promise<Level[]> => {
     try {
       const params = schoolId ? { schoolId } : {};
-      return await api.get<Department[]>('/academic/departments', params);
+      const res = await api.get<Level[] | { data: Level[] }>('/academic/levels', params);
+      const raw = Array.isArray(res) ? res : (res as { data: Level[] })?.data;
+      return Array.isArray(raw) ? raw : [];
+    } catch (error) {
+      console.error('Error fetching levels:', error);
+      return [];
+    }
+  },
+
+  getLevelById: async (id: string): Promise<Level | null> => {
+    try {
+      const res = await api.get<Level | { data: Level }>(`/academic/levels/${id}`);
+      const data = res && typeof res === 'object' && 'data' in res ? (res as { data: Level }).data : res;
+      return data as Level ?? null;
+    } catch (error) {
+      console.error('Error fetching level:', error);
+      return null;
+    }
+  },
+
+  createLevel: async (level: Omit<Level, 'id'>): Promise<Level> => {
+    try {
+      return await api.post<Level>('/academic/levels', level);
+    } catch (error) {
+      console.error('Error creating level:', error);
+      throw error;
+    }
+  },
+
+  updateLevel: async (id: string, level: Partial<Level>): Promise<Level> => {
+    try {
+      return await api.put<Level>(`/academic/levels/${id}`, level);
+    } catch (error) {
+      console.error('Error updating level:', error);
+      throw error;
+    }
+  },
+
+  deleteLevel: async (id: string): Promise<void> => {
+    try {
+      await api.delete(`/academic/levels/${id}`);
+    } catch (error) {
+      console.error('Error deleting level:', error);
+      throw error;
+    }
+  },
+
+  getDepartments: async (schoolId?: string, levelId?: string): Promise<Department[]> => {
+    try {
+      const params: Record<string, string> = {};
+      if (schoolId) params.schoolId = schoolId;
+      if (levelId) params.levelId = levelId;
+      const res = await api.get<Department[] | { data: Department[] }>('/academic/departments', params);
+      const raw = Array.isArray(res) ? res : (res as { data: Department[] })?.data;
+      return Array.isArray(raw) ? raw : [];
     } catch (error) {
       console.error('Error fetching departments:', error);
       return [];
@@ -148,10 +202,13 @@ export const academicService = {
     }
   },
 
-  getCourses: async (params?: { departmentId?: string; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
+  getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
     try {
       const query = new URLSearchParams();
       if (params?.departmentId) query.set('departmentId', params.departmentId);
+      if (params?.programId) query.set('programId', params.programId);
+      if (params?.level != null) query.set('level', String(params.level));
+      if (params?.semester != null) query.set('semester', String(params.semester));
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
       const res = await api.get<{ data: Course[]; total: number; page: number; pageSize: number }>('/academic/courses' + (query.toString() ? '?' + query.toString() : ''));
@@ -159,6 +216,16 @@ export const academicService = {
     } catch (error) {
       console.error('Error fetching courses:', error);
       return { data: [], total: 0, page: 1, pageSize: 20 };
+    }
+  },
+
+  moveCourses: async (payload: { courseIds: string[]; targetProgramId?: string | null; targetDepartmentId: string; targetLevel: number; targetSemester: number }): Promise<{ moved: number }> => {
+    try {
+      const res = await api.post<{ data: { moved: number } }>('/academic/courses/move', payload);
+      return (res as any)?.data ?? res ?? { moved: 0 };
+    } catch (error) {
+      console.error('Error moving courses:', error);
+      throw error;
     }
   },
 

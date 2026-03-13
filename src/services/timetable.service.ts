@@ -27,6 +27,11 @@ export interface TimetableClass {
         code: string;
       } | null;
     };
+    program?: {
+      id: string;
+      name: string;
+      code: string;
+    } | null;
   };
   venue: {
     id: string;
@@ -61,6 +66,7 @@ export interface TimetableImportResult {
 }
 
 export interface TimetableQuery {
+  programId?: string;
   program?: string;
   year?: number;
   semester?: number;
@@ -84,10 +90,17 @@ export interface UpdateClassDto {
 }
 
 export const timetableService = {
-  importTimetable: async (file: File, dryRun: boolean = false): Promise<TimetableImportResult> => {
+  importTimetable: async (
+    file: File,
+    dryRun: boolean,
+    params: { programId: string; year: number; semester: number }
+  ): Promise<TimetableImportResult> => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('dryRun', String(dryRun));
+    formData.append('programId', params.programId);
+    formData.append('year', String(params.year));
+    formData.append('semester', String(params.semester));
 
     const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://16.171.234.222:3000/api/v1'}/timetable/import`, {
       method: 'POST',
@@ -108,9 +121,10 @@ export const timetableService = {
 
   getTimetable: async (query?: TimetableQuery): Promise<{ data: TimetableClass[]; total: number; page: number; pageSize: number }> => {
     const params = new URLSearchParams();
+    if (query?.programId) params.append('programId', query.programId);
     if (query?.program) params.append('program', query.program);
-    if (query?.year) params.append('year', String(query.year));
-    if (query?.semester) params.append('semester', String(query.semester));
+    if (query?.year != null) params.append('year', String(query.year));
+    if (query?.semester != null) params.append('semester', String(query.semester));
     if (query?.day) params.append('day', query.day);
     if (query?.courseCode) params.append('courseCode', query.courseCode);
     if (query?.page) params.append('page', String(query.page));
@@ -167,6 +181,28 @@ export const timetableService = {
 
   deleteClass: async (id: string): Promise<{ success: boolean; message: string }> => {
     return api.delete<{ success: boolean; message: string }>(`/timetable/class/${id}`);
+  },
+
+  getScheduledSessions: async (params: {
+    dateFrom: string;
+    dateTo: string;
+    schoolId?: string;
+    courseId?: string;
+    lecturerId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> => {
+    const query: Record<string, string> = {
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+    };
+    if (params.schoolId) query.schoolId = params.schoolId;
+    if (params.courseId) query.courseId = params.courseId;
+    if (params.lecturerId) query.lecturerId = params.lecturerId;
+    if (params.page != null) query.page = String(params.page);
+    if (params.limit != null) query.limit = String(params.limit);
+    const res = await api.get<{ data: any[]; total: number; page: number; pageSize: number }>('/timetable/scheduled-sessions', query);
+    return Array.isArray(res) ? { data: res, total: res.length, page: 1, pageSize: res.length } : (res as any);
   },
 
   getMyScheduledSessions: async (params: { dateFrom: string; dateTo: string; page?: number; limit?: number }): Promise<{ data: any[]; total: number; page: number; pageSize: number }> => {

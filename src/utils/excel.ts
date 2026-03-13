@@ -623,24 +623,19 @@ export function exportStudentAttendanceToCSV(
 
 /**
  * Download student import template as Excel (.xlsx).
- * Columns: name, email, studentId, school (optional), program, year, semester, password.
- * Program = program name as shown under Schools & Programs (must match an existing program).
+ * Columns: name, email, studentId, password.
  */
 export function downloadStudentImportTemplateExcel(): void {
   const data = [
-    ['name', 'email', 'studentId', 'school', 'program', 'year', 'semester', 'password'],
-    ['John Doe', 'john.doe@student.kcu.ac.ug', '2100101', 'School of Business', 'Business Administration', 'Year 1', '1', 'TempPassword123!'],
-    ['Jane Smith', 'jane.smith@student.kcu.ac.ug', '2100102', 'School of Medicine', 'Medicine and Surgery', 'Year 1', '2', 'TempPassword123!'],
+    ['name', 'email', 'studentId', 'password'],
+    ['John Doe', 'john.doe@student.kcu.ac.ug', '2100101', 'TempPassword123!'],
+    ['Jane Smith', 'jane.smith@student.kcu.ac.ug', '2100102', 'TempPassword123!'],
   ];
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [
     { wch: 25 },
     { wch: 35 },
     { wch: 15 },
-    { wch: 22 },
-    { wch: 28 },
-    { wch: 10 },
-    { wch: 10 },
     { wch: 20 },
   ];
   const wb = XLSX.utils.book_new();

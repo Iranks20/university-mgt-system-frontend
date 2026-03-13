@@ -106,9 +106,12 @@ export default function ManagementLecturerPerformance() {
             if (lecturer.departmentId) {
               try {
                 const dept = await academicService.getDepartmentById(lecturer.departmentId);
-                if (dept?.schoolId) {
-                  const school = await academicService.getSchoolById(dept.schoolId);
-                  schoolName = school?.name || 'N/A';
+                if (dept?.levelId) {
+                  const level = await academicService.getLevelById(dept.levelId);
+                  if (level?.schoolId) {
+                    const school = await academicService.getSchoolById(level.schoolId);
+                    schoolName = school?.name || 'N/A';
+                  }
                 }
               } catch {
                 // ignore

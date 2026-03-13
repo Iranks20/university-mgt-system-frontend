@@ -9,6 +9,12 @@ export interface CancellationRequest {
   reviewedById: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  compensationDate?: string | null;
+  compensationStartTime?: string | null;
+  compensationEndTime?: string | null;
+  compensationVenue?: string | null;
+  compensationTimetableId?: string | null;
+  compensationTimetable?: { id: string; date: string; startTime: string; endTime: string; venue: string } | null;
   requestedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +41,10 @@ export interface CancellationRequest {
 export interface SubmitCancellationPayload {
   timetableId: string;
   reason: string;
+  compensationDate?: string;
+  compensationStartTime?: string;
+  compensationEndTime?: string;
+  compensationVenue?: string;
 }
 
 export interface ListCancellationsQuery {

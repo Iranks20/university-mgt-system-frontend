@@ -140,6 +140,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       case 'QA':
         return [
           { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { label: 'Timetable', icon: Calendar, path: '/timetable' },
           { label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
           { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
           { label: 'Student Records', icon: Users, path: '/student-records' },
