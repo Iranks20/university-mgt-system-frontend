@@ -1,4 +1,4 @@
-ZZ# KCU Management System
+# KCU Management System
 
 A scalable university management system starting with Quality Assurance (QA) functionality, designed to grow into a comprehensive university management platform.
 
@@ -70,6 +70,74 @@ src/
 ```
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
+
+## Integration Flow and Target ERP Structure
+
+This section documents:
+
+- The **current** integration flow: how KCU pulls courses, students, and lecturers from vClass/Moodle for QA rosters.
+- The **target** structure: how KCU evolves into a full University ERP where KCU is the system of record and Moodle is provisioned from KCU with SSO.
+
+### Current flow (today): vClass/Moodle → KCU
+
+- **Courses**: KCU fetches Moodle courses and upserts local `Course` records with `moodleCourseId`, creating a `Class` per course for rosters.
+- **Users**: KCU fetches enrolled users per course and upserts `User` + `Student`/`Staff` with `moodleUserId` (teacher roles become Lecturers/Staff).
+- **Enrollments**: KCU creates `Enrollment` records linking Students to Classes for QA attendance workflows.
+
+```mermaid
+flowchart TD
+  A[Admin triggers sync in KCU] --> B[POST /api/v1/moodle/sync/all]
+  B --> C[Fetch courses<br/>core_course_get_courses]
+  C --> D[Upsert Course (moodleCourseId)]
+  D --> E[Ensure Class exists per Course]
+
+  B --> F[For each course: fetch enrolled users<br/>core_enrol_get_enrolled_users]
+  F --> G{Teacher role?}
+  G -- Yes --> H[Upsert User(role=Lecturer) + Staff (moodleUserId)]
+  G -- No --> I[Upsert User(role=Student) + Student (moodleUserId)]
+
+  F --> J[Build rosters]
+  J --> K[Upsert Enrollment<br/>Student ↔ Class]
+  K --> L[QA uses rosters for attendance & reports]
+```
+
+### Target flow (future): KCU ERP → Moodle provisioning + SSO
+
+In a standard university setup, the ERP becomes the source of truth and Moodle is provisioned from it.
+
+```mermaid
+flowchart TD
+  A[Admissions / Registration in KCU ERP] --> B[Student record created/updated]
+  B --> C[Identity provisioned in IAM<br/>(Keycloak/AzureAD/Google)]
+  C --> D[SSO enabled for KCU + Moodle]
+
+  E[Semester setup] --> F[Course catalog + offerings + sections]
+  F --> G[Lecturer assignment + timetables]
+
+  H[Student registers for semester] --> I{Finance status OK?}
+  I -- No --> J[Apply holds / limit access]
+  I -- Yes --> K[Confirm enrollment]
+
+  K --> L[Provision to Moodle]
+  L --> M[Create/Update Moodle users]
+  L --> N[Create/Update Moodle course shells]
+  L --> O[Enroll users + roles + groups]
+
+  D --> P[Student opens Moodle]
+  P --> Q[SSO login]
+  Q --> R[Moodle session without separate password]
+```
+
+### Target ERP modules (development blueprint)
+
+- **Identity & Access (IAM)**: central authentication (OIDC/SAML), roles/permissions, audit logs.
+- **Admissions & Registration**: applicant → student lifecycle, semester registration.
+- **Academic Management**: programme/curriculum, course catalog, offerings, sections/classes, timetables.
+- **Teaching & Learning Operations**: lecturer allocation, assessment workflows, grades (optional sync back).
+- **Finance**: billing, payments, holds that gate registration/LMS access.
+- **HR & Staff**: staff onboarding, departments, teaching load.
+- **Quality Assurance**: attendance, lecture records, reporting and compliance.
+- **Integrations**: Moodle provisioning, email/SMS, payments, reporting exports.
 
 ## 🎯 Features
 

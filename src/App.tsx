@@ -33,6 +33,7 @@ import Reports from './screens/Reports'
 import StudentRecords from './screens/StudentRecords'
 import LectureRecords from './screens/LectureRecords'
 import Cancellations from './screens/Cancellations'
+import CurriculumManagement from './screens/CurriculumManagement'
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -182,6 +183,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute allowedRoles={['Management', 'Admin']}>
 						<ManagementStudentDetails />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/curriculum-management" 
+				element={
+					<ProtectedRoute allowedRoles={['Management', 'Admin', 'Lecturer']}>
+						<CurriculumManagement />
 					</ProtectedRoute>
 				} 
 			/>

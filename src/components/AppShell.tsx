@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText,   Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, Shield, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase
+  Clock, UserCheck, Shield, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useRole, UserRole } from './RoleProvider';
@@ -150,6 +150,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         return [
           { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { label: 'My Timetable', icon: Calendar, path: '/timetable' },
+          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
           { label: 'Mark Presence', icon: MapPin, path: '/presence' },
           { label: 'Course Attendance', icon: UserCheck, path: '/lecturer-course-attendance' },
@@ -172,6 +173,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         return [
           { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { label: 'University Overview', icon: BarChart, path: '/management-overview' },
+          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { label: 'Department Stats', icon: School, path: '/management-departments' },
           { label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
           { label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
@@ -182,6 +184,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       case 'Admin':
         return [
           { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { label: 'Students', icon: Users, path: '/admin-students' },
           { label: 'Non Teaching Staff', icon: Briefcase, path: '/admin-staff' },
           { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
