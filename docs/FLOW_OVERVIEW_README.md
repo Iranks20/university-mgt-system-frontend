@@ -92,7 +92,7 @@ Below is the practical structure to guide future development.
 
 ```mermaid
 flowchart LR
-  subgraph KCU[KCU University Management System (ERP)]
+  subgraph KCU["KCU University Management System (ERP)"]
     REG[Admissions & Registration]
     ACAD[Academics & Timetables]
     FIN[Fees & Payments]
@@ -101,11 +101,11 @@ flowchart LR
     REP[Reports & Dashboards]
   end
 
-  subgraph IAM[University Accounts (Single Sign-On)]
+  subgraph IAM["University Accounts (Single Sign-On)"]
     ID[One university account]
   end
 
-  subgraph LMS[vClass / Moodle (Teaching & Learning)]
+  subgraph LMS["vClass / Moodle (Teaching & Learning)"]
     LMSCOURSE[Course spaces]
     LMSENR[Class lists]
     LMSACT[Learning activities]
