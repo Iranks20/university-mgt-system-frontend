@@ -1,17 +1,17 @@
-# KCU Management System — Flow Overview (Non-Technical)
+# Kcu-mgt-system — Flow Overview (Non-Technical)
 
-This document explains, in simple terms, how the KCU Management System currently works with vClass/Moodle and how it will evolve into a full University Management System (ERP) that supports the whole student lifecycle.
+This document explains, in simple terms, how Kcu-mgt-system currently works with KClass and how it will evolve into a full University Management System (ERP) that supports the whole student lifecycle.
 
 It is written for both technical and non-technical readers.
 
-## Part 1: Current flow (today) — vClass/Moodle → KCU
+## Part 1: Current flow (today) — KClass → Kcu-mgt-system
 
 ### What is happening now
 
-Today, the KCU system is mainly supporting the Quality Assurance (QA) office. To help QA work accurately, the KCU system **pulls information from vClass/Moodle** so that:
+Today, Kcu-mgt-system is mainly supporting the Quality Assurance (QA) office. To help QA work accurately, Kcu-mgt-system **pulls information from KClass** so that:
 
-- Courses can be listed in KCU,
-- Students and lecturers can be identified in KCU,
+- Courses can be listed in Kcu-mgt-system,
+- Students and lecturers can be identified in Kcu-mgt-system,
 - Class lists (who belongs to which course) are available for QA tracking and reporting.
 
 ### What information we pull
@@ -24,10 +24,10 @@ Today, the KCU system is mainly supporting the Quality Assurance (QA) office. To
 
 ```mermaid
 flowchart TD
-  A[vClass / Moodle] --> B[KCU System]
-  B --> C[Courses are created/updated in KCU]
-  B --> D[Students and lecturers are created/updated in KCU]
-  B --> E[Class lists are created in KCU]
+  A[KClass] --> B[Kcu-mgt-system]
+  B --> C[Courses are created or updated in Kcu-mgt-system]
+  B --> D[Students and lecturers are created or updated in Kcu-mgt-system]
+  B --> E[Class lists are created in Kcu-mgt-system]
   E --> F[QA can track attendance, teaching activity, and reporting]
 ```
 
@@ -39,13 +39,13 @@ When QA needs to track teaching and attendance, they need a reliable list of:
 - Which lecturer is attached to a course,
 - Which students belong to the course.
 
-By pulling this from vClass/Moodle, KCU can start QA operations faster and reduce manual data entry.
+By pulling this from KClass, Kcu-mgt-system can start QA operations faster and reduce manual data entry.
 
-## Part 2: Target flow (future) — KCU ERP → vClass/Moodle (with Single Sign-On)
+## Part 2: Target flow (future) — Kcu-mgt-system ERP → KClass (with Single Sign-On)
 
 ### What we are building towards
 
-The long-term goal is for KCU to become a **full University Management System (ERP)** that manages the official university data such as:
+The long-term goal is for Kcu-mgt-system to become a **full University Management System (ERP)** that manages the official university data such as:
 
 - Admissions and registration,
 - Student and staff records,
@@ -57,15 +57,15 @@ The long-term goal is for KCU to become a **full University Management System (E
 
 In this model:
 
-- **KCU is the main source of truth** (official records),
-- vClass/Moodle is used mainly for **teaching and learning** (course materials, activities, learning progress).
+- **Kcu-mgt-system is the main source of truth** (official records),
+- KClass is used mainly for **teaching and learning** (course materials, activities, learning progress).
 
 ### The goal for student experience (no repeated logins)
 
 Students and staff should have:
 
 - **One university account**, and
-- **One sign-in** to access both KCU and vClass/Moodle.
+- **One sign-in** to access both Kcu-mgt-system and KClass.
 
 This is commonly achieved through **Single Sign-On (SSO)**.
 
@@ -73,15 +73,15 @@ This is commonly achieved through **Single Sign-On (SSO)**.
 
 ```mermaid
 flowchart TD
-  A[Admissions & Registration in KCU] --> B[Official student/staff records in KCU]
+  A[Admissions & Registration in Kcu-mgt-system] --> B[Official student and staff records in Kcu-mgt-system]
   B --> C[University account is created]
   C --> D[Single sign-on access enabled]
 
-  E[Semester planning in KCU] --> F[Courses, class groups, and lecturer assignments in KCU]
-  F --> G[vClass/Moodle is updated automatically]
-  G --> H[Students and lecturers see the right courses in vClass/Moodle]
+  E[Semester planning in Kcu-mgt-system] --> F[Courses, class groups, and lecturer assignments in Kcu-mgt-system]
+  F --> G[KClass is updated automatically]
+  G --> H[Students and lecturers see the right courses in KClass]
   D --> I[Students sign in once]
-  I --> J[Access KCU and vClass/Moodle without separate passwords]
+  I --> J[Access Kcu-mgt-system and KClass without separate passwords]
 ```
 
 ## The University-wide structure we will follow (ERP blueprint)
@@ -92,7 +92,7 @@ Below is the practical structure to guide future development.
 
 ```mermaid
 flowchart LR
-  subgraph KCU["KCU University Management System (ERP)"]
+  subgraph KCU["Kcu-mgt-system (University ERP)"]
     REG[Admissions & Registration]
     ACAD[Academics & Timetables]
     FIN[Fees & Payments]
@@ -105,7 +105,7 @@ flowchart LR
     ID[One university account]
   end
 
-  subgraph LMS["vClass / Moodle (Teaching & Learning)"]
+  subgraph LMS["KClass (Teaching & Learning)"]
     LMSCOURSE[Course spaces]
     LMSENR[Class lists]
     LMSACT[Learning activities]
@@ -139,11 +139,11 @@ flowchart LR
 - Course catalogue and course offerings per semester
 - Timetables and lecturer allocations
 
-### C. Teaching and learning (vClass/Moodle)
+### C. Teaching and learning (KClass)
 
 - Course materials and activities
 - Learning participation and engagement
-- (Optional later) return of final results/grades into KCU where required
+- (Optional later) return of final results/grades into Kcu-mgt-system where required
 
 ### D. Finance
 
@@ -172,7 +172,7 @@ flowchart TD
   D --> E{Fees cleared?}
   E -- No --> F[Hold / follow up]
   E -- Yes --> G[Courses confirmed]
-  G --> H[vClass/Moodle updated]
+  G --> H[KClass updated]
   H --> I[Student learns and participates]
   I --> J[Results and progression decisions]
   J --> K[Graduation]
@@ -183,15 +183,15 @@ flowchart TD
 ```mermaid
 sequenceDiagram
   participant Student
-  participant KCU as KCU System
+  participant KCU as Kcu-mgt-system
   participant SSO as University Sign-In
-  participant Moodle as vClass/Moodle
+  participant Moodle as KClass
 
-  Student->>KCU: Open KCU portal
+  Student->>KCU: Open Kcu-mgt-system portal
   KCU->>SSO: Redirect to sign-in
   SSO-->>Student: Login once
   SSO-->>KCU: Access granted
-  Student->>Moodle: Open vClass/Moodle
+  Student->>Moodle: Open KClass
   Moodle->>SSO: Single sign-on check
   SSO-->>Moodle: Access granted
   Moodle-->>Student: No extra password required
@@ -211,6 +211,6 @@ flowchart TD
 
 ## Summary
 
-- **Today**: KCU pulls courses, people, and class lists from vClass/Moodle to support QA work.
-- **Future**: KCU becomes the main University ERP and updates vClass/Moodle automatically, with a single sign-on experience for students and staff.
+- **Today**: Kcu-mgt-system pulls courses, people, and class lists from KClass to support QA work.
+- **Future**: Kcu-mgt-system becomes the main University ERP and updates KClass automatically, with a single sign-on experience for students and staff.
 
