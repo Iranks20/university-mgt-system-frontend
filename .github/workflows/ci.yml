@@ -33,3 +33,28 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd "$HOME/university-mgt-system-frontend"
+            git fetch origin
+            git checkout "${{ github.ref_name }}"
+            git pull --ff-only origin "${{ github.ref_name }}"
+            npm ci
+            npm run build
+            rsync -a --delete dist/ /var/www/kcu-mgt-frontend/
