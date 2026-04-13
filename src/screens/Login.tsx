@@ -3,10 +3,10 @@ import {
   User,
   Lock,
   ArrowRight,
-  School,
   Eye,
   EyeOff,
 } from 'lucide-react';
+import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
 import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,11 +76,15 @@ function LoginContent() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <div className="bg-[#015F2B] w-16 h-16 rounded-xl mx-auto flex items-center justify-center shadow-lg">
-            <School className="text-white h-10 w-10" />
+          <div className="mx-auto flex h-28 w-28 items-center justify-center">
+            <img
+              src={kcuUniversityLogo}
+              alt="King Ceasor University"
+              className="max-h-full max-w-full object-contain drop-shadow-md"
+            />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">King Ceasor University</h1>
-          <p className="text-gray-500">Quality Assurance & Attendance System</p>
+          <p className="text-gray-500">Integrated university management</p>
         </div>
 
         <Card className="border-t-4 border-t-[#015F2B] shadow-xl">

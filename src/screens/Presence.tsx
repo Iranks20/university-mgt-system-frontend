@@ -549,7 +549,7 @@ function PresenceContent() {
         </Card>
         
         <p className="text-center text-xs text-gray-400 mt-8">
-          KCU Quality Assurance System v1.0 • GPS verification (Kampala zone)
+          KCU ERP System v1.0 • GPS verification (Kampala zone)
         </p>
       </div>
   );

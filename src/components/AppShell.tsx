@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText,   Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, Shield, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList
 } from 'lucide-react';
+import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useRole, UserRole } from './RoleProvider';
 import { useAuth } from '../contexts/AuthContext';
@@ -216,11 +217,17 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans">
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200">
-        <div className="p-6 border-b border-gray-100 flex items-center gap-2">
-          <Shield className="w-8 h-8 text-primary" />
+        <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center">
+            <img
+              src={kcuUniversityLogo}
+              alt=""
+              className="max-h-full max-w-full object-contain drop-shadow-sm"
+            />
+          </div>
           <div>
-            <h1 className="font-bold text-lg leading-tight text-primary">KCU QA System</h1>
-            <p className="text-xs text-gray-500">Quality Assurance</p>
+            <h1 className="font-bold text-lg leading-tight text-primary">KCU ERP System</h1>
+            <p className="text-xs text-gray-500">Enterprise resource planning</p>
           </div>
         </div>
         
@@ -282,8 +289,14 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       <aside className={`fixed inset-y-0 left-0 w-64 bg-white z-50 transform transition-transform duration-200 md:hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-4 border-b border-gray-100 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Shield className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg text-primary">KCU System</span>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center">
+              <img
+                src={kcuUniversityLogo}
+                alt=""
+                className="max-h-full max-w-full object-contain drop-shadow-sm"
+              />
+            </div>
+            <span className="font-bold text-lg text-primary">KCU ERP System</span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="text-gray-500">
             <X size={24} />
