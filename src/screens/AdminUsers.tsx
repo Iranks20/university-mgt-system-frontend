@@ -21,7 +21,8 @@ type UserRow = {
   linkedRecord?: { type: string; number?: string; role?: string } | null;
 };
 
-const ROLES = ['QA', 'Staff', 'Management', 'Admin'];
+const ROLE_FILTER_OPTIONS = ['QA', 'Staff', 'Management', 'Admin'];
+const SYSTEM_ACCOUNT_MODAL_ROLES = ['QA', 'Management', 'Admin'];
 
 const PAGE_SIZE = 20;
 
@@ -154,7 +155,7 @@ export default function AdminUsers() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-        <p className="text-gray-500">Manage system users (QA, Management, Admin, Staff). Create and edit accounts used for backoffice access.</p>
+        <p className="text-gray-500">Manage QA, Management and Admin accounts. Staff with the Staff role are created under Users → Staff.</p>
       </div>
 
       <Card>
@@ -179,7 +180,7 @@ export default function AdminUsers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
-                {ROLES.map(r => (
+                {ROLE_FILTER_OPTIONS.map(r => (
                   <SelectItem key={r} value={r}>{r}</SelectItem>
                 ))}
               </SelectContent>
@@ -245,7 +246,7 @@ export default function AdminUsers() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
-            <DialogDescription>Create a new system user (QA, Management, Admin or Staff). They can log in with email and the password you set.</DialogDescription>
+            <DialogDescription>Create a new system user (QA, Management or Admin). They can log in with email and the password you set.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
@@ -265,7 +266,9 @@ export default function AdminUsers() {
               <Select value={addForm.role} onValueChange={v => setAddForm(f => ({ ...f, role: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map(r => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
+                  {SYSTEM_ACCOUNT_MODAL_ROLES.map(r => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -294,7 +297,12 @@ export default function AdminUsers() {
               <Select value={editForm.role} onValueChange={v => setEditForm(f => ({ ...f, role: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map(r => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
+                  {(selectedUser?.role === 'Staff'
+                    ? ['Staff', ...SYSTEM_ACCOUNT_MODAL_ROLES]
+                    : SYSTEM_ACCOUNT_MODAL_ROLES
+                  ).map(r => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

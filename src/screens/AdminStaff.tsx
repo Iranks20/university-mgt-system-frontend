@@ -2,5 +2,5 @@ import React from 'react';
 import Components from "@/components";
 
 export default function AdminStaff() {
-  return <Components.AdminView defaultTab="staff" />;
+  return <Components.AdminView defaultTab="staff" staffTabMode="non-teaching" />;
 }

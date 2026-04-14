@@ -24,6 +24,7 @@ import AdminUsers from './screens/AdminUsers'
 import AdminTimetables from './screens/AdminTimetables'
 import AdminCourses from './screens/AdminCourses'
 import AdminStaff from './screens/AdminStaff'
+import AdminStaffRole from './screens/AdminStaffRole'
 import AdminLecturers from './screens/AdminLecturers'
 import AdminStudents from './screens/AdminStudents'
 import AdminCalendar from './screens/AdminCalendar'
@@ -201,6 +202,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute allowedRoles={['Admin']}>
 						<AdminStudents />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/admin-staff-role" 
+				element={
+					<ProtectedRoute allowedRoles={['Admin']}>
+						<AdminStaffRole />
 					</ProtectedRoute>
 				} 
 			/>

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Menu, X, LayoutDashboard, BookOpen, Users, FileText,   Calendar, CalendarX,
+  Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound,
+  ChevronDown,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useRole, UserRole } from './RoleProvider';
@@ -21,11 +23,47 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
   if (r === 'Staff') return 'Non-Teaching Staff';
   return r;
+}
+
+const ADMIN_USERS_CHILD_PATHS = [
+  '/admin-students',
+  '/admin-lecturers',
+  '/admin-staff-role',
+  '/admin-staff',
+  '/admin-users',
+] as const;
+
+function isPathUnderAdminUsersSection(pathname: string): boolean {
+  return ADMIN_USERS_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+type SidebarChild = { label: string; path: string; icon: LucideIcon };
+
+type SidebarItem =
+  | { type: 'single'; label: string; path: string; icon: LucideIcon }
+  | { type: 'folder'; id: string; label: string; icon: LucideIcon; children: SidebarChild[] };
+
+function getHeaderTitle(pathname: string, items: SidebarItem[]): string {
+  for (const item of items) {
+    if (item.type === 'single') {
+      if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
+        return item.label;
+      }
+    } else {
+      for (const c of item.children) {
+        if (pathname === c.path || pathname.startsWith(`${c.path}/`)) {
+          return c.label;
+        }
+      }
+    }
+  }
+  return 'Dashboard';
 }
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
@@ -43,8 +81,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [usersNavOpen, setUsersNavOpen] = useState(() => isPathUnderAdminUsersSection(location.pathname));
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+
+  useEffect(() => {
+    if (role === 'Admin' && isPathUnderAdminUsersSection(location.pathname)) {
+      setUsersNavOpen(true);
+    }
+  }, [role, location.pathname]);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -126,85 +171,93 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const getNavItems = (currentRole: UserRole) => {
-    // Ensure we have a valid role
+  const getNavItems = (currentRole: UserRole): SidebarItem[] => {
     if (!currentRole || !['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(currentRole)) {
       console.warn('Invalid role detected:', currentRole);
       return [
-        { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-        { label: 'Mark Presence', icon: MapPin, path: '/presence' },
-        { label: 'Reports', icon: FileText, path: '/reports' },
+        { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+        { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
+        { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
       ];
     }
 
     switch (currentRole) {
       case 'QA':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'Timetable', icon: Calendar, path: '/timetable' },
-          { label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
-          { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { label: 'Student Records', icon: Users, path: '/student-records' },
-          { label: 'Reports', icon: FileText, path: '/reports' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Timetable', icon: Calendar, path: '/timetable' },
+          { type: 'single', label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
+          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
+          { type: 'single', label: 'Student Records', icon: Users, path: '/student-records' },
+          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
         ];
       case 'Lecturer':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'My Timetable', icon: Calendar, path: '/timetable' },
-          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { label: 'Course Attendance', icon: UserCheck, path: '/lecturer-course-attendance' },
-          { label: 'Performance', icon: BarChart, path: '/lecturer-performance' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'My Timetable', icon: Calendar, path: '/timetable' },
+          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
+          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
+          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
+          { type: 'single', label: 'Course Attendance', icon: UserCheck, path: '/lecturer-course-attendance' },
+          { type: 'single', label: 'Performance', icon: BarChart, path: '/lecturer-performance' },
         ];
       case 'Student':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'My Classes', icon: BookOpen, path: '/student-classes' },
-          { label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { label: 'Attendance History', icon: Clock, path: '/student-history' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'My Classes', icon: BookOpen, path: '/student-classes' },
+          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
+          { type: 'single', label: 'Attendance History', icon: Clock, path: '/student-history' },
         ];
       case 'Staff':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { label: 'Attendance History', icon: Clock, path: '/student-history' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
+          { type: 'single', label: 'Attendance History', icon: Clock, path: '/student-history' },
         ];
       case 'Management':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'University Overview', icon: BarChart, path: '/management-overview' },
-          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { label: 'Department Stats', icon: School, path: '/management-departments' },
-          { label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
-          { label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
-          { label: 'Student Performance', icon: GraduationCap, path: '/management-student-performance' },
-          { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { label: 'Reports', icon: FileText, path: '/reports' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'University Overview', icon: BarChart, path: '/management-overview' },
+          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
+          { type: 'single', label: 'Department Stats', icon: School, path: '/management-departments' },
+          { type: 'single', label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
+          { type: 'single', label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
+          { type: 'single', label: 'Student Performance', icon: GraduationCap, path: '/management-student-performance' },
+          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
+          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
         ];
       case 'Admin':
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { label: 'Students', icon: Users, path: '/admin-students' },
-          { label: 'Non Teaching Staff', icon: Briefcase, path: '/admin-staff' },
-          { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
-          { label: 'Users', icon: UserCog, path: '/admin-users' },
-          { label: 'Courses', icon: BookOpen, path: '/admin-courses' },
-          { label: 'Classes', icon: School, path: '/admin-classes' },
-          { label: 'Timetables', icon: Calendar, path: '/admin-timetables' },
-          { label: 'Schools', icon: Building, path: '/admin-schools' },
-          { label: 'Venues', icon: MapPin, path: '/admin-venues' },
-          { label: 'Calendar', icon: Calendar, path: '/admin-calendar' },
-          { label: 'Strategic Goals', icon: TrendingUp, path: '/admin-strategic-goals' },
-          { label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { label: 'Settings', icon: Settings, path: '/admin-settings' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
+          {
+            type: 'folder',
+            id: 'users',
+            label: 'Users',
+            icon: Users,
+            children: [
+              { label: 'Students', path: '/admin-students', icon: Users },
+              { label: 'Lecturers', path: '/admin-lecturers', icon: GraduationCap },
+              { label: 'Staff', path: '/admin-staff-role', icon: UsersRound },
+              { label: 'Non-teaching staff', path: '/admin-staff', icon: Briefcase },
+              { label: 'System accounts', path: '/admin-users', icon: UserCog },
+            ],
+          },
+          { type: 'single', label: 'Courses', icon: BookOpen, path: '/admin-courses' },
+          { type: 'single', label: 'Classes', icon: School, path: '/admin-classes' },
+          { type: 'single', label: 'Timetables', icon: Calendar, path: '/admin-timetables' },
+          { type: 'single', label: 'Schools', icon: Building, path: '/admin-schools' },
+          { type: 'single', label: 'Venues', icon: MapPin, path: '/admin-venues' },
+          { type: 'single', label: 'Calendar', icon: Calendar, path: '/admin-calendar' },
+          { type: 'single', label: 'Strategic Goals', icon: TrendingUp, path: '/admin-strategic-goals' },
+          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
+          { type: 'single', label: 'Settings', icon: Settings, path: '/admin-settings' },
         ];
       default:
         return [
-          { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { label: 'Reports', icon: FileText, path: '/reports' },
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
+          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
         ];
     }
   };
@@ -212,6 +265,78 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const navItems = getNavItems(role);
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
+  const headerPageTitle = getHeaderTitle(location.pathname, navItems);
+
+  const renderNavLinks = (onNavigate?: () => void) =>
+    navItems.map(item => {
+      if (item.type === 'single') {
+        const isActive =
+          location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+        return (
+          <li key={item.path}>
+            <Link
+              to={item.path}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${
+                isActive
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              <item.icon size={20} />
+              {item.label}
+            </Link>
+          </li>
+        );
+      }
+      const folderActive = item.children.some(
+        c => location.pathname === c.path || location.pathname.startsWith(`${c.path}/`)
+      );
+      return (
+        <li key={item.id}>
+          <Collapsible open={usersNavOpen} onOpenChange={setUsersNavOpen}>
+            <CollapsibleTrigger
+              className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-gray-50 ${
+                folderActive ? 'text-primary font-medium' : 'text-gray-600'
+              }`}
+            >
+              <span className="flex items-center gap-3">
+                <item.icon size={20} />
+                {item.label}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 transition-transform ${usersNavOpen ? 'rotate-180' : ''}`}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="ml-2 border-l border-gray-200 py-1 pl-2 space-y-0.5">
+                {item.children.map(child => {
+                  const childActive =
+                    location.pathname === child.path ||
+                    location.pathname.startsWith(`${child.path}/`);
+                  return (
+                    <li key={child.path}>
+                      <Link
+                        to={child.path}
+                        onClick={onNavigate}
+                        className={`flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors ${
+                          childActive
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                      >
+                        <child.icon size={18} className="shrink-0 opacity-90" />
+                        {child.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CollapsibleContent>
+          </Collapsible>
+        </li>
+      );
+    });
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans">
@@ -232,26 +357,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         </div>
         
         <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-1 px-3">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-              return (
-                <li key={item.path}>
-                  <Link 
-                    to={item.path} 
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${
-                      isActive 
-                        ? 'bg-primary/10 text-primary font-medium' 
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
-                    <item.icon size={20} />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="space-y-1 px-3">{renderNavLinks()}</ul>
         </nav>
 
         <div className="p-4 border-t border-gray-100 space-y-2">
@@ -303,27 +409,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </button>
         </div>
         <nav className="flex-1 overflow-y-auto py-4 px-3">
-          <ul className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-              return (
-                <li key={item.path}>
-                  <Link 
-                    to={item.path} 
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md ${
-                      isActive 
-                        ? 'bg-primary/10 text-primary font-medium' 
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <item.icon size={20} />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="space-y-1">{renderNavLinks(() => setSidebarOpen(false))}</ul>
         </nav>
         <div className="p-4 border-t border-gray-100 space-y-2">
           <div className="flex items-center gap-3">
@@ -360,9 +446,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             >
               <Menu size={24} />
             </button>
-            <h2 className="text-xl font-semibold text-gray-800 hidden sm:block">
-              {navItems.find(i => location.pathname === i.path || location.pathname.startsWith(i.path + '/'))?.label || 'Dashboard'}
-            </h2>
+            <h2 className="text-xl font-semibold text-gray-800 hidden sm:block">{headerPageTitle}</h2>
           </div>
 
           <div className="flex items-center gap-2">

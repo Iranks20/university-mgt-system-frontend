@@ -1333,6 +1333,7 @@ function StaffTab({
   staffTotal,
   pageSize,
   loadStaff,
+  staffTabMode = 'non-teaching',
 }: {
   staff: StaffRow[];
   setStaff: React.Dispatch<React.SetStateAction<StaffRow[]>>;
@@ -1340,6 +1341,7 @@ function StaffTab({
   staffTotal: number;
   pageSize: number;
   loadStaff: (page: number) => Promise<void>;
+  staffTabMode?: 'non-teaching' | 'staff-role';
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -1353,11 +1355,14 @@ function StaffTab({
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const staffFileRef = useRef<HTMLInputElement>(null);
 
-  // Filter only non-teaching staff (exclude Lecturers)
-  const nonTeachingStaff = staff.filter(s => s.role !== 'Lecturer');
-  const filteredStaff = nonTeachingStaff.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const isStaffRoleTab = staffTabMode === 'staff-role';
+  const listedStaff = isStaffRoleTab
+    ? staff.filter(s => s.role === 'Staff')
+    : staff.filter(s => s.role !== 'Lecturer');
+  const filteredStaff = listedStaff.filter(
+    s =>
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Fetch departments on mount
@@ -1402,7 +1407,7 @@ function StaffTab({
       await loadStaff(1);
       setAddForm({ name: '', email: '', role: 'Staff', dept: departments[0]?.id || departments[0]?.name || '', tempPassword: '' });
       setAddOpen(false);
-      toast.success('Non teaching staff member added successfully');
+      toast.success(isStaffRoleTab ? 'Staff member added successfully' : 'Non teaching staff member added successfully');
     } catch (error: any) {
       console.error('Error adding staff:', error);
       toast.error(`Failed to add staff: ${error?.message || 'Unknown error'}`);
@@ -1434,10 +1439,14 @@ function StaffTab({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Briefcase className="h-5 w-5" />
-            Non Teaching Staff Management
+            {isStaffRoleTab ? <UserIcon className="h-5 w-5" /> : <Briefcase className="h-5 w-5" />}
+            {isStaffRoleTab ? 'Staff' : 'Non Teaching Staff Management'}
           </CardTitle>
-          <CardDescription>Manage non-teaching staff members (HR, Administrators, etc.)</CardDescription>
+          <CardDescription>
+            {isStaffRoleTab
+              ? 'Manage personnel with the Staff employment role.'
+              : 'Manage non-teaching staff members (HR, Administrators, etc.)'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between gap-4 mb-4">
@@ -1447,7 +1456,9 @@ function StaffTab({
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
-              <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Non Teaching Staff</Button>
+              <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> {isStaffRoleTab ? 'Add Staff' : 'Add Non Teaching Staff'}
+              </Button>
             </div>
           </div>
           <div className="rounded-md border">
@@ -1465,7 +1476,9 @@ function StaffTab({
                 {filteredStaff.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No non teaching staff members found. Add non teaching staff members to get started.
+                      {isStaffRoleTab
+                        ? 'No staff records found. Add staff members to get started.'
+                        : 'No non teaching staff members found. Add non teaching staff members to get started.'}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -1503,7 +1516,9 @@ function StaffTab({
                                 try {
                                   await staffService.deleteStaff(String(s.id));
                                   setStaff(prev => prev.filter(st => st.id !== s.id));
-                                  toast.success('Non teaching staff member deleted successfully');
+                                  toast.success(
+                                    isStaffRoleTab ? 'Staff member deleted successfully' : 'Non teaching staff member deleted successfully'
+                                  );
                                 } catch (error: any) {
                                   console.error('Error deleting staff:', error);
                                   toast.error(`Failed to delete staff: ${error?.message || 'Unknown error'}`);
@@ -1535,8 +1550,12 @@ function StaffTab({
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Non Teaching Staff Member</DialogTitle>
-            <DialogDescription>Create a record for non-teaching personnel (HR, Administrators, etc.)</DialogDescription>
+            <DialogTitle>{isStaffRoleTab ? 'Add Staff Member' : 'Add Non Teaching Staff Member'}</DialogTitle>
+            <DialogDescription>
+              {isStaffRoleTab
+                ? 'Create a staff record with the Staff employment role.'
+                : 'Create a record for non-teaching personnel (HR, Administrators, etc.)'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddStaff} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1556,9 +1575,13 @@ function StaffTab({
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Staff">Staff</SelectItem>
-                    <SelectItem value="Administrator">Administrator</SelectItem>
-                    <SelectItem value="QA">QA</SelectItem>
-                    <SelectItem value="Management">Management</SelectItem>
+                    {!isStaffRoleTab && (
+                      <>
+                        <SelectItem value="Administrator">Administrator</SelectItem>
+                        <SelectItem value="QA">QA</SelectItem>
+                        <SelectItem value="Management">Management</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1590,7 +1613,7 @@ function StaffTab({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">Add Non Teaching Staff</Button>
+              <Button type="submit" className="bg-[#015F2B]">{isStaffRoleTab ? 'Add Staff' : 'Add Non Teaching Staff'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1600,8 +1623,10 @@ function StaffTab({
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Non Teaching Staff Member</DialogTitle>
-            <DialogDescription>Update non teaching staff information.</DialogDescription>
+            <DialogTitle>{isStaffRoleTab ? 'Edit Staff Member' : 'Edit Non Teaching Staff Member'}</DialogTitle>
+            <DialogDescription>
+              {isStaffRoleTab ? 'Update staff information.' : 'Update non teaching staff information.'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={async (e) => {
             e.preventDefault();
@@ -1621,7 +1646,7 @@ function StaffTab({
               await loadStaff(staffPage);
               setEditOpen(false);
               setEditingStaff(null);
-              toast.success('Non teaching staff member updated successfully');
+              toast.success(isStaffRoleTab ? 'Staff member updated successfully' : 'Non teaching staff member updated successfully');
             } catch (error: any) {
               console.error('Error updating staff:', error);
               toast.error(`Failed to update staff: ${error?.message || 'Unknown error'}`);
@@ -1645,9 +1670,13 @@ function StaffTab({
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Staff">Staff</SelectItem>
-                      <SelectItem value="Administrator">Administrator</SelectItem>
-                      <SelectItem value="QA">QA</SelectItem>
-                      <SelectItem value="Management">Management</SelectItem>
+                      {!isStaffRoleTab && (
+                        <>
+                          <SelectItem value="Administrator">Administrator</SelectItem>
+                          <SelectItem value="QA">QA</SelectItem>
+                          <SelectItem value="Management">Management</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1676,7 +1705,7 @@ function StaffTab({
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">Update Non Teaching Staff</Button>
+              <Button type="submit" className="bg-[#015F2B]">{isStaffRoleTab ? 'Update Staff' : 'Update Non Teaching Staff'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1685,8 +1714,12 @@ function StaffTab({
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Import Non Teaching Staff</DialogTitle>
-            <DialogDescription>Upload a CSV or Excel (.xlsx) file with columns: name, email, role, dept. Role should be Staff, Administrator, QA, or Management (not Lecturer). Optionally create login accounts with a temporary password.</DialogDescription>
+            <DialogTitle>{isStaffRoleTab ? 'Import Staff' : 'Import Non Teaching Staff'}</DialogTitle>
+            <DialogDescription>
+              {isStaffRoleTab
+                ? 'Upload a CSV or Excel (.xlsx) file with columns: name, email, role, dept. Use role Staff for each row. Optionally create login accounts with a temporary password.'
+                : 'Upload a CSV or Excel (.xlsx) file with columns: name, email, role, dept. Role should be Staff, Administrator, QA, or Management (not Lecturer). Optionally create login accounts with a temporary password.'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -5923,7 +5956,13 @@ function AcademicCalendarTab() {
 // -----------------------------------------------------------------------------
 const LIST_PAGE_SIZE = 20;
 
-export default function AdminView({ defaultTab = 'students' }: { defaultTab?: string }) {
+export default function AdminView({
+  defaultTab = 'students',
+  staffTabMode = 'non-teaching',
+}: {
+  defaultTab?: string;
+  staffTabMode?: 'non-teaching' | 'staff-role';
+}) {
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState(defaultTab);
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -5965,7 +6004,11 @@ export default function AdminView({ defaultTab = 'students' }: { defaultTab?: st
 
   const loadStaff = async (page: number) => {
     try {
-      const res = await staffService.getStaff({ page, limit: LIST_PAGE_SIZE });
+      const res = await staffService.getStaff({
+        page,
+        limit: LIST_PAGE_SIZE,
+        ...(staffTabMode === 'staff-role' ? { role: 'Staff' } : {}),
+      });
       const data = res.data || res;
       setStaff(Array.isArray(data) ? data.map((s: any) => ({
         id: s.id,
@@ -6120,7 +6163,15 @@ export default function AdminView({ defaultTab = 'students' }: { defaultTab?: st
         </TabsContent>
         
         <TabsContent value="staff" className="mt-0">
-          <StaffTab staff={staff} setStaff={setStaff} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} />
+          <StaffTab
+            staff={staff}
+            setStaff={setStaff}
+            staffPage={staffPage}
+            staffTotal={staffTotal}
+            pageSize={LIST_PAGE_SIZE}
+            loadStaff={loadStaff}
+            staffTabMode={staffTabMode}
+          />
         </TabsContent>
 
         <TabsContent value="lecturers" className="mt-0">
