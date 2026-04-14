@@ -65,7 +65,8 @@ export const reportService = {
 
   downloadReport: async (id: string): Promise<void> => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://16.171.234.222:3000/api/v1'}/reports/${id}/download`, {
+      const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+      const response = await fetch(`${base}/reports/${id}/download`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('kcu-token')}`,
         },

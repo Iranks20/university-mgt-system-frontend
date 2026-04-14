@@ -102,7 +102,8 @@ export const timetableService = {
     formData.append('year', String(params.year));
     formData.append('semester', String(params.semester));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://16.171.234.222:3000/api/v1'}/timetable/import`, {
+    const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+    const response = await fetch(`${base}/timetable/import`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('kcu-token')}`,
@@ -157,7 +158,8 @@ export const timetableService = {
 
   downloadTemplate: async (format: 'csv' | 'excel'): Promise<void> => {
     const token = localStorage.getItem('kcu-token');
-    const url = `${import.meta.env.VITE_API_BASE_URL || 'http://16.171.234.222:3000/api/v1'}/timetable/template?format=${format}`;
+    const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+    const url = `${base}/timetable/template?format=${format}`;
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
