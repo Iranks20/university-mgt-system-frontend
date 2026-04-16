@@ -265,11 +265,12 @@ export const academicService = {
     }
   },
 
-  getClasses: async (params?: { courseId?: string; schoolId?: string; page?: number; limit?: number }): Promise<{ data: Class[]; total: number; page: number; pageSize: number }> => {
+  getClasses: async (params?: { courseId?: string; schoolId?: string; programIntakeId?: string; page?: number; limit?: number }): Promise<{ data: Class[]; total: number; page: number; pageSize: number }> => {
     try {
       const query = new URLSearchParams();
       if (params?.courseId) query.set('courseId', params.courseId);
       if (params?.schoolId) query.set('schoolId', params.schoolId);
+      if (params?.programIntakeId) query.set('programIntakeId', params.programIntakeId);
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
       const res = await api.get<{ data: Class[]; total: number; page: number; pageSize: number }>('/academic/classes' + (query.toString() ? '?' + query.toString() : ''));
@@ -277,6 +278,32 @@ export const academicService = {
     } catch (error) {
       console.error('Error fetching classes:', error);
       return { data: [], total: 0, page: 1, pageSize: 20 };
+    }
+  },
+
+  getProgramIntakes: async (params?: { programId?: string; year?: number; semester?: number; intakeType?: 'Day' | 'Evening' | 'Weekend' }): Promise<any[]> => {
+    try {
+      const query = new URLSearchParams();
+      if (params?.programId) query.set('programId', params.programId);
+      if (params?.year != null) query.set('year', String(params.year));
+      if (params?.semester != null) query.set('semester', String(params.semester));
+      if (params?.intakeType) query.set('intakeType', params.intakeType);
+      const res = await api.get<any[] | { data: any[] }>('/academic/program-intakes' + (query.toString() ? '?' + query.toString() : ''));
+      const raw = Array.isArray(res) ? res : (res as { data: any[] })?.data;
+      return Array.isArray(raw) ? raw : [];
+    } catch (error) {
+      console.error('Error fetching program intakes:', error);
+      return [];
+    }
+  },
+
+  ensureProgramIntake: async (dto: { programId: string; year: number; semester: number; intakeType: 'Day' | 'Evening' | 'Weekend' }): Promise<any> => {
+    try {
+      const res = await api.post<any>('/academic/program-intakes/ensure', dto);
+      return res && typeof res === 'object' && 'data' in res ? (res as any).data : res;
+    } catch (error) {
+      console.error('Error ensuring program intake:', error);
+      throw error;
     }
   },
 

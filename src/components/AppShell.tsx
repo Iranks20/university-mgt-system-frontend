@@ -186,6 +186,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         return [
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Timetable', icon: Calendar, path: '/timetable' },
+          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
           { type: 'single', label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
           { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
           { type: 'single', label: 'Student Records', icon: Users, path: '/student-records' },
@@ -219,6 +220,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'University Overview', icon: BarChart, path: '/management-overview' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
+          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
           { type: 'single', label: 'Department Stats', icon: School, path: '/management-departments' },
           { type: 'single', label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
           { type: 'single', label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
@@ -230,6 +232,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         return [
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
+          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
           {
             type: 'folder',
             id: 'users',
