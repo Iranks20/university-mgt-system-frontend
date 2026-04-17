@@ -4772,11 +4772,51 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [deleting, setDeleting] = useState(false);
   const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
-  const [filters, setFilters] = useState({ programId: '', program: '', year: '', semester: '', day: '', courseCode: '' });
+  const [filters, setFilters] = useState({ programId: '', program: '', year: '', semester: '', intakeType: 'Day', day: '', courseCode: '' });
   const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportExcel = async () => {
+    const programId = filters.programId && filters.programId !== '__all__' ? filters.programId : '';
+    const year = filters.year ? parseInt(filters.year, 10) : null;
+    const semester = filters.semester ? parseInt(filters.semester, 10) : null;
+    if (!programId || year == null || semester == null) {
+      toast.error('Select Program, Year and Semester first');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('kcu-token');
+      const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+      const params = new URLSearchParams();
+      params.set('programId', programId);
+      params.set('year', String(year));
+      params.set('semester', String(semester));
+      params.set('intakeType', filters.intakeType || 'Day');
+      params.set('format', 'excel');
+      const url = `${base}/timetable/export?${params.toString()}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.message || 'Export failed');
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `timetable_${filters.intakeType || 'Day'}_Y${year}_S${semester}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success('Export downloaded');
+    } catch (e: any) {
+      toast.error(e?.message || 'Export failed');
+    }
+  };
 
   const loadTimetable = async () => {
     setLoading(true);
@@ -4786,6 +4826,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       else if (filters.program) query.program = filters.program;
       if (filters.year) query.year = parseInt(filters.year, 10);
       if (filters.semester) query.semester = parseInt(filters.semester, 10);
+      if (filters.intakeType) query.intakeType = filters.intakeType;
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
       const result = await timetableService.getTimetable(query);
@@ -4981,6 +5022,16 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               <SelectItem value="2">Semester 2</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={filters.intakeType || "Day"} onValueChange={(v) => setFilters({ ...filters, intakeType: v })}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Intake" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Day">Day</SelectItem>
+              <SelectItem value="Evening">Evening</SelectItem>
+              <SelectItem value="Weekend">Weekend</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={filters.day || "all"} onValueChange={(v) => setFilters({ ...filters, day: v === "all" ? "" : v })}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Day" />
@@ -5000,24 +5051,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               />
             </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" /> Import File
+          <Button variant="outline" onClick={handleExportExcel}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" /> Download Template
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => timetableService.downloadTemplate('csv').catch((e: any) => toast.error(e.message))}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> CSV Template
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => timetableService.downloadTemplate('excel').catch((e: any) => toast.error(e.message))}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel Template (.xlsx)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
           <Button className="bg-[#015F2B]" onClick={onScheduleClass}>
             <Plus className="mr-2 h-4 w-4" /> Schedule Class
           </Button>
@@ -5050,7 +5086,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : classes.length === 0 ? (
                 <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
-                  {!((filters.programId && filters.programId !== '__all__') || filters.year || filters.semester) ? 'Select program, year and semester to view timetable.' : 'No classes found for this scope. Import a timetable or add courses in Schools.'}
+                  {!((filters.programId && filters.programId !== '__all__') || filters.year || filters.semester) ? 'Select program, year and semester to view timetable.' : 'No classes found for this scope.'}
                 </TableCell></TableRow>
               ) : (
                 classes.map((cls) => (
@@ -5089,6 +5125,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
         </CardContent>
       </Card>
 
+      {false && (
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="w-[95vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
           <div className="p-5 sm:p-6 border-b bg-muted/30">
@@ -5239,6 +5276,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>

@@ -123,12 +123,19 @@ export default function TimetableBuilder() {
     setCoursesLoading(true);
     try {
       const intake = await academicService.ensureProgramIntake({ programId, year, semester, intakeType });
-      setProgramIntakeId(intake?.id || '');
+      const intakeId = intake?.id || '';
+      setProgramIntakeId(intakeId);
 
       const res = await academicService.getCourses({ programId, level: year, semester, page: 1, limit: 50 });
       const arr = res?.data ?? [];
       const mapped = arr.map((c: any) => ({ id: c.id, code: c.code, name: c.name }));
       setCourses(mapped);
+
+      const existingClasses = intakeId ? await fetchAllClassesForIntake(intakeId) : [];
+      const existingByCourseId = new Map<string, any>();
+      for (const cls of existingClasses) {
+        if (!existingByCourseId.has(cls.courseId)) existingByCourseId.set(cls.courseId, cls);
+      }
 
       const groupName =
         selectedProgram?.code
@@ -137,17 +144,18 @@ export default function TimetableBuilder() {
 
       const nextDrafts: Record<string, DraftRow> = {};
       for (const c of mapped) {
+        const existing = existingByCourseId.get(c.id);
         nextDrafts[c.id] = drafts[c.id] ?? {
           courseId: c.id,
-          className: groupName,
-          lecturerId: '',
-          venueId: '',
-          deliveryMode: 'InPerson',
-          meetingUrl: '',
-          dayOfWeek: '',
-          startTime: '',
-          endTime: '',
-          capacity: '50',
+          className: existing?.name ?? groupName,
+          lecturerId: existing?.lecturerId ?? '',
+          venueId: existing?.venueId ?? '',
+          deliveryMode: existing?.deliveryMode ?? 'InPerson',
+          meetingUrl: existing?.meetingUrl ?? '',
+          dayOfWeek: existing?.dayOfWeek != null ? String(existing.dayOfWeek) : '',
+          startTime: existing?.startTime ?? '',
+          endTime: existing?.endTime ?? '',
+          capacity: existing?.capacity != null ? String(existing.capacity) : '50',
         };
       }
       setDrafts(nextDrafts);
@@ -312,17 +320,17 @@ export default function TimetableBuilder() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Timetable Builder</h1>
         <p className="text-gray-500">
-          Build program timetables using dropdowns to prevent mismatches and scheduling clashes.
+          Create and manage timetables using school data, with automatic conflict checks.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Scope</CardTitle>
-          <CardDescription>Select the program intake you are scheduling.</CardDescription>
+          <CardTitle>Timetable details</CardTitle>
+          <CardDescription>Select the program, year, semester and intake you want to schedule.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-5">
-          <div className="md:col-span-2">
+        <CardContent className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="sm:col-span-2 lg:col-span-2">
             <Label>Program</Label>
             <Select value={programId} onValueChange={setProgramId} disabled={programsLoading}>
               <SelectTrigger>
@@ -337,7 +345,7 @@ export default function TimetableBuilder() {
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className="sm:col-span-1">
             <Label>Year</Label>
             <Select value={String(year)} onValueChange={v => setYear(parseInt(v, 10) || 1)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -348,7 +356,7 @@ export default function TimetableBuilder() {
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className="sm:col-span-1">
             <Label>Semester</Label>
             <Select value={String(semester)} onValueChange={v => setSemester(parseInt(v, 10) || 1)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -358,7 +366,7 @@ export default function TimetableBuilder() {
               </SelectContent>
             </Select>
           </div>
-          <div>
+          <div className="sm:col-span-1">
             <Label>Intake</Label>
             <Select value={intakeType} onValueChange={v => setIntakeType(v as IntakeType)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -369,21 +377,21 @@ export default function TimetableBuilder() {
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-5 flex items-center gap-2">
-            <Button className="bg-[#015F2B]" onClick={ensureIntakeAndLoadCourses} disabled={coursesLoading || !programId}>
+          <div className="lg:col-span-5 flex flex-col sm:flex-row sm:items-center gap-2">
+            <Button className="bg-[#015F2B] w-full sm:w-auto" onClick={ensureIntakeAndLoadCourses} disabled={coursesLoading || !programId}>
               {coursesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               <span className="ml-2">Load courses</span>
             </Button>
-            <Button variant="outline" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId}>
               <Copy className="h-4 w-4" />
-              <span className="ml-2">Intake utilities</span>
+              <span className="ml-2">Copy timetable</span>
             </Button>
-            <Button variant="outline" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading}>
               {creatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              <span className="ml-2">Save all</span>
+              <span className="ml-2">Save timetable</span>
             </Button>
             {refsLoading && (
-              <span className="text-sm text-muted-foreground flex items-center gap-2">
+              <span className="text-sm text-muted-foreground flex items-center gap-2 sm:ml-2">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading lecturers/venues…
               </span>
             )}
@@ -453,11 +461,10 @@ export default function TimetableBuilder() {
       <Card>
         <CardHeader>
           <CardTitle>Schedule</CardTitle>
-          <CardDescription>Fill in each course slot. Server will block lecturer/venue clashes.</CardDescription>
         </CardHeader>
         <CardContent>
           {courses.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">Select a scope and load courses to begin.</div>
+            <div className="text-sm text-muted-foreground py-6">Select your timetable details above, then load courses to begin.</div>
           ) : (
             <div className="rounded-md border bg-white overflow-x-auto">
               <Table>

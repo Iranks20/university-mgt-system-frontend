@@ -70,6 +70,8 @@ export interface TimetableQuery {
   program?: string;
   year?: number;
   semester?: number;
+  intakeType?: 'Day' | 'Evening' | 'Weekend';
+  programIntakeId?: string;
   day?: string;
   courseCode?: string;
   page?: number;
@@ -126,6 +128,8 @@ export const timetableService = {
     if (query?.program) params.append('program', query.program);
     if (query?.year != null) params.append('year', String(query.year));
     if (query?.semester != null) params.append('semester', String(query.semester));
+    if (query?.intakeType) params.append('intakeType', query.intakeType);
+    if (query?.programIntakeId) params.append('programIntakeId', query.programIntakeId);
     if (query?.day) params.append('day', query.day);
     if (query?.courseCode) params.append('courseCode', query.courseCode);
     if (query?.page) params.append('page', String(query.page));
