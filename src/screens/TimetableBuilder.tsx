@@ -54,6 +54,8 @@ const DAYS: { value: string; label: string }[] = [
   { value: '0', label: 'Sunday' },
 ];
 
+const UNASSIGNED = '__unassigned__';
+
 export default function TimetableBuilder() {
   const [programs, setPrograms] = useState<ProgramLite[]>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
@@ -497,10 +499,13 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Select value={d?.lecturerId ?? ''} onValueChange={v => updateDraft(c.id, { lecturerId: v })}>
+                          <Select
+                            value={d?.lecturerId ? d.lecturerId : UNASSIGNED}
+                            onValueChange={v => updateDraft(c.id, { lecturerId: v === UNASSIGNED ? '' : v })}
+                          >
                             <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Unassigned</SelectItem>
+                              <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
                               {lecturers.map(l => (
                                 <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                               ))}
@@ -509,13 +514,13 @@ export default function TimetableBuilder() {
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={d?.venueId ?? ''}
-                            onValueChange={v => updateDraft(c.id, { venueId: v })}
+                            value={d?.venueId ? d.venueId : UNASSIGNED}
+                            onValueChange={v => updateDraft(c.id, { venueId: v === UNASSIGNED ? '' : v })}
                             disabled={(d?.deliveryMode ?? 'InPerson') === 'Online'}
                           >
                             <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Unassigned</SelectItem>
+                              <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
                               {venues.map(v => (
                                 <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                               ))}
