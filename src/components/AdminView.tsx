@@ -84,6 +84,7 @@ function StudentsTab({
   const [filterPrograms, setFilterPrograms] = useState<any[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [departments, setDepartments] = useState<{ id: string; name: string; code?: string; schoolId?: string; schoolName?: string }[]>([]);
@@ -447,24 +448,151 @@ function StudentsTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
-            <Label>Search</Label>
-            <Search className="absolute left-2.5 top-[38px] h-4 w-4 text-muted-foreground" />
+            <Label className="sr-only">Search</Label>
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Name, email or student number"
-              className="pl-8 mt-1"
+              placeholder="Search students (name, email, student number)"
+              className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex gap-3">
-            <div className="min-w-[220px]">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Button variant="outline" className="lg:hidden" onClick={() => setMobileFiltersOpen(true)}>
+              <Filter className="mr-2 h-4 w-4" /> Filters
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <MoreHorizontal className="mr-2 h-4 w-4" /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={async () => {
+                    setExporting(true);
+                    try {
+                      await studentService.exportStudentsExcel(buildQueryParams(), buildExportFilename());
+                      toast.success('Export downloaded');
+                    } catch (e: any) {
+                      toast.error(e?.message || 'Export failed');
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                  disabled={exporting}
+                >
+                  <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
+                    runQuery(1);
+                  }}
+                >
+                  <Filter className="mr-2 h-4 w-4" /> Clear filters
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" /> Import students
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Add Student
+            </Button>
+          </div>
+        </div>
+
+        <div className="hidden lg:flex gap-3 flex-wrap">
+          <div className="min-w-[240px]">
+            <Label className="sr-only">Program</Label>
+            <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
+              <SelectTrigger>
+                <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'Program (All)'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All programs</SelectItem>
+                {filterPrograms.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.code ? `${p.code} — ${p.name}` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[140px]">
+            <Label className="sr-only">Year</Label>
+            <Select value={filters.year} onValueChange={(v) => setFilters((f) => ({ ...f, year: v }))}>
+              <SelectTrigger><SelectValue placeholder="Year (All)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All years</SelectItem>
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <SelectItem key={i + 1} value={String(i + 1)}>{`Year ${i + 1}`}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[160px]">
+            <Label className="sr-only">Semester</Label>
+            <Select value={filters.semester} onValueChange={(v) => setFilters((f) => ({ ...f, semester: v }))}>
+              <SelectTrigger><SelectValue placeholder="Semester (All)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All semesters</SelectItem>
+                <SelectItem value="1">Semester 1</SelectItem>
+                <SelectItem value="2">Semester 2</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[150px]">
+            <Label className="sr-only">Intake</Label>
+            <Select value={filters.intakeType} onValueChange={(v) => setFilters((f) => ({ ...f, intakeType: v }))}>
+              <SelectTrigger><SelectValue placeholder="Intake (All)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All intakes</SelectItem>
+                <SelectItem value="Day">Day</SelectItem>
+                <SelectItem value="Evening">Evening</SelectItem>
+                <SelectItem value="Weekend">Weekend</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[160px]">
+            <Label className="sr-only">Status</Label>
+            <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
+              <SelectTrigger><SelectValue placeholder="Status (All)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All statuses</SelectItem>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Inactive">Inactive</SelectItem>
+                <SelectItem value="Suspended">Suspended</SelectItem>
+                <SelectItem value="Graduated">Graduated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Filters</DialogTitle>
+            <DialogDescription>Filter students by program, year, semester, intake and status.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+            <div className="sm:col-span-2">
               <Label>Program</Label>
               <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={filtersLoading ? 'Loading...' : 'All programs'} />
+                  <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'All programs'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">All programs</SelectItem>
@@ -476,51 +604,47 @@ function StudentsTab({
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="min-w-[140px]">
+            <div>
               <Label>Year</Label>
               <Select value={filters.year} onValueChange={(v) => setFilters((f) => ({ ...f, year: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="__all__">All years</SelectItem>
                   {Array.from({ length: 10 }).map((_, i) => (
                     <SelectItem key={i + 1} value={String(i + 1)}>{`Year ${i + 1}`}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="min-w-[160px]">
+            <div>
               <Label>Semester</Label>
               <Select value={filters.semester} onValueChange={(v) => setFilters((f) => ({ ...f, semester: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="__all__">All semesters</SelectItem>
                   <SelectItem value="1">Semester 1</SelectItem>
                   <SelectItem value="2">Semester 2</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="min-w-[150px]">
+            <div>
               <Label>Intake</Label>
               <Select value={filters.intakeType} onValueChange={(v) => setFilters((f) => ({ ...f, intakeType: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="__all__">All intakes</SelectItem>
                   <SelectItem value="Day">Day</SelectItem>
                   <SelectItem value="Evening">Evening</SelectItem>
                   <SelectItem value="Weekend">Weekend</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="min-w-[160px]">
+            <div>
               <Label>Status</Label>
               <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="__all__">All statuses</SelectItem>
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
                   <SelectItem value="Suspended">Suspended</SelectItem>
@@ -529,25 +653,7 @@ function StudentsTab({
               </Select>
             </div>
           </div>
-
-          <div className="flex gap-2 flex-wrap justify-end">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  await studentService.exportStudentsExcel(buildQueryParams(), buildExportFilename());
-                  toast.success('Export downloaded');
-                } catch (e: any) {
-                  toast.error(e?.message || 'Export failed');
-                } finally {
-                  setExporting(false);
-                }
-              }}
-              disabled={exporting}
-            >
-              <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
-            </Button>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => {
@@ -558,11 +664,12 @@ function StudentsTab({
             >
               Clear
             </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
-            <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Student</Button>
-          </div>
-        </div>
-      </div>
+            <Button className="bg-[#015F2B]" onClick={() => setMobileFiltersOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="rounded-md border bg-white">
         <Table>
