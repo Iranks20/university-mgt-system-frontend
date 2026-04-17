@@ -9,14 +9,72 @@ import type {
 } from '@/types/student';
 
 export const studentService = {
-  getStudents: async (params?: { search?: string; program?: string; year?: number; status?: string; page?: number; limit?: number }): Promise<{ data: Student[]; total: number; page: number; pageSize: number }> => {
+  getStudents: async (params?: {
+    search?: string;
+    program?: string;
+    programId?: string;
+    departmentId?: string;
+    year?: number;
+    semester?: number;
+    intakeType?: 'Day' | 'Evening' | 'Weekend';
+    programIntakeId?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: Student[]; total: number; page: number; pageSize: number }> => {
     try {
-      const response = await api.get<{ data: Student[]; total: number; page: number; pageSize: number }>('/students', params);
+      const cleaned =
+        params && typeof params === 'object'
+          ? Object.fromEntries(
+              Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== 'undefined')
+            )
+          : undefined;
+      const response = await api.get<{ data: Student[]; total: number; page: number; pageSize: number }>('/students', cleaned as any);
       return Array.isArray(response) ? { data: response, total: response.length, page: 1, pageSize: response.length } : response;
     } catch (error) {
       console.error('Error fetching students:', error);
       return { data: [], total: 0, page: 1, pageSize: 20 };
     }
+  },
+
+  exportStudentsExcel: async (params?: {
+    search?: string;
+    programId?: string;
+    departmentId?: string;
+    year?: number;
+    semester?: number;
+    intakeType?: 'Day' | 'Evening' | 'Weekend';
+    programIntakeId?: string;
+    status?: string;
+  }, filename?: string): Promise<void> => {
+    const token = localStorage.getItem('kcu-token');
+    const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.programId) qs.set('programId', params.programId);
+    if (params?.departmentId) qs.set('departmentId', params.departmentId);
+    if (params?.year != null) qs.set('year', String(params.year));
+    if (params?.semester != null) qs.set('semester', String(params.semester));
+    if (params?.intakeType) qs.set('intakeType', params.intakeType);
+    if (params?.programIntakeId) qs.set('programIntakeId', params.programIntakeId);
+    if (params?.status) qs.set('status', params.status);
+
+    const response = await fetch(`${base}/students/export?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.message || 'Export failed');
+    }
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename && filename.trim() ? filename.trim() : 'students_export.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
   },
 
   getStudentById: async (id: string): Promise<Student | null> => {

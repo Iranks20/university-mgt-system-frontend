@@ -61,9 +61,29 @@ function StudentsTab({
   studentsPage: number;
   studentsTotal: number;
   pageSize: number;
-  loadStudents: (page: number) => Promise<void>;
+  loadStudents: (
+    page: number,
+    params?: {
+      search?: string;
+      programId?: string;
+      year?: number;
+      semester?: number;
+      intakeType?: 'Day' | 'Evening' | 'Weekend';
+      status?: string;
+    }
+  ) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState<{
+    programId: string;
+    year: string;
+    semester: string;
+    intakeType: string;
+    status: string;
+  }>({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
+  const [filterPrograms, setFilterPrograms] = useState<any[]>([]);
+  const [filtersLoading, setFiltersLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [departments, setDepartments] = useState<{ id: string; name: string; code?: string; schoolId?: string; schoolName?: string }[]>([]);
@@ -118,6 +138,67 @@ function StudentsTab({
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    const loadFilterPrograms = async () => {
+      setFiltersLoading(true);
+      try {
+        const res = await academicService.getPrograms();
+        const arr = Array.isArray(res) ? res : (res as any)?.data ?? [];
+        setFilterPrograms(arr);
+      } catch {
+        setFilterPrograms([]);
+      } finally {
+        setFiltersLoading(false);
+      }
+    };
+    loadFilterPrograms();
+  }, []);
+
+  const buildQueryParams = () => {
+    const params: {
+      search?: string;
+      programId?: string;
+      year?: number;
+      semester?: number;
+      intakeType?: 'Day' | 'Evening' | 'Weekend';
+      status?: string;
+    } = {};
+    const s = searchTerm.trim();
+    if (s) params.search = s;
+    if (filters.programId !== '__all__') params.programId = filters.programId;
+    if (filters.year !== '__all__') params.year = parseInt(filters.year, 10);
+    if (filters.semester !== '__all__') params.semester = parseInt(filters.semester, 10);
+    if (filters.intakeType !== '__all__') params.intakeType = filters.intakeType as 'Day' | 'Evening' | 'Weekend';
+    if (filters.status !== '__all__') params.status = filters.status;
+    return params;
+  };
+
+  const buildExportFilename = () => {
+    const parts: string[] = ['students'];
+    const program = filters.programId !== '__all__' ? filterPrograms.find((p: any) => p.id === filters.programId) : null;
+    if (program?.code) parts.push(String(program.code).replace(/\s+/g, ''));
+    const y = filters.year !== '__all__' ? `Y${filters.year}` : '';
+    const s = filters.semester !== '__all__' ? `S${filters.semester}` : '';
+    if (y) parts.push(y);
+    if (s) parts.push(s);
+    if (filters.intakeType !== '__all__') parts.push(filters.intakeType);
+    if (filters.status !== '__all__') parts.push(filters.status);
+    const today = new Date().toISOString().slice(0, 10);
+    parts.push(today);
+    return `${parts.join('_')}.xlsx`;
+  };
+
+  const runQuery = (pageNum: number) => {
+    loadStudents(pageNum, buildQueryParams());
+  };
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      runQuery(1);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [searchTerm, filters.programId, filters.year, filters.semester, filters.intakeType, filters.status]);
 
   // Load all programs once when the import dialog is opened
   useEffect(() => {
@@ -250,11 +331,7 @@ function StudentsTab({
     }
   }, [editOpen, editingStudent, programs, editForm.programId]);
 
-  const filteredStudents = students.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.studentId.includes(searchTerm) ||
-    s.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const listStudents = students;
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,16 +446,124 @@ function StudentsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search students..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
-          <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Student</Button>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+          <div className="relative flex-1 min-w-[240px]">
+            <Label>Search</Label>
+            <Search className="absolute left-2.5 top-[38px] h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Name, email or student number"
+              className="pl-8 mt-1"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex gap-3">
+            <div className="min-w-[220px]">
+              <Label>Program</Label>
+              <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder={filtersLoading ? 'Loading...' : 'All programs'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All programs</SelectItem>
+                  {filterPrograms.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.code ? `${p.code} — ${p.name}` : p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[140px]">
+              <Label>Year</Label>
+              <Select value={filters.year} onValueChange={(v) => setFilters((f) => ({ ...f, year: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All</SelectItem>
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <SelectItem key={i + 1} value={String(i + 1)}>{`Year ${i + 1}`}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[160px]">
+              <Label>Semester</Label>
+              <Select value={filters.semester} onValueChange={(v) => setFilters((f) => ({ ...f, semester: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="1">Semester 1</SelectItem>
+                  <SelectItem value="2">Semester 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[150px]">
+              <Label>Intake</Label>
+              <Select value={filters.intakeType} onValueChange={(v) => setFilters((f) => ({ ...f, intakeType: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="Day">Day</SelectItem>
+                  <SelectItem value="Evening">Evening</SelectItem>
+                  <SelectItem value="Weekend">Weekend</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[160px]">
+              <Label>Status</Label>
+              <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All</SelectItem>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="Suspended">Suspended</SelectItem>
+                  <SelectItem value="Graduated">Graduated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-wrap justify-end">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await studentService.exportStudentsExcel(buildQueryParams(), buildExportFilename());
+                  toast.success('Export downloaded');
+                } catch (e: any) {
+                  toast.error(e?.message || 'Export failed');
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchTerm('');
+                setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
+                runQuery(1);
+              }}
+            >
+              Clear
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
+            <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Student</Button>
+          </div>
         </div>
       </div>
+
       <div className="rounded-md border bg-white">
         <Table>
           <TableHeader>
@@ -392,7 +577,7 @@ function StudentsTab({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredStudents.map((student) => (
+            {listStudents.map((student) => (
               <TableRow key={student.id}>
                 <TableCell className="font-medium">
                   <div className="flex items-center gap-3">
@@ -462,13 +647,23 @@ function StudentsTab({
               {studentsTotal} total
             </span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={studentsPage <= 1} onClick={() => loadStudents(studentsPage - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={studentsPage <= 1}
+                onClick={() => runQuery(studentsPage - 1)}
+              >
                 Previous
               </Button>
               <span className="text-sm">
                 Page {studentsPage} of {Math.max(1, Math.ceil(studentsTotal / pageSize))}
               </span>
-              <Button variant="outline" size="sm" disabled={studentsPage >= Math.ceil(studentsTotal / pageSize)} onClick={() => loadStudents(studentsPage + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={studentsPage >= Math.ceil(studentsTotal / pageSize)}
+                onClick={() => runQuery(studentsPage + 1)}
+              >
                 Next
               </Button>
             </div>
@@ -6016,9 +6211,19 @@ export default function AdminView({
   const [enrollmentsByClassId, setEnrollmentsByClassId] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadStudents = async (page: number) => {
+  const loadStudents = async (
+    page: number,
+    params?: {
+      search?: string;
+      programId?: string;
+      year?: number;
+      semester?: number;
+      intakeType?: 'Day' | 'Evening' | 'Weekend';
+      status?: string;
+    }
+  ) => {
     try {
-      const res = await studentService.getStudents({ page, limit: LIST_PAGE_SIZE });
+      const res = await studentService.getStudents({ page, limit: LIST_PAGE_SIZE, ...params });
       const data = res.data || res;
       setStudents(Array.isArray(data) ? data.map((s: any) => ({
         id: s.id,
