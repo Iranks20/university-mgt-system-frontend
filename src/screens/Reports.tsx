@@ -332,7 +332,8 @@ export default function Reports() {
             <Button className="bg-[#015F2B] hover:bg-[#014022] gap-2" onClick={async () => {
               try {
                 const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
-                toast.success(`Report generated successfully! ID: ${report.id}`);
+                await reportService.downloadReport(report.id, 'csv');
+                toast.success('Report saved and downloaded as CSV.');
                 // Refresh reports list
                 const reports = await reportService.getReports();
                 const reportList = Array.isArray(reports) ? reports : [];
@@ -609,7 +610,7 @@ export default function Reports() {
                     <TableRow>
                       <TableHead>Report Name</TableHead>
                       <TableHead>Date Generated</TableHead>
-                      <TableHead>Format</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead className="text-right">Action</TableHead>
                     </TableRow>
@@ -631,16 +632,30 @@ export default function Reports() {
                           </TableCell>
                           <TableCell>—</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={async () => {
-                              try {
-                                await reportService.downloadReport(report.id);
-                              } catch (error: any) {
-                                console.error('Error downloading report:', error);
-                                toast.error(`Failed to download: ${error?.message || 'Unknown error'}`);
-                              }
-                            }}>
-                              <Download size={16} />
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-8 px-2 gap-1" title="Download CSV" onClick={async () => {
+                                try {
+                                  await reportService.downloadReport(report.id, 'csv');
+                                  toast.success('CSV downloaded');
+                                } catch (error: any) {
+                                  console.error('Error downloading report:', error);
+                                  toast.error(`Failed to download: ${error?.message || 'Unknown error'}`);
+                                }
+                              }}>
+                                <Download size={14} /> CSV
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 px-2" title="Download Excel" onClick={async () => {
+                                try {
+                                  await reportService.downloadReport(report.id, 'xlsx');
+                                  toast.success('Excel downloaded');
+                                } catch (error: any) {
+                                  console.error('Error downloading report:', error);
+                                  toast.error(`Failed to download: ${error?.message || 'Unknown error'}`);
+                                }
+                              }}>
+                                XLSX
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

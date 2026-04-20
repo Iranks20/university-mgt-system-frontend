@@ -172,11 +172,15 @@ export default function StudentRecords() {
   };
 
   const presentInList = records.filter(r => r.status === 'Present').length;
+  const lateInList = records.filter(r => r.status === 'Late').length;
   const absentInList = records.filter(r => r.status === 'Absent').length;
+  const excusedInList = records.filter(r => r.status === 'Excused').length;
   const uniqueStudents = new Set(records.map(r => r.studentId)).size;
-  const attendanceRatePct = (presentInList + absentInList) > 0
-    ? Math.round((presentInList / (presentInList + absentInList)) * 1000) / 10
-    : (records.length > 0 ? Math.round((records.filter(r => r.status === 'Present').length / records.length) * 1000) / 10 : 0);
+  const effectiveAttendedInList = presentInList + 0.5 * lateInList;
+  const expectedInList = Math.max(0, records.length - excusedInList);
+  const attendanceRatePct = expectedInList > 0
+    ? Math.round((effectiveAttendedInList / expectedInList) * 1000) / 10
+    : 0;
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this attendance record?')) return;

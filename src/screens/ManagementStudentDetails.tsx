@@ -65,12 +65,15 @@ export default function ManagementStudentDetails() {
               // Fetch attendance records for this student
               const attendanceRecords = await studentService.getStudentAttendance(s.id);
               const presentRecords = attendanceRecords.filter((a: any) => a.status === 'Present');
+              const lateRecords = attendanceRecords.filter((a: any) => a.status === 'Late');
+              const excusedRecords = attendanceRecords.filter((a: any) => a.status === 'Excused');
               
               totalLectures = attendanceRecords.length;
-              attendedLectures = presentRecords.length;
+              const expectedLectures = Math.max(0, totalLectures - excusedRecords.length);
+              attendedLectures = presentRecords.length + 0.5 * lateRecords.length;
               
-              if (totalLectures > 0) {
-                attendance = Math.round((attendedLectures / totalLectures) * 100);
+              if (expectedLectures > 0) {
+                attendance = Math.round((attendedLectures / expectedLectures) * 100);
               }
               
               // Calculate status based on attendance rate

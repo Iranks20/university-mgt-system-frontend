@@ -114,8 +114,10 @@ export default function Timetable() {
     try {
       setLoading(true);
       let data: any[] = [];
-      if (role === 'Student' || role === 'Lecturer') {
+      if (role === 'Student') {
         data = await timetableService.getMyTimetable();
+      } else if (role === 'Lecturer') {
+        data = await academicService.getTimetable();
       } else if (role === 'QA') {
         const result = await timetableService.getTimetable({ page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' });
         data = result.data || [];

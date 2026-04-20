@@ -324,7 +324,8 @@ export const studentService = {
 
   markAttendance: async (data: { classId: string; latitude: number; longitude: number; timestamp: string }): Promise<StudentAttendance> => {
     try {
-      return await api.post<StudentAttendance>('/students/attendance/mark', data);
+      const res = await api.post<any>('/students/attendance/mark', data);
+      return (res as any)?.data ?? res;
     } catch (error) {
       console.error('Error marking attendance:', error);
       throw error;

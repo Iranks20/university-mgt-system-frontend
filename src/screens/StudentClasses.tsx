@@ -42,15 +42,19 @@ export default function StudentClasses() {
       const classesWithAttendance = await Promise.all(
         enrollments.map(async (enrollment: any) => {
           const classData = enrollment.class;
-          const studentId = enrollment.studentId ?? user?.id;
+          const studentId = enrollment.studentId ?? student.id;
           let attendance = 0;
           try {
             const attendanceRecords = await studentService.getStudentAttendance(studentId, {
               classId: enrollment.classId,
             });
             const presentCount = attendanceRecords.filter((r: any) => r.status === 'Present').length;
+            const lateCount = attendanceRecords.filter((r: any) => r.status === 'Late').length;
+            const excusedCount = attendanceRecords.filter((r: any) => r.status === 'Excused').length;
             const totalCount = attendanceRecords.length;
-            attendance = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+            const expectedCount = Math.max(0, totalCount - excusedCount);
+            const attended = presentCount + 0.5 * lateCount;
+            attendance = expectedCount > 0 ? Math.round((attended / expectedCount) * 100) : 0;
           } catch (err) {
             console.warn('Could not load attendance for class', enrollment.classId, err);
           }

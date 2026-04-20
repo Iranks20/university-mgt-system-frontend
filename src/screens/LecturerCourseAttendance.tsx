@@ -34,11 +34,7 @@ export default function LecturerCourseAttendance() {
         return;
       }
       
-      const lecturerClassIds = new Set(timetable.map((item: any) => item.id));
-      
-      const classesRes = await academicService.getClasses({ limit: 50 });
-      const allClasses = classesRes.data ?? [];
-      const lecturerClasses = allClasses.filter((c: any) => lecturerClassIds.has(c.id));
+      const lecturerClasses = timetable;
       
       const coursesWithStats = await Promise.all(
         lecturerClasses.map(async (classData: any) => {
@@ -67,8 +63,12 @@ export default function LecturerCourseAttendance() {
               if (attendance && attendance.length > 0) {
                 hasAttendanceData = true;
                 const present = attendance.filter((a: any) => a.status === 'Present').length;
-                totalAttendance += present;
-                totalSessions += attendance.length;
+                const late = attendance.filter((a: any) => a.status === 'Late').length;
+                const excused = attendance.filter((a: any) => a.status === 'Excused').length;
+                const expected = Math.max(0, attendance.length - excused);
+                const attended = present + 0.5 * late;
+                totalAttendance += attended;
+                totalSessions += expected;
               }
             } catch (error) {
               // Skip students with no attendance data
@@ -98,6 +98,7 @@ export default function LecturerCourseAttendance() {
                 // Fetch actual attendance data for this session
                 let present: number | null = null;
                 let absent: number | null = null;
+                let late: number | null = null;
                 
                 try {
                   // Get attendance records for this class on this date
@@ -119,20 +120,24 @@ export default function LecturerCourseAttendance() {
                     
                     const attendanceResults = await Promise.all(attendancePromises);
                     const presentRecords = attendanceResults.filter((a: any) => a && a.status === 'Present');
+                    const lateRecords = attendanceResults.filter((a: any) => a && a.status === 'Late');
                     const absentRecords = attendanceResults.filter((a: any) => a && a.status === 'Absent');
                     
-                    present = presentRecords.length;
+                    late = lateRecords.length;
+                    present = presentRecords.length + lateRecords.length;
                     absent = absentRecords.length;
                   } else {
                     // No real data available - set to null to show "—"
                     present = null;
                     absent = null;
+                    late = null;
                   }
                 } catch (error) {
                   console.warn(`Error fetching attendance for session ${record.id}:`, error);
                   // No real data available - set to null to show "—"
                   present = null;
                   absent = null;
+                  late = null;
                 }
                 
                 return {
@@ -140,6 +145,7 @@ export default function LecturerCourseAttendance() {
                   topic: record.courseUnit || record.class || record.className || '—',
                   present: present ?? null, // null means no real data available
                   absent: absent ?? null, // null means no real data available
+                  late: late ?? null,
                   hasRealData: present !== null && absent !== null, // Track if we have real data
                   recordId: record.id,
                 };
@@ -350,7 +356,7 @@ export default function LecturerCourseAttendance() {
                     </p>
                     <p className="text-sm text-gray-500">
                       Attendance rate: {selectedSession.present + selectedSession.absent > 0 
-                        ? Math.round((selectedSession.present / (selectedSession.present + selectedSession.absent)) * 100)
+                        ? Math.round(((selectedSession.present - 0.5 * (selectedSession.late ?? 0)) / (selectedSession.present + selectedSession.absent)) * 100)
                         : 0}%
                     </p>
                   </div>

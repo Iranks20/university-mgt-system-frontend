@@ -707,7 +707,11 @@ function StudentDashboard() {
                 const att = await studentService.getStudentAttendance(student.id, { classId: classItem.id });
                 const arr = Array.isArray(att) ? att : [];
                 const present = arr.filter((r: any) => r.status === 'Present').length;
-                attendancePct = arr.length > 0 ? Math.round((present / arr.length) * 100) : 0;
+                const late = arr.filter((r: any) => r.status === 'Late').length;
+                const excused = arr.filter((r: any) => r.status === 'Excused').length;
+                const expected = Math.max(0, arr.length - excused);
+                const attended = present + 0.5 * late;
+                attendancePct = expected > 0 ? Math.round((attended / expected) * 100) : 0;
               } catch (_) {}
             }
             const status = live ? 'Live' : attendancePct >= attThresholds.present ? 'Present' : attendancePct > attThresholds.atRisk ? 'At Risk' : 'Upcoming';

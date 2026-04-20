@@ -4,16 +4,14 @@ import type { Report, ReportFilter } from '@/types';
 export const reportService = {
   generateReport: async (
     type: Report['type'] | string,
-    title: string,
+    _title: string,
     filters: ReportFilter,
-    data: unknown
+    _data?: unknown
   ): Promise<Report> => {
     try {
       return await api.post<Report>('/reports', {
         type,
-        title,
-        filters,
-        data,
+        filters: filters ?? {},
       });
     } catch (error) {
       console.error('Error generating report:', error);
@@ -63,19 +61,38 @@ export const reportService = {
     }
   },
 
-  downloadReport: async (id: string): Promise<void> => {
+  downloadReport: async (id: string, format: 'csv' | 'xlsx' = 'csv'): Promise<void> => {
     try {
       const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
-      const response = await fetch(`${base}/reports/${id}/download`, {
+      const q = format === 'xlsx' ? '?format=xlsx' : '?format=csv';
+      const response = await fetch(`${base}/reports/${id}/download${q}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('kcu-token')}`,
         },
       });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error((err as any)?.message || 'Download failed');
+      }
+      let filename = `report_${id}.${format === 'xlsx' ? 'xlsx' : 'csv'}`;
+      const cd = response.headers.get('Content-Disposition');
+      if (cd) {
+        const utfMatch = cd.match(/filename\\*=(?:UTF-8'')?([^;]+)/i);
+        const asciiMatch = cd.match(/filename="([^"]+)"/i);
+        const raw = utfMatch?.[1] || asciiMatch?.[1];
+        if (raw) {
+          try {
+            filename = decodeURIComponent(raw.trim());
+          } catch {
+            filename = raw.trim();
+          }
+        }
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `report-${id}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

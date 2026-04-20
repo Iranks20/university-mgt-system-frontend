@@ -48,12 +48,23 @@ function AttendanceHistoryContent() {
     const load = async () => {
       setHistoryLoading(true);
       try {
-        const enrollments = await enrollmentService.getStudentEnrollments(user.id);
-        const studentId = (enrollments as { studentId?: string }[])?.[0]?.studentId;
-        if (!studentId) {
+        const student = await studentService.getStudentByUserId();
+        if (!student?.id) {
           setStudentHistory([]);
           return;
         }
+        const studentId = student.id;
+
+        const enrollments = await enrollmentService.getStudentEnrollments(studentId);
+        const byClassId = new Map(
+          (enrollments as any[]).map((e: any) => [
+            e.classId,
+            {
+              code: e?.class?.course?.code ?? '',
+              name: e?.class?.course?.name ?? e?.class?.name ?? '',
+            },
+          ])
+        );
         const params: any = {};
         if (dateFrom) params.startDate = dateFrom.toISOString().split('T')[0];
         if (dateTo) params.endDate = dateTo.toISOString().split('T')[0];
@@ -63,7 +74,7 @@ function AttendanceHistoryContent() {
           id: r.id,
           date: r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
           time: r.markedAt ? new Date(r.markedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—',
-          course: r.courseCode || r.classId || '—',
+          course: byClassId.get(r.classId)?.code || r.classId || '—',
           type: 'Lecture',
           location: r.location || '—',
           status: r.status || 'Present',
@@ -232,7 +243,7 @@ function AttendanceHistoryContent() {
                 <div>
                    <p className="text-xs font-medium text-muted-foreground">Total Present</p>
                    <h3 className="text-2xl font-bold text-[#015F2B]">
-                     {data.filter((d: any) => d.status === 'Present').length}
+                     {data.filter((d: any) => d.status === 'Present' || d.status === 'Late').length}
                    </h3>
                 </div>
                 <CheckCircle className="text-[#015F2B] opacity-20 h-8 w-8" />

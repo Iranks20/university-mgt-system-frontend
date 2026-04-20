@@ -23,6 +23,8 @@ function PresenceContent() {
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [attendanceRecorded, setAttendanceRecorded] = useState(false);
+  const [studentAttendanceKnown, setStudentAttendanceKnown] = useState(false);
+  const [attendanceWasAlreadyRecorded, setAttendanceWasAlreadyRecorded] = useState(false);
   const [lectureRecordId, setLectureRecordId] = useState<string | null>(null);
   type CurrentClass = { id?: string; course: string; code: string; venue: string; time: string; lecturer: string };
   const [currentClass, setCurrentClass] = useState<CurrentClass | null>(null);
@@ -90,6 +92,30 @@ function PresenceContent() {
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const checkStudentAlreadyMarked = async () => {
+      if (role !== 'Student' || !currentClass?.id) return;
+      setStudentAttendanceKnown(false);
+      try {
+        const student = await studentService.getStudentByUserId();
+        if (!student?.id) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const list = await studentService.getStudentAttendance(student.id, {
+          classId: currentClass.id,
+          startDate: today,
+          endDate: today,
+        });
+        const already = Array.isArray(list) && list.length > 0;
+        setAttendanceRecorded(already);
+        setAttendanceWasAlreadyRecorded(already);
+      } catch {
+      } finally {
+        setStudentAttendanceKnown(true);
+      }
+    };
+    checkStudentAlreadyMarked();
+  }, [role, currentClass?.id]);
 
   useEffect(() => {
     if (role !== 'Lecturer' || !currentClass?.id) return;
@@ -314,12 +340,17 @@ function PresenceContent() {
           timestamp: new Date().toISOString(),
         });
         setAttendanceRecorded(true);
+        setAttendanceWasAlreadyRecorded(false);
         toast.success('Attendance marked successfully');
       } catch (error: any) {
         console.error('Error marking attendance:', error);
         const code = (error as any)?.code;
         if (code === 'LOCATION_VERIFICATION_FAILED') {
           toast.error(error?.message || 'Location verification failed. You must be within the allowed zone.');
+        } else if (code === 'ATTENDANCE_ALREADY_MARKED') {
+          setAttendanceRecorded(true);
+          setAttendanceWasAlreadyRecorded(true);
+          toast.info('Attendance was already marked for this class today.');
         } else {
           toast.error(error?.message || 'Failed to mark attendance');
         }
@@ -494,7 +525,7 @@ function PresenceContent() {
                     <Button
                       onClick={handleMarkAttendance}
                       className="w-full bg-[#015F2B] hover:bg-[#014022] h-12 text-lg"
-                      disabled={locationLoading || attendanceRecorded}
+                      disabled={locationLoading || !studentAttendanceKnown || attendanceRecorded}
                     >
                       {locationLoading ? (
                         <>
@@ -505,6 +536,11 @@ function PresenceContent() {
                         <>
                           <CheckCircle className="mr-2 h-5 w-5" />
                           Attendance Marked
+                        </>
+                      ) : !studentAttendanceKnown ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          Checking...
                         </>
                       ) : (
                         <>
@@ -537,12 +573,21 @@ function PresenceContent() {
                     <CheckCircle className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">Attendance Marked!</h3>
-                    <p className="text-gray-500 mt-2">Your presence for <span className="font-medium text-gray-900">{currentClass?.course ?? 'this session'}</span> has been recorded.</p>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      {attendanceWasAlreadyRecorded ? 'Attendance already recorded' : 'Attendance marked'}
+                    </h3>
+                    <p className="text-gray-500 mt-2">
+                      {attendanceWasAlreadyRecorded ? (
+                        <>
+                          You already recorded attendance for <span className="font-medium text-gray-900">{currentClass?.course ?? 'this class'}</span> today.
+                        </>
+                      ) : (
+                        <>
+                          Your presence for <span className="font-medium text-gray-900">{currentClass?.course ?? 'this session'}</span> has been recorded.
+                        </>
+                      )}
+                    </p>
                   </div>
-                  <Button variant="outline" onClick={() => { setAttendanceRecorded(false); }} className="gap-2">
-                    Mark Another <ArrowRight size={16} />
-                  </Button>
                 </div>
               </CardContent>
             )}
