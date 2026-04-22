@@ -22,11 +22,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if [ ! -s package-lock.json ]; then
+            echo "::error::package-lock.json is missing or empty. Run npm install and commit package-lock.json"
+            exit 1
+          fi
+          npm ci
 
       - name: Typecheck and production build
         run: npm run build
@@ -55,6 +61,6 @@ jobs:
             git fetch origin
             git checkout "${{ github.ref_name }}"
             git pull --ff-only origin "${{ github.ref_name }}"
-            npm ci
+            CI=true npm ci
             npm run build
             rsync -a --delete dist/ /var/www/kcu-mgt-frontend/

@@ -3,6 +3,10 @@
 const { join } = require('path');
 const { execSync } = require('child_process');
 
+if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+  process.exit(0);
+}
+
 const root = join(__dirname, '..');
 
 function readRollupVersion() {
