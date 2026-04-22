@@ -7,25 +7,37 @@ import RoleProvider, { useRole } from './RoleProvider';
 type ProtectedRouteProps = {
   children: React.ReactNode;
   allowedRoles?: string[];
+  requiredPermissions?: string[];
+  requiredPermissionSets?: string[][];
 };
 
-// Inner component that can use RoleProvider context
-function ProtectedRouteContent({ children, allowedRoles }: ProtectedRouteProps) {
+function ProtectedRouteContent({ children, allowedRoles, requiredPermissions, requiredPermissionSets }: ProtectedRouteProps) {
   const { role } = useRole();
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   
-  // Use role from RoleProvider if available, otherwise fall back to AuthContext
   const currentRole = role || userRole;
+  const permissions = user?.permissions || [];
+  const enforcePermissions = String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true';
 
-  if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
-    // Redirect to dashboard if user doesn't have access to this route
-    return <Navigate to="/dashboard" replace />;
+  if (enforcePermissions) {
+    const have = new Set(permissions);
+    if (requiredPermissionSets && requiredPermissionSets.length > 0) {
+      const ok = requiredPermissionSets.some((set) => set.length > 0 && set.every((p) => have.has(p)));
+      if (!ok) return <Navigate to="/dashboard" replace />;
+    } else if (requiredPermissions && requiredPermissions.length > 0) {
+      const ok = requiredPermissions.some((p) => have.has(p));
+      if (!ok) return <Navigate to="/dashboard" replace />;
+    }
+  } else {
+    if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   return <>{children}</>;
 }
 
-export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, allowedRoles, requiredPermissions, requiredPermissionSets }: ProtectedRouteProps) {
   const { isAuthenticated, userRole } = useAuth();
 
   if (!isAuthenticated) {
@@ -35,7 +47,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   return (
     <RoleProvider>
       <AppShell>
-        <ProtectedRouteContent allowedRoles={allowedRoles}>
+        <ProtectedRouteContent allowedRoles={allowedRoles} requiredPermissions={requiredPermissions} requiredPermissionSets={requiredPermissionSets}>
           {children}
         </ProtectedRouteContent>
       </AppShell>

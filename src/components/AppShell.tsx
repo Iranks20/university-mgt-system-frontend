@@ -37,6 +37,7 @@ const ADMIN_USERS_CHILD_PATHS = [
   '/admin-staff-role',
   '/admin-staff',
   '/admin-users',
+  '/admin-roles',
 ] as const;
 
 function isPathUnderAdminUsersSection(pathname: string): boolean {
@@ -48,6 +49,51 @@ type SidebarChild = { label: string; path: string; icon: LucideIcon };
 type SidebarItem =
   | { type: 'single'; label: string; path: string; icon: LucideIcon }
   | { type: 'folder'; id: string; label: string; icon: LucideIcon; children: SidebarChild[] };
+
+const NAV_PERMISSION: Record<string, string[] | string[][]> = {
+  '/admin-users': ['admin.console'],
+  '/admin-roles': ['admin.console'],
+  '/admin-students': ['admin.console'],
+  '/admin-lecturers': ['admin.console'],
+  '/admin-staff-role': ['admin.console'],
+  '/admin-staff': ['admin.console'],
+  '/admin-courses': ['academic.write'],
+  '/admin-classes': ['academic.write'],
+  '/admin-timetables': ['timetable.ops'],
+  '/admin-schools': ['academic.write'],
+  '/admin-venues': ['academic.venues'],
+  '/admin-calendar': ['academic.write'],
+  '/admin-strategic-goals': ['admin.console'],
+  '/admin-settings': ['settings.read'],
+  '/timetable': [['timetable.student_me'], ['academic.personal_schedule', 'qa.lecturer_portal'], ['timetable.ops']],
+  '/timetable-builder': [['academic.read', 'academic.venues', 'academic.program_intakes', 'academic.write', 'staff.read']],
+  '/lecture-records': [['qa.review', 'qa.write', 'qa.import', 'staff.read', 'enrollment.class_read', 'students.attendance_staff']],
+  '/student-records': [['students.read', 'students.attendance_staff', 'academic.read']],
+  '/reports': [['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops']],
+  '/management-overview': [['analytics.mgmt_overview']],
+  '/management-departments': [['academic.read', 'academic.mgmt_read']],
+  '/management-staff-performance': [['staff.read', 'reports.access']],
+  '/management-lecturer-performance': [['settings.read', 'staff.read', 'qa.review', 'analytics.ops', 'academic.mgmt_read', 'reports.access']],
+  '/management-student-performance': [['students.read', 'analytics.ops', 'analytics.mgmt_overview', 'settings.read', 'reports.access']],
+  '/cancellations': [['cancellations.lecturer', 'timetable.lecturer_me'], ['cancellations.queue'], ['cancellations.queue', 'cancellations.decide']],
+  '/curriculum-management': ['academic.read'],
+  '/lecturer-course-attendance': [['academic.personal_schedule', 'enrollment.class_read', 'qa.review', 'students.attendance_staff']],
+  '/lecturer-performance': [['analytics.lecturer_private', 'staff.lecturer_me']],
+  '/student-classes': [['students.self', 'enrollment.self', 'settings.read', 'students.attendance_self']],
+  '/student-history': [['students.self', 'enrollment.self', 'students.attendance_self'], ['staff.timeclock']],
+  '/presence': [['academic.personal_schedule', 'qa.lecturer_portal'], ['academic.personal_schedule', 'students.self', 'students.attendance_self'], ['staff.timeclock']],
+};
+
+function hasAnyPermission(userPermissions: string[] | undefined, required: string[] | string[][] | undefined): boolean {
+  if (!required || (Array.isArray(required) && required.length === 0)) return true;
+  const have = new Set(userPermissions || []);
+  if (Array.isArray(required) && Array.isArray(required[0])) {
+    const sets = required as string[][];
+    return sets.some((set) => set.length > 0 && set.every((p) => have.has(p)));
+  }
+  const list = required as string[];
+  return list.some((p) => have.has(p));
+}
 
 function getHeaderTitle(pathname: string, items: SidebarItem[]): string {
   for (const item of items) {
@@ -244,6 +290,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               { label: 'Staff', path: '/admin-staff-role', icon: UsersRound },
               { label: 'Non-teaching staff', path: '/admin-staff', icon: Briefcase },
               { label: 'System accounts', path: '/admin-users', icon: UserCog },
+              { label: 'Roles & Permissions', path: '/admin-roles', icon: KeyRound },
             ],
           },
           { type: 'single', label: 'Courses', icon: BookOpen, path: '/admin-courses' },
@@ -266,12 +313,29 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   const navItems = getNavItems(role);
+  const enforcePermissions = String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true';
+  const userPermissions = user?.permissions || [];
+  const allowedByPermission = (path: string) => {
+    if (!enforcePermissions) return true;
+    return hasAnyPermission(userPermissions, NAV_PERMISSION[path]);
+  };
+  const filteredNavItems = enforcePermissions
+    ? navItems
+        .map((item) => {
+          if (item.type === 'single') {
+            return allowedByPermission(item.path) ? item : null;
+          }
+          const children = item.children.filter((c) => allowedByPermission(c.path));
+          return children.length ? { ...item, children } : null;
+        })
+        .filter(Boolean) as SidebarItem[]
+    : navItems;
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
-  const headerPageTitle = getHeaderTitle(location.pathname, navItems);
+  const headerPageTitle = getHeaderTitle(location.pathname, filteredNavItems);
 
   const renderNavLinks = (onNavigate?: () => void) =>
-    navItems.map(item => {
+    filteredNavItems.map(item => {
       if (item.type === 'single') {
         const isActive =
           location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);

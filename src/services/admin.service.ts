@@ -6,6 +6,49 @@ export interface SystemSettings {
   };
 }
 
+export type AdminRole = 'QA' | 'Lecturer' | 'Student' | 'Staff' | 'Management' | 'Admin';
+
+export interface RolePermissionsSnapshot {
+  roles: AdminRole[];
+  permissions: string[];
+  permissionGroups?: Array<{ key: string; label: string; codes: string[] }>;
+  byRole: Record<string, string[]>;
+}
+
+export interface PermissionGroupRow {
+  id: string;
+  key: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PermissionCatalogRow {
+  id: string;
+  code: string;
+  label: string | null;
+  description: string | null;
+  groupId: string | null;
+  group: { id: string; key: string; name: string; sortOrder: number; isActive: boolean } | null;
+  sortOrder: number;
+  isVisible: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CustomRoleRow {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  userCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export const adminService = {
   getSettings: async (): Promise<SystemSettings> => {
     try {
@@ -138,6 +181,99 @@ export const adminService = {
       console.error('Error updating strategic goals:', error);
       throw error;
     }
+  },
+
+  getRolePermissions: async (): Promise<RolePermissionsSnapshot> => {
+    try {
+      const response = await api.get<{ data: RolePermissionsSnapshot }>('/admin/role-permissions');
+      const data = response?.data ?? response;
+      return data as RolePermissionsSnapshot;
+    } catch (error) {
+      console.error('Error fetching role permissions:', error);
+      throw error;
+    }
+  },
+
+  listPermissionGroups: async (params?: { includeInactive?: boolean }): Promise<PermissionGroupRow[]> => {
+    const query = new URLSearchParams();
+    if (params?.includeInactive) query.set('includeInactive', 'true');
+    const res = await api.get<{ data: PermissionGroupRow[] }>(
+      '/admin/permission-groups' + (query.toString() ? `?${query.toString()}` : '')
+    );
+    const data = (res as any)?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  },
+
+  createPermissionGroup: async (payload: { key: string; name: string; sortOrder?: number; isActive?: boolean }): Promise<PermissionGroupRow> => {
+    const res = await api.post<{ data: PermissionGroupRow }>('/admin/permission-groups', payload);
+    return (res as any)?.data ?? (res as any);
+  },
+
+  updatePermissionGroup: async (id: string, payload: { name?: string; sortOrder?: number; isActive?: boolean }): Promise<PermissionGroupRow> => {
+    const res = await api.put<{ data: PermissionGroupRow }>(`/admin/permission-groups/${id}`, payload);
+    return (res as any)?.data ?? (res as any);
+  },
+
+  deletePermissionGroup: async (id: string): Promise<{ message: string }> => {
+    return await api.delete<{ message: string }>(`/admin/permission-groups/${id}`);
+  },
+
+  getPermissionsCatalog: async (): Promise<PermissionCatalogRow[]> => {
+    const res = await api.get<{ data: PermissionCatalogRow[] }>('/admin/permissions');
+    const data = (res as any)?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  },
+
+  updatePermissionMetadata: async (code: string, payload: { label?: string | null; description?: string | null; groupId?: string | null; sortOrder?: number; isVisible?: boolean }): Promise<{ message: string }> => {
+    return await api.put<{ message: string }>(`/admin/permissions/${encodeURIComponent(code)}`, payload);
+  },
+
+  updateRolePermissions: async (role: string, permissionCodes: string[]): Promise<RolePermissionsSnapshot> => {
+    try {
+      const response = await api.put<{ data: RolePermissionsSnapshot }>(`/admin/role-permissions/${role}`, { permissionCodes });
+      const data = response?.data ?? response;
+      return data as RolePermissionsSnapshot;
+    } catch (error) {
+      console.error('Error updating role permissions:', error);
+      throw error;
+    }
+  },
+
+  listCustomRoles: async (params?: { search?: string; includeInactive?: boolean }): Promise<CustomRoleRow[]> => {
+    const query = new URLSearchParams();
+    if (params?.search?.trim()) query.set('search', params.search.trim());
+    if (params?.includeInactive) query.set('includeInactive', 'true');
+    const res = await api.get<{ data: CustomRoleRow[] }>('/admin/custom-roles' + (query.toString() ? `?${query.toString()}` : ''));
+    const data = (res as any)?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  },
+
+  createCustomRole: async (payload: { code: string; name: string; description?: string | null; isActive?: boolean }): Promise<CustomRoleRow> => {
+    const res = await api.post<{ data: CustomRoleRow }>('/admin/custom-roles', payload);
+    return (res as any)?.data ?? (res as any);
+  },
+
+  updateCustomRole: async (id: string, payload: { name?: string; description?: string | null; isActive?: boolean }): Promise<CustomRoleRow> => {
+    const res = await api.put<{ data: CustomRoleRow }>(`/admin/custom-roles/${id}`, payload);
+    return (res as any)?.data ?? (res as any);
+  },
+
+  deleteCustomRole: async (id: string): Promise<{ message: string }> => {
+    return await api.delete<{ message: string }>(`/admin/custom-roles/${id}`);
+  },
+
+  getCustomRolePermissions: async (id: string): Promise<{ role: CustomRoleRow; permissionCodes: string[] }> => {
+    const res = await api.get<{ data: { role: CustomRoleRow; permissionCodes: string[] } }>(`/admin/custom-roles/${id}/permissions`);
+    return (res as any)?.data ?? (res as any);
+  },
+
+  setCustomRolePermissions: async (id: string, permissionCodes: string[]): Promise<{ role: CustomRoleRow; permissionCodes: string[] }> => {
+    const res = await api.put<{ data: { role: CustomRoleRow; permissionCodes: string[] } }>(`/admin/custom-roles/${id}/permissions`, { permissionCodes });
+    return (res as any)?.data ?? (res as any);
+  },
+
+  setUserCustomRoles: async (userId: string, customRoleIds: string[]): Promise<{ message: string }> => {
+    return await api.put<{ message: string }>(`/admin/users/${userId}/custom-roles`, { customRoleIds });
   },
 };
 

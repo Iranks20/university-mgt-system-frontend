@@ -8,6 +8,7 @@ type User = {
   role: string;
   departmentId?: string | null;
   schoolId?: string | null;
+  permissions?: string[];
 };
 
 type AuthContextType = {

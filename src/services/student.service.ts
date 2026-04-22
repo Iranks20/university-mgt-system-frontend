@@ -131,7 +131,8 @@ export const studentService = {
   ): Promise<StudentAttendanceReport | null> => {
     try {
       const params = programCode ? { programCode } : {};
-      return await api.get<StudentAttendanceReport>(`/students/${registrationNumber}/attendance-report`, params);
+      const res = await api.get<StudentAttendanceReport | { data: StudentAttendanceReport }>(`/students/attendance-report/${registrationNumber}`, params);
+      return (res as any)?.data ?? (res as any) ?? null;
     } catch (error) {
       console.error('Error fetching student attendance report:', error);
       return null;

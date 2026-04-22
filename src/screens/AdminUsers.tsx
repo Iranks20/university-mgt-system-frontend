@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, KeyRound, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Plus, Pencil, KeyRound, Loader2, Search, ChevronLeft, ChevronRight, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminService } from '@/services/admin.service';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type UserRow = {
   id: string;
@@ -19,10 +20,10 @@ type UserRow = {
   isActive: boolean;
   lastLoginAt: string | null;
   linkedRecord?: { type: string; number?: string; role?: string } | null;
+  customRoles?: { id: string; code: string; name: string; isActive: boolean }[];
 };
 
 const ROLE_FILTER_OPTIONS = ['QA', 'Staff', 'Management', 'Admin'];
-const SYSTEM_ACCOUNT_MODAL_ROLES = ['QA', 'Management', 'Admin'];
 
 const PAGE_SIZE = 20;
 
@@ -41,6 +42,25 @@ export default function AdminUsers() {
   const [editForm, setEditForm] = useState({ name: '', role: 'QA', isActive: true });
   const [resetPassword, setResetPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [customRoles, setCustomRoles] = useState<{ id: string; code: string; name: string; isActive: boolean }[]>([]);
+  const [selectedCustomRoleIds, setSelectedCustomRoleIds] = useState<Set<string>>(new Set());
+  const [roleSearch, setRoleSearch] = useState('');
+  const [systemRoles, setSystemRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    adminService
+      .getRolePermissions()
+      .then((snap) => setSystemRoles((snap.roles as unknown as string[]) || []))
+      .catch(() => setSystemRoles([]));
+  }, []);
+
+  const systemAccountRoles = useMemo(() => {
+    const fromApi = systemRoles.length ? systemRoles : ['QA', 'Management', 'Admin'];
+    // This page is for system accounts; keep it scoped even if API returns Student/Lecturer.
+    return fromApi.filter((r) => ['QA', 'Management', 'Admin', 'Staff', 'Lecturer'].includes(r));
+  }, [systemRoles]);
 
   const loadUsers = async (pageNum: number = page) => {
     setLoading(true);
@@ -151,6 +171,59 @@ export default function AdminUsers() {
     setResetOpen(true);
   };
 
+  const openAssignRoles = async (u: UserRow) => {
+    setSelectedUser(u);
+    setRoleSearch('');
+    setSelectedCustomRoleIds(new Set((u.customRoles || []).map(r => r.id)));
+    setAssignLoading(true);
+    setAssignOpen(true);
+    try {
+      const roles = await adminService.listCustomRoles({ includeInactive: false });
+      setCustomRoles(roles.map(r => ({ id: r.id, code: r.code, name: r.name, isActive: r.isActive })));
+      const systemRole = roles.find(r => r.code === u.role);
+      if (systemRole) {
+        setSelectedCustomRoleIds(prev => new Set([...Array.from(prev), systemRole.id]));
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to load roles');
+      setCustomRoles([]);
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const toggleCustomRole = (id: string) => {
+    setSelectedCustomRoleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredCustomRoles = useMemo(() => {
+    const term = roleSearch.trim().toLowerCase();
+    if (!term) return customRoles;
+    return customRoles.filter(r => (r.name + ' ' + r.code).toLowerCase().includes(term));
+  }, [customRoles, roleSearch]);
+
+  const handleSaveAssignedRoles = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    setSubmitting(true);
+    try {
+      await adminService.setUserCustomRoles(selectedUser.id, Array.from(selectedCustomRoleIds));
+      toast.success('User roles updated');
+      setAssignOpen(false);
+      setSelectedUser(null);
+      loadUsers(page);
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update user roles');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -215,6 +288,7 @@ export default function AdminUsers() {
                         <TableCell>{u.isActive ? <Badge className="bg-green-100 text-green-800">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
                         <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
                         <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="mr-1" onClick={() => openAssignRoles(u)}><Shield className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="sm" className="mr-1" onClick={() => openEdit(u)}><Pencil className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="sm" onClick={() => openReset(u)}><KeyRound className="h-4 w-4" /></Button>
                         </TableCell>
@@ -266,7 +340,7 @@ export default function AdminUsers() {
               <Select value={addForm.role} onValueChange={v => setAddForm(f => ({ ...f, role: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SYSTEM_ACCOUNT_MODAL_ROLES.map(r => (
+                  {systemAccountRoles.map(r => (
                     <SelectItem key={r} value={r}>{r}</SelectItem>
                   ))}
                 </SelectContent>
@@ -298,8 +372,8 @@ export default function AdminUsers() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(selectedUser?.role === 'Staff'
-                    ? ['Staff', ...SYSTEM_ACCOUNT_MODAL_ROLES]
-                    : SYSTEM_ACCOUNT_MODAL_ROLES
+                    ? ['Staff', ...systemAccountRoles]
+                    : systemAccountRoles
                   ).map(r => (
                     <SelectItem key={r} value={r}>{r}</SelectItem>
                   ))}
@@ -332,6 +406,51 @@ export default function AdminUsers() {
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]" disabled={submitting || !resetPassword.trim()}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reset password'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign roles</DialogTitle>
+            <DialogDescription>
+              {selectedUser ? `Assign custom roles to ${selectedUser.name} (${selectedUser.email}).` : 'Assign custom roles to this user.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveAssignedRoles} className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Search roles..." value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} />
+            </div>
+            <div className="max-h-[360px] overflow-y-auto border rounded-md p-3 space-y-2">
+              {assignLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-[#015F2B]" /></div>
+              ) : filteredCustomRoles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No roles found.</p>
+              ) : (
+                filteredCustomRoles.map(r => (
+                  <div key={r.id} className="flex items-center gap-3">
+                    <Checkbox
+                      id={`ucr-${r.id}`}
+                      checked={selectedCustomRoleIds.has(r.id)}
+                      onCheckedChange={() => toggleCustomRole(r.id)}
+                      disabled={submitting || (selectedUser ? r.code === selectedUser.role : false)}
+                    />
+                    <Label htmlFor={`ucr-${r.id}`} className="cursor-pointer">
+                      <span className="font-medium">{r.name}</span>{' '}
+                      <span className="font-mono text-xs text-muted-foreground">({r.code})</span>
+                    </Label>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-[#015F2B]" disabled={submitting}>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+              </Button>
             </div>
           </form>
         </DialogContent>
