@@ -34,8 +34,30 @@ jobs:
           fi
           npm ci --include=optional
 
-      - name: Ensure native optional deps (self-heal)
-        run: node scripts/ensure-rollup-native.cjs
+      - name: Ensure native optional deps (rollup + lightningcss + tailwind oxide)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Resolve versions from package-lock.json without requiring package.json subpaths (exports-safe).
+          ROLLUP_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/rollup'].version)")"
+          LIGHTNING_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/lightningcss'].version)")"
+          OXIDE_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/@tailwindcss/oxide'].version)")"
+
+          # Compute platform suffixes.
+          LIBC="$(node -e "const {execSync}=require('child_process');try{const o=execSync('ldd --version',{encoding:'utf8'});process.stdout.write(/musl/i.test(o)?'musl':'gnu')}catch{process.stdout.write('gnu')}")"
+          ARCH="$(node -e "process.stdout.write(process.arch)")"
+
+          # GitHub runners for this workflow are ubuntu-latest, so linux + gnu is expected.
+          # But we still derive suffixes so this step is portable to other Linux runners.
+          ROLLUP_PKG=\"@rollup/rollup-linux-${ARCH}-${LIBC}\"
+          LIGHTNING_PKG=\"lightningcss-linux-${ARCH}-${LIBC}\"
+          OXIDE_PKG=\"@tailwindcss/oxide-linux-${ARCH}-${LIBC}\"
+
+          npm i --no-save --ignore-scripts --no-audit --loglevel=error \
+            \"${ROLLUP_PKG}@${ROLLUP_VER}\" \
+            \"${LIGHTNING_PKG}@${LIGHTNING_VER}\" \
+            \"${OXIDE_PKG}@${OXIDE_VER}\"
 
       - name: Typecheck and production build
         run: npm run build
@@ -65,6 +87,17 @@ jobs:
             git checkout "${{ github.ref_name }}"
             git pull --ff-only origin "${{ github.ref_name }}"
             CI=true npm ci --include=optional
-            node scripts/ensure-rollup-native.cjs
+            ROLLUP_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/rollup'].version)")"
+            LIGHTNING_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/lightningcss'].version)")"
+            OXIDE_VER="$(node -e "const lock=require('./package-lock.json');process.stdout.write(lock.packages['node_modules/@tailwindcss/oxide'].version)")"
+            LIBC="$(node -e "const {execSync}=require('child_process');try{const o=execSync('ldd --version',{encoding:'utf8'});process.stdout.write(/musl/i.test(o)?'musl':'gnu')}catch{process.stdout.write('gnu')}")"
+            ARCH="$(node -e "process.stdout.write(process.arch)")"
+            ROLLUP_PKG="@rollup/rollup-linux-${ARCH}-${LIBC}"
+            LIGHTNING_PKG="lightningcss-linux-${ARCH}-${LIBC}"
+            OXIDE_PKG="@tailwindcss/oxide-linux-${ARCH}-${LIBC}"
+            npm i --no-save --ignore-scripts --no-audit --loglevel=error \
+              "${ROLLUP_PKG}@${ROLLUP_VER}" \
+              "${LIGHTNING_PKG}@${LIGHTNING_VER}" \
+              "${OXIDE_PKG}@${OXIDE_VER}"
             npm run build
             rsync -a --delete dist/ /var/www/kcu-mgt-frontend/

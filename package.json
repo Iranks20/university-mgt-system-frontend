@@ -10,7 +10,6 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
     "preview": "vite preview",
-    "postinstall": "node scripts/ensure-rollup-native.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
