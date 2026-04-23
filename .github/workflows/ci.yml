@@ -34,12 +34,8 @@ jobs:
           fi
           npm ci --include=optional
 
-      - name: Ensure native optional deps (rollup + lightningcss)
-        run: |
-          set -euo pipefail
-          ROLLUP_VER="$(node -e "const fs=require('fs');const path=require('path');const p=path.join(path.dirname(require.resolve('rollup')),'..','package.json');process.stdout.write(JSON.parse(fs.readFileSync(p,'utf8')).version)")"
-          LIGHTNING_VER="$(node -e "const fs=require('fs');const path=require('path');const p=path.join(path.dirname(require.resolve('lightningcss')),'..','package.json');process.stdout.write(JSON.parse(fs.readFileSync(p,'utf8')).version)")"
-          npm i --no-save --no-audit --loglevel=error "@rollup/rollup-linux-x64-gnu@${ROLLUP_VER}" "lightningcss-linux-x64-gnu@${LIGHTNING_VER}"
+      - name: Ensure native optional deps (self-heal)
+        run: node scripts/ensure-rollup-native.cjs
 
       - name: Typecheck and production build
         run: npm run build
@@ -69,8 +65,6 @@ jobs:
             git checkout "${{ github.ref_name }}"
             git pull --ff-only origin "${{ github.ref_name }}"
             CI=true npm ci --include=optional
-            ROLLUP_VER="$(node -e "const fs=require('fs');const path=require('path');const p=path.join(path.dirname(require.resolve('rollup')),'..','package.json');process.stdout.write(JSON.parse(fs.readFileSync(p,'utf8')).version)")"
-            LIGHTNING_VER="$(node -e "const fs=require('fs');const path=require('path');const p=path.join(path.dirname(require.resolve('lightningcss')),'..','package.json');process.stdout.write(JSON.parse(fs.readFileSync(p,'utf8')).version)")"
-            npm i --no-save --no-audit --loglevel=error "@rollup/rollup-linux-x64-gnu@${ROLLUP_VER}" "lightningcss-linux-x64-gnu@${LIGHTNING_VER}"
+            node scripts/ensure-rollup-native.cjs
             npm run build
             rsync -a --delete dist/ /var/www/kcu-mgt-frontend/

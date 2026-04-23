@@ -3,13 +3,12 @@
 const { join } = require('path');
 const { execSync } = require('child_process');
 
-// This helper exists to make CI builds deterministic when npm fails to install
-// Rollup's platform-specific optional binary package.
-// Only run in CI and only on Linux runners.
+// This helper makes CI installs/builds deterministic when npm fails to install
+// platform-specific optional native packages (Rollup, LightningCSS, Tailwind Oxide).
+//
+// We intentionally run this in CI only. Running it on developer machines can
+// surface local Node/CPU-architecture mismatches (e.g. arm64 Node on x64 OS).
 if (!(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')) {
-  process.exit(0);
-}
-if (process.platform !== 'linux') {
   process.exit(0);
 }
 
@@ -24,7 +23,8 @@ function readPkgVersion(name) {
 }
 
 function installExact(pkg, version) {
-  execSync(`npm install "${pkg}@${version}" --no-save --loglevel=error`, {
+  // Avoid recursive lifecycle execution by skipping scripts.
+  execSync(`npm install "${pkg}@${version}" --no-save --ignore-scripts --no-audit --loglevel=error`, {
     cwd: root,
     stdio: 'inherit',
   });
@@ -32,6 +32,35 @@ function installExact(pkg, version) {
 
 function readRollupVersion() {
   return readPkgVersion('rollup');
+}
+
+function detectLibc() {
+  if (process.platform !== 'linux') return null;
+  try {
+    const out = execSync('ldd --version', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return /musl/i.test(out) ? 'musl' : 'gnu';
+  } catch {
+    // Best effort: assume glibc on most distros (ubuntu-latest, debian, etc.)
+    return 'gnu';
+  }
+}
+
+function platformSuffix({ includeLibc } = { includeLibc: false }) {
+  const plat = process.platform;
+  const arch = process.arch;
+
+  // Map Node arch to package arch segments where they differ.
+  const a = arch === 'x64' ? 'x64' : arch === 'arm64' ? 'arm64' : arch;
+
+  if (plat === 'linux') {
+    const libc = detectLibc() || 'gnu';
+    return includeLibc ? `linux-${a}-${libc}` : `linux-${a}-${libc}`;
+  }
+  if (plat === 'darwin') return `darwin-${a}`;
+  if (plat === 'win32') return `win32-${a}-msvc`;
+  if (plat === 'freebsd') return `freebsd-${a}`;
+  if (plat === 'android') return `android-${a}`;
+  return null;
 }
 
 function ensureRollupNative() {
@@ -60,8 +89,6 @@ function ensureRollupNative() {
 }
 
 function ensureLightningCssNative() {
-  // lightningcss loads a platform-specific package like lightningcss-linux-x64-gnu
-  // that contains the native .node file.
   try {
     require(join(root, 'node_modules', 'lightningcss', 'node', 'index.js'));
     return;
@@ -73,8 +100,9 @@ function ensureLightningCssNative() {
   const version = readPkgVersion('lightningcss');
   if (!version) return;
 
-  // GitHub Actions ubuntu-latest is glibc, x64.
-  const platformPkg = process.arch === 'arm64' ? 'lightningcss-linux-arm64-gnu' : 'lightningcss-linux-x64-gnu';
+  const suffix = platformSuffix();
+  if (!suffix) return;
+  const platformPkg = `lightningcss-${suffix}`;
 
   try {
     installExact(platformPkg, version);
@@ -83,5 +111,31 @@ function ensureLightningCssNative() {
   }
 }
 
+function ensureTailwindOxideNative() {
+  // @tailwindcss/oxide throws "Cannot find native binding" when its optional dep is missing.
+  try {
+    require(join(root, 'node_modules', '@tailwindcss', 'oxide', 'index.js'));
+    return;
+  } catch (err) {
+    const msg = String((err && err.message) || '');
+    if (!msg.toLowerCase().includes('native binding')) return;
+  }
+
+  const version = readPkgVersion('@tailwindcss/oxide');
+  if (!version) return;
+
+  const suffix = platformSuffix({ includeLibc: true });
+  if (!suffix) return;
+
+  // Special case: oxide also has wasm32-wasi; we only pick that if explicitly running wasm (not our case).
+  const pkg = `@tailwindcss/oxide-${suffix}`;
+  try {
+    installExact(pkg, version);
+  } catch {
+    return;
+  }
+}
+
 ensureRollupNative();
 ensureLightningCssNative();
+ensureTailwindOxideNative();
