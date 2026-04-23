@@ -34,6 +34,13 @@ jobs:
           fi
           npm ci --include=optional
 
+      - name: Ensure native optional deps (rollup + lightningcss)
+        run: |
+          set -euo pipefail
+          ROLLUP_VER="$(node -p "require('rollup/package.json').version")"
+          LIGHTNING_VER="$(node -p "require('lightningcss/package.json').version")"
+          npm i --no-save --no-audit --loglevel=error "@rollup/rollup-linux-x64-gnu@${ROLLUP_VER}" "lightningcss-linux-x64-gnu@${LIGHTNING_VER}"
+
       - name: Typecheck and production build
         run: npm run build
 
@@ -62,5 +69,8 @@ jobs:
             git checkout "${{ github.ref_name }}"
             git pull --ff-only origin "${{ github.ref_name }}"
             CI=true npm ci --include=optional
+            ROLLUP_VER="$(node -p "require('rollup/package.json').version")"
+            LIGHTNING_VER="$(node -p "require('lightningcss/package.json').version")"
+            npm i --no-save --no-audit --loglevel=error "@rollup/rollup-linux-x64-gnu@${ROLLUP_VER}" "lightningcss-linux-x64-gnu@${LIGHTNING_VER}"
             npm run build
             rsync -a --delete dist/ /var/www/kcu-mgt-frontend/
