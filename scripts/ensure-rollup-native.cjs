@@ -3,7 +3,13 @@
 const { join } = require('path');
 const { execSync } = require('child_process');
 
-if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+// This helper exists to make CI builds deterministic when npm fails to install
+// Rollup's platform-specific optional binary package.
+// Only run in CI and only on Linux runners.
+if (!(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')) {
+  process.exit(0);
+}
+if (process.platform !== 'linux') {
   process.exit(0);
 }
 
