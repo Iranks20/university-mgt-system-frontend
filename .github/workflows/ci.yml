@@ -50,14 +50,14 @@ jobs:
 
           # GitHub runners for this workflow are ubuntu-latest, so linux + gnu is expected.
           # But we still derive suffixes so this step is portable to other Linux runners.
-          ROLLUP_PKG=\"@rollup/rollup-linux-${ARCH}-${LIBC}\"
-          LIGHTNING_PKG=\"lightningcss-linux-${ARCH}-${LIBC}\"
-          OXIDE_PKG=\"@tailwindcss/oxide-linux-${ARCH}-${LIBC}\"
+          ROLLUP_PKG="@rollup/rollup-linux-${ARCH}-${LIBC}"
+          LIGHTNING_PKG="lightningcss-linux-${ARCH}-${LIBC}"
+          OXIDE_PKG="@tailwindcss/oxide-linux-${ARCH}-${LIBC}"
 
           npm i --no-save --ignore-scripts --no-audit --loglevel=error \
-            \"${ROLLUP_PKG}@${ROLLUP_VER}\" \
-            \"${LIGHTNING_PKG}@${LIGHTNING_VER}\" \
-            \"${OXIDE_PKG}@${OXIDE_VER}\"
+            "${ROLLUP_PKG}@${ROLLUP_VER}" \
+            "${LIGHTNING_PKG}@${LIGHTNING_VER}" \
+            "${OXIDE_PKG}@${OXIDE_VER}"
 
       - name: Typecheck and production build
         run: npm run build
