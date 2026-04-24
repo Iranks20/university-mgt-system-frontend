@@ -202,11 +202,12 @@ export const academicService = {
     }
   },
 
-  getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
+  getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; unassigned?: boolean; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
     try {
       const query = new URLSearchParams();
       if (params?.departmentId) query.set('departmentId', params.departmentId);
       if (params?.programId) query.set('programId', params.programId);
+      if (params?.unassigned) query.set('unassigned', 'true');
       if (params?.level != null) query.set('level', String(params.level));
       if (params?.semester != null) query.set('semester', String(params.semester));
       if (params?.page != null) query.set('page', String(params.page));

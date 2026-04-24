@@ -2623,7 +2623,6 @@ function CoursesTab() {
             onChange={(e) => setCourseSearchTerm(e.target.value)}
           />
         </div>
-        <Button className="bg-[#015F2B]" onClick={openAddCourse}><Plus className="mr-2 h-4 w-4" /> Add Course</Button>
       </div>
       <div className="rounded-md border bg-white">
         <Table>
@@ -3267,7 +3266,9 @@ type SchoolsTabRow = { id: string; name: string; dean: string | null; code?: str
 type LevelRow = { id: string; name: string; schoolId: string };
 type DepartmentRow = { id: string; name: string; schoolId: string; levelId: string; head: string | null; duration?: number };
 type ProgramRow = { id: string; name: string; code: string; departmentId: string; duration: number };
-type SelectedNode = { type: 'yearSemester'; programId: string; departmentId: string; level: number; semester: number; programName: string; programCode: string };
+type SelectedNode =
+  | { type: 'yearSemester'; programId: string; departmentId: string; level: number; semester: number; programName: string; programCode: string }
+  | { type: 'unassignedCourses'; departmentId: string; departmentName: string };
 function SchoolsTab() {
   const [schools, setSchools] = useState<SchoolsTabRow[]>([]);
   const [levels, setLevels] = useState<LevelRow[]>([]);
@@ -3409,14 +3410,28 @@ function SchoolsTab() {
       return;
     }
     setCoursesInNodeLoading(true);
-    academicService.getCourses({
-      programId: selectedNode.programId,
-      level: selectedNode.level,
-      semester: selectedNode.semester,
-      limit: 100,
-    }).then(r => {
-      setCoursesInNode(r.data ?? []);
-    }).catch(() => setCoursesInNode([])).finally(() => setCoursesInNodeLoading(false));
+    if (selectedNode.type === 'unassignedCourses') {
+      academicService
+        .getCourses({
+          departmentId: selectedNode.departmentId,
+          unassigned: true,
+          limit: 100,
+        })
+        .then((r) => setCoursesInNode(r.data ?? []))
+        .catch(() => setCoursesInNode([]))
+        .finally(() => setCoursesInNodeLoading(false));
+    } else {
+      academicService
+        .getCourses({
+          programId: selectedNode.programId,
+          level: selectedNode.level,
+          semester: selectedNode.semester,
+          limit: 100,
+        })
+        .then((r) => setCoursesInNode(r.data ?? []))
+        .catch(() => setCoursesInNode([]))
+        .finally(() => setCoursesInNodeLoading(false));
+    }
   }, [selectedNode]);
 
   useEffect(() => {
@@ -3425,12 +3440,16 @@ function SchoolsTab() {
       return;
     }
     const opts: { value: string; label: string }[] = [];
-    departments.forEach(dept => {
+    const deptsToConsider = selectedNode.type === 'unassignedCourses'
+      ? departments.filter((d) => d.id === selectedNode.departmentId)
+      : departments;
+
+    deptsToConsider.forEach(dept => {
       const progs = programsByDepartment[dept.id] ?? [];
       progs.forEach((prog: ProgramRow) => {
         for (let y = 1; y <= prog.duration; y++) {
           for (let s = 1; s <= 2; s++) {
-            if (prog.id === selectedNode.programId && y === selectedNode.level && s === selectedNode.semester) continue;
+            if (selectedNode.type === 'yearSemester' && prog.id === selectedNode.programId && y === selectedNode.level && s === selectedNode.semester) continue;
             opts.push({
               value: `${prog.id}|${y}|${s}|${prog.departmentId}`,
               label: `${prog.name} (${prog.code}) — Year ${y} Sem ${s}`,
@@ -3531,12 +3550,10 @@ function SchoolsTab() {
 
   const refreshCoursesInNode = async () => {
     if (!selectedNode) return;
-    const r = await academicService.getCourses({
-      programId: selectedNode.programId,
-      level: selectedNode.level,
-      semester: selectedNode.semester,
-      limit: 100,
-    });
+    const r =
+      selectedNode.type === 'unassignedCourses'
+        ? await academicService.getCourses({ departmentId: selectedNode.departmentId, unassigned: true, limit: 100 })
+        : await academicService.getCourses({ programId: selectedNode.programId, level: selectedNode.level, semester: selectedNode.semester, limit: 100 });
     setCoursesInNode(r.data ?? []);
   };
 
@@ -3564,6 +3581,7 @@ function SchoolsTab() {
       return;
     }
     if (!selectedNode) return;
+    if (selectedNode.type !== 'yearSemester') return;
     setAddCourseSaving(true);
     try {
       await academicService.createCourse({
@@ -3600,13 +3618,7 @@ function SchoolsTab() {
       });
       toast.success('Courses moved');
       setSelectedCourseIds(new Set());
-      const r = await academicService.getCourses({
-        programId: selectedNode.programId,
-        level: selectedNode.level,
-        semester: selectedNode.semester,
-        limit: 100,
-      });
-      setCoursesInNode(r.data ?? []);
+      await refreshCoursesInNode();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to move courses');
     } finally {
@@ -3758,9 +3770,10 @@ function SchoolsTab() {
       (s.dean ?? '').toLowerCase().includes(schoolSearchTerm.toLowerCase())
   );
 
-  const currentProgram = selectedNode
-    ? (programsByDepartment[selectedNode.departmentId] ?? []).find(p => p.id === selectedNode.programId) ?? null
-    : null;
+  const currentProgram =
+    selectedNode?.type === 'yearSemester'
+      ? (programsByDepartment[selectedNode.departmentId] ?? []).find((p) => p.id === selectedNode.programId) ?? null
+      : null;
 
   return (
     <div className="space-y-4">
@@ -3981,7 +3994,8 @@ function SchoolsTab() {
                                                                         <div className="pl-6 pr-2 pb-2 space-y-1">
                                                                           {[1, 2].map((sem) => {
                                                                             const active =
-                                                                              selectedNode?.programId === prog.id &&
+                                                                              selectedNode?.type === 'yearSemester' &&
+                                                                              selectedNode.programId === prog.id &&
                                                                               selectedNode.level === year &&
                                                                               selectedNode.semester === sem;
                                                                             return (
@@ -4044,7 +4058,7 @@ function SchoolsTab() {
                                                                                   )}
                                                                                 </div>
                                                                                 {active && (
-                                                                                  <div className="px-2 pb-2 space-y-2">
+                                                                                  <div className="px-4 pb-3 space-y-3">
                                                                                     {coursesInNodeLoading ? (
                                                                                       <div className="py-2 text-center">
                                                                                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
@@ -4055,23 +4069,19 @@ function SchoolsTab() {
                                                                                       </p>
                                                                                     ) : (
                                                                                       <>
-                                                                                        <div className="rounded border divide-y max-h-40 overflow-auto">
+                                                                                        <div className="rounded border divide-y max-h-72 overflow-auto bg-white">
                                                                                           {coursesInNode.map((c: any) => (
                                                                                             <div
                                                                                               key={c.id}
-                                                                                              className="flex items-center gap-2 p-1.5 hover:bg-gray-50"
+                                                                                              className="flex items-center gap-3 p-2 hover:bg-gray-50"
                                                                                             >
                                                                                               <Checkbox
                                                                                                 checked={selectedCourseIds.has(c.id)}
                                                                                                 onCheckedChange={() => toggleCourseSelection(c.id)}
                                                                                               />
                                                                                               <div className="flex-1 min-w-0">
-                                                                                                <div className="text-xs font-medium truncate">
-                                                                                                  {c.name}
-                                                                                                </div>
-                                                                                                <div className="text-[10px] text-muted-foreground">
-                                                                                                  {c.code}
-                                                                                                </div>
+                                                                                                <div className="text-xs font-semibold text-gray-900 truncate">{c.code}</div>
+                                                                                                <div className="text-xs text-gray-700 truncate">{c.name}</div>
                                                                                               </div>
                                                                                               <div className="flex items-center gap-1 shrink-0">
                                                                                                 <Button
@@ -4155,6 +4165,119 @@ function SchoolsTab() {
                                                         );
                                                       })
                                                     )}
+
+                                                    {/* Unassigned courses bucket (courses created without programId) */}
+                                                    {(() => {
+                                                      const active =
+                                                        selectedNode?.type === 'unassignedCourses' &&
+                                                        selectedNode.departmentId === dept.id;
+                                                      return (
+                                                        <div className="border rounded bg-white">
+                                                          <div
+                                                            className={`flex items-center justify-between p-3 pl-6 ${
+                                                              active ? 'bg-gray-100' : 'hover:bg-gray-50'
+                                                            }`}
+                                                          >
+                                                            <div
+                                                              role="button"
+                                                              tabIndex={0}
+                                                              className="flex items-center gap-3 flex-1 text-left min-w-0 cursor-pointer"
+                                                              onClick={() =>
+                                                                setSelectedNode({
+                                                                  type: 'unassignedCourses',
+                                                                  departmentId: dept.id,
+                                                                  departmentName: dept.name,
+                                                                })
+                                                              }
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                                  e.preventDefault();
+                                                                  setSelectedNode({
+                                                                    type: 'unassignedCourses',
+                                                                    departmentId: dept.id,
+                                                                    departmentName: dept.name,
+                                                                  });
+                                                                }
+                                                              }}
+                                                            >
+                                                              {active ? (
+                                                                <ChevronDown className="h-3 w-3 shrink-0" />
+                                                              ) : (
+                                                                <ChevronRight className="h-3 w-3 shrink-0" />
+                                                              )}
+                                                              <div className="min-w-0">
+                                                                <div className="font-medium text-gray-900 truncate">Unassigned courses</div>
+                                                                <div className="text-xs text-gray-500 truncate">
+                                                                  Courses not yet linked to a degree program (will not appear under Year/Semester).
+                                                                </div>
+                                                              </div>
+                                                            </div>
+                                                          </div>
+
+                                                          {active && (
+                                                            <div className="px-4 pb-3 space-y-3">
+                                                              {coursesInNodeLoading ? (
+                                                                <div className="py-2 text-center">
+                                                                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                                                                </div>
+                                                              ) : coursesInNode.length === 0 ? (
+                                                                <p className="text-xs text-muted-foreground">
+                                                                  No unassigned courses in this department.
+                                                                </p>
+                                                              ) : (
+                                                                <>
+                                                                  <div className="rounded border divide-y max-h-72 overflow-auto bg-white">
+                                                                    {coursesInNode.map((c: any) => (
+                                                                      <div key={c.id} className="flex items-center gap-3 p-2 hover:bg-gray-50">
+                                                                        <Checkbox
+                                                                          checked={selectedCourseIds.has(c.id)}
+                                                                          onCheckedChange={() => toggleCourseSelection(c.id)}
+                                                                        />
+                                                                        <div className="flex-1 min-w-0">
+                                                                          <div className="text-xs font-semibold text-gray-900 truncate">{c.code}</div>
+                                                                          <div className="text-xs text-gray-700 truncate">{c.name}</div>
+                                                                        </div>
+                                                                      </div>
+                                                                    ))}
+                                                                  </div>
+
+                                                                  {selectedCourseIds.size > 0 && moveTargetOptions.length > 0 && (
+                                                                    <div className="flex items-center gap-2">
+                                                                      <Select
+                                                                        value={moveTarget || moveTargetOptions[0]?.value}
+                                                                        onValueChange={(v) => setMoveTarget(v)}
+                                                                      >
+                                                                        <SelectTrigger className="h-8 text-xs">
+                                                                          <SelectValue placeholder="Move selected to..." />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                          {moveTargetOptions.map((o) => (
+                                                                            <SelectItem key={o.value} value={o.value}>
+                                                                              {o.label}
+                                                                            </SelectItem>
+                                                                          ))}
+                                                                        </SelectContent>
+                                                                      </Select>
+                                                                      <Button
+                                                                        size="sm"
+                                                                        className="bg-[#015F2B] hover:bg-[#014022] h-8 text-xs"
+                                                                        disabled={moveCoursesLoading}
+                                                                        onClick={handleMoveCourses}
+                                                                      >
+                                                                        {moveCoursesLoading ? (
+                                                                          <Loader2 className="h-3 w-3 animate-spin mr-2" />
+                                                                        ) : null}
+                                                                        Link to semester
+                                                                      </Button>
+                                                                    </div>
+                                                                  )}
+                                                                </>
+                                                              )}
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      );
+                                                    })()}
                                                   </div>
                                                 )}
                                               </div>
@@ -4509,7 +4632,11 @@ function SchoolsTab() {
           <DialogHeader>
             <DialogTitle>{editingCourse ? 'Edit course' : 'Create course'}</DialogTitle>
             <DialogDescription>
-              {editingCourse ? `Update course details` : selectedNode ? `Add to ${selectedNode.programName} — Year ${selectedNode.level} Semester ${selectedNode.semester}` : ''}
+              {editingCourse
+                ? `Update course details`
+                : selectedNode?.type === 'yearSemester'
+                  ? `Add to ${selectedNode.programName} — Year ${selectedNode.level} Semester ${selectedNode.semester}`
+                  : ''}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddCourseInNode} className="space-y-4">
