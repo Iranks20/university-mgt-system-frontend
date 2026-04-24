@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Loader2, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService } from '@/services/academic.service';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useSearchParams } from 'react-router';
 
 type IntakeType = 'Day' | 'Evening' | 'Weekend';
 type DeliveryMode = 'InPerson' | 'Online' | 'Hybrid';
@@ -57,6 +58,8 @@ const DAYS: { value: string; label: string }[] = [
 const UNASSIGNED = '__unassigned__';
 
 export default function TimetableBuilder() {
+  const [searchParams] = useSearchParams();
+  const autoLoadedRef = useRef(false);
   const [programs, setPrograms] = useState<ProgramLite[]>([]);
   const [programsLoading, setProgramsLoading] = useState(true);
   const [programId, setProgramId] = useState('');
@@ -78,6 +81,34 @@ export default function TimetableBuilder() {
   const [creatingAll, setCreatingAll] = useState(false);
 
   const selectedProgram = useMemo(() => programs.find(p => p.id === programId) || null, [programId, programs]);
+
+  // Prefill from URL: /timetable-builder?programId=...&year=1&semester=1&intakeType=Day
+  useEffect(() => {
+    const qProgramId = String(searchParams.get('programId') || '').trim();
+    const qYear = parseInt(String(searchParams.get('year') || ''), 10);
+    const qSemester = parseInt(String(searchParams.get('semester') || ''), 10);
+    const qIntake = String(searchParams.get('intakeType') || '').trim() as IntakeType;
+
+    if (qProgramId) setProgramId(qProgramId);
+    if (Number.isFinite(qYear) && qYear > 0) setYear(qYear);
+    if (Number.isFinite(qSemester) && (qSemester === 1 || qSemester === 2)) setSemester(qSemester);
+    if (qIntake && (qIntake === 'Day' || qIntake === 'Evening' || qIntake === 'Weekend')) setIntakeType(qIntake);
+    // only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // If we were deep-linked with programId, auto-load courses once refs/programs are ready
+  useEffect(() => {
+    const hasDeepLink = !!searchParams.get('programId');
+    if (!hasDeepLink) return;
+    if (autoLoadedRef.current) return;
+    if (programsLoading) return;
+    if (!programId) return;
+    if (refsLoading) return;
+    autoLoadedRef.current = true;
+    ensureIntakeAndLoadCourses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programsLoading, refsLoading, programId]);
 
   useEffect(() => {
     const loadPrograms = async () => {
@@ -130,6 +161,11 @@ export default function TimetableBuilder() {
       const arr = res?.data ?? [];
       const mapped = arr.map((c: any) => ({ id: c.id, code: c.code, name: c.name }));
       setCourses(mapped);
+      if (mapped.length === 0) {
+        toast.info('No courses found for this program/year/semester. Add courses first in Admin Schools.');
+        setDrafts({});
+        return;
+      }
 
       const existingClasses = intakeId ? await fetchAllClassesForIntake(intakeId) : [];
       const existingByCourseId = new Map<string, any>();
@@ -464,7 +500,11 @@ export default function TimetableBuilder() {
         </CardHeader>
         <CardContent>
           {courses.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">Select your timetable details above, then load courses to begin.</div>
+            <div className="text-sm text-muted-foreground py-6">
+              {programId
+                ? 'No courses found for this scope. Add courses under Admin Schools → Program → Year/Semester, then click "Load courses" again.'
+                : 'Select your timetable details above, then load courses to begin.'}
+            </div>
           ) : (
             <div className="rounded-md border bg-white overflow-x-auto">
               <Table>

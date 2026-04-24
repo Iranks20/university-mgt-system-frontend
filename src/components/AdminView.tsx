@@ -4685,6 +4685,8 @@ function ClassesTab({
   classesTotal,
   pageSize,
   loadClasses,
+  programIntakeId,
+  setProgramIntakeId,
 }: {
   classes: ClassRow[];
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
@@ -4695,8 +4697,11 @@ function ClassesTab({
   classesPage: number;
   classesTotal: number;
   pageSize: number;
-  loadClasses: (page: number) => Promise<void>;
+  loadClasses: (page: number, params?: { programIntakeId?: string | null }) => Promise<void>;
+  programIntakeId: string | null;
+  setProgramIntakeId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [lecturerFilter, setLecturerFilter] = useState<string>('all');
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
@@ -4717,6 +4722,26 @@ function ClassesTab({
   });
   const [adminCourses, setAdminCourses] = useState<{ id: string; code: string; name: string }[]>([]);
   const [venues, setVenues] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [scopePrograms, setScopePrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const [scopeProgramId, setScopeProgramId] = useState<string>('');
+  const [scopeYear, setScopeYear] = useState<number>(1);
+  const [scopeSemester, setScopeSemester] = useState<number>(1);
+  const [scopeIntakeType, setScopeIntakeType] = useState<'Day' | 'Evening' | 'Weekend'>('Day');
+  const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
+  const [scopeLoading, setScopeLoading] = useState<boolean>(false);
+  const openTimetableBuilderForScope = () => {
+    if (!scopeEnabled || !scopeProgramId) {
+      toast.error('Enable the intake scope filter and select a program first');
+      return;
+    }
+    const qs = new URLSearchParams({
+      programId: scopeProgramId,
+      year: String(scopeYear),
+      semester: String(scopeSemester),
+      intakeType: scopeIntakeType,
+    });
+    navigate(`/timetable-builder?${qs.toString()}`);
+  };
 
   const refreshClassData = async () => {
     try {
@@ -4740,6 +4765,44 @@ function ClassesTab({
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
+
+  useEffect(() => {
+    academicService.getPrograms()
+      .then((res: any) => {
+        const arr = Array.isArray(res) ? res : res?.data ?? [];
+        setScopePrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code })));
+      })
+      .catch(() => setScopePrograms([]));
+  }, []);
+
+  const applyScopeFilter = async () => {
+    if (!scopeProgramId) {
+      toast.error('Select a program to filter by intake');
+      return;
+    }
+    setScopeLoading(true);
+    try {
+      const list = await academicService.getProgramIntakes({ programId: scopeProgramId, year: scopeYear, semester: scopeSemester, intakeType: scopeIntakeType });
+      const intake = (Array.isArray(list) ? list : [])?.[0];
+      if (!intake?.id) {
+        toast.error('No intake found for that scope. Create it in Timetable Builder first.');
+        return;
+      }
+      setProgramIntakeId(intake.id);
+      await loadClasses(1, { programIntakeId: intake.id });
+      toast.success('Filtered classes by intake scope');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to apply intake filter');
+    } finally {
+      setScopeLoading(false);
+    }
+  };
+
+  const clearScopeFilter = async () => {
+    setProgramIntakeId(null);
+    await loadClasses(1, { programIntakeId: null });
+    toast.success('Showing all classes');
+  };
 
   const lecturers = staff.filter(s => s.role === 'Lecturer');
   const filteredClasses = classes.filter(c => {
@@ -4914,6 +4977,79 @@ function ClassesTab({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-md border bg-white p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Checkbox id="classes-scope-enabled" checked={scopeEnabled} onCheckedChange={(v) => setScopeEnabled(!!v)} />
+            <Label htmlFor="classes-scope-enabled" className="font-normal">
+              Filter by intake scope (Program + Year + Semester + Intake)
+            </Label>
+          </div>
+          {programIntakeId ? (
+            <div className="text-xs text-muted-foreground">
+              Active filter: <span className="font-mono">{programIntakeId}</span>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No intake filter</div>
+          )}
+        </div>
+
+        {scopeEnabled && (
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px]">
+              <Label className="text-xs">Program</Label>
+              <Select value={scopeProgramId} onValueChange={setScopeProgramId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Select program" /></SelectTrigger>
+                <SelectContent>
+                  {scopePrograms.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.code ? `${p.name} (${p.code})` : p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Year</Label>
+              <Select value={String(scopeYear)} onValueChange={(v) => setScopeYear(parseInt(v, 10) || 1)}>
+                <SelectTrigger className="h-9 w-[110px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3,4,5,6].map((y) => (<SelectItem key={y} value={String(y)}>{`Year ${y}`}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Semester</Label>
+              <Select value={String(scopeSemester)} onValueChange={(v) => setScopeSemester(parseInt(v, 10) || 1)}>
+                <SelectTrigger className="h-9 w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1,2].map((s) => (<SelectItem key={s} value={String(s)}>{`Sem ${s}`}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Intake</Label>
+              <Select value={scopeIntakeType} onValueChange={(v) => setScopeIntakeType(v as any)}>
+                <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Day">Day</SelectItem>
+                  <SelectItem value="Evening">Evening</SelectItem>
+                  <SelectItem value="Weekend">Weekend</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="h-9" disabled={scopeLoading} onClick={applyScopeFilter}>
+                {scopeLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Apply
+              </Button>
+              <Button variant="ghost" className="h-9" disabled={scopeLoading || !programIntakeId} onClick={clearScopeFilter}>
+                Clear
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -4940,7 +5076,13 @@ function ClassesTab({
             <SelectItem value="unassigned">Without lecturer</SelectItem>
           </SelectContent>
         </Select>
-        <Button className="bg-[#015F2B]" onClick={openAdd}><Plus className="mr-2 h-4 w-4" /> Add Class Group</Button>
+        <Button
+          variant="outline"
+          onClick={openTimetableBuilderForScope}
+          disabled={!scopeEnabled || !scopeProgramId}
+        >
+          <Calendar className="mr-2 h-4 w-4" /> Create in Timetable Builder
+        </Button>
       </div>
 
       <div className="rounded-md border bg-white">
@@ -5011,9 +5153,9 @@ function ClassesTab({
           <div className="flex items-center justify-between border-t px-4 py-2">
             <span className="text-sm text-muted-foreground">{classesTotal} total</span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1)}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, { programIntakeId })}>Previous</Button>
               <span className="text-sm">Page {classesPage} of {Math.max(1, Math.ceil(classesTotal / pageSize))}</span>
-              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1)}>Next</Button>
+              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, { programIntakeId })}>Next</Button>
             </div>
           </div>
         )}
@@ -6506,9 +6648,11 @@ export default function AdminView({
 
   const [classesPage, setClassesPage] = useState(1);
   const [classesTotal, setClassesTotal] = useState(0);
-  const loadClasses = async (pageNum: number) => {
+  const [classesProgramIntakeId, setClassesProgramIntakeId] = useState<string | null>(null);
+  const loadClasses = async (pageNum: number, params?: { programIntakeId?: string | null }) => {
     try {
-      const res = await academicService.getClasses({ page: pageNum, limit: LIST_PAGE_SIZE });
+      const programIntakeId = params?.programIntakeId ?? classesProgramIntakeId ?? undefined;
+      const res = await academicService.getClasses({ page: pageNum, limit: LIST_PAGE_SIZE, ...(programIntakeId ? { programIntakeId } : {}) });
       const arr = res.data ?? [];
       setClasses(arr.map((c: any) => ({
         id: c.id,
@@ -6522,6 +6666,7 @@ export default function AdminView({
       })));
       setClassesTotal(res.total ?? 0);
       setClassesPage(res.page ?? pageNum);
+      setClassesProgramIntakeId(programIntakeId ?? null);
     } catch (e) {
       setClasses([]);
       setClassesTotal(0);
@@ -6576,7 +6721,7 @@ export default function AdminView({
       const coursesArr = (coursesRes as any)?.data ?? [];
       const schoolsData = Array.isArray(schoolsRes) ? schoolsRes : (schoolsRes as any)?.data ?? [];
 
-      await loadClasses(1);
+      await loadClasses(1, { programIntakeId: null });
       await loadVenues(1);
 
       setCourses(coursesArr.map((c: any) => ({
@@ -6660,7 +6805,20 @@ export default function AdminView({
         </TabsContent>
 
         <TabsContent value="classes" className="mt-0">
-          <ClassesTab classes={classes} setClasses={setClasses} students={students} staff={staff} enrollmentsByClassId={enrollmentsByClassId} setEnrollmentsByClassId={setEnrollmentsByClassId} classesPage={classesPage} classesTotal={classesTotal} pageSize={LIST_PAGE_SIZE} loadClasses={loadClasses} />
+          <ClassesTab
+            classes={classes}
+            setClasses={setClasses}
+            students={students}
+            staff={staff}
+            enrollmentsByClassId={enrollmentsByClassId}
+            setEnrollmentsByClassId={setEnrollmentsByClassId}
+            classesPage={classesPage}
+            classesTotal={classesTotal}
+            pageSize={LIST_PAGE_SIZE}
+            loadClasses={loadClasses}
+            programIntakeId={classesProgramIntakeId}
+            setProgramIntakeId={setClassesProgramIntakeId}
+          />
         </TabsContent>
 
         <TabsContent value="timetables" className="mt-0">

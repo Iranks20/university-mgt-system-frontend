@@ -125,6 +125,16 @@ describe('AcademicService - Calendar & CRUD', () => {
     });
   });
 
+  describe('getClasses', () => {
+    it('should include programIntakeId in query when provided', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 20 } as any);
+
+      await academicService.getClasses({ programIntakeId: 'intake-1', page: 2, limit: 10 });
+
+      expect(api.get).toHaveBeenCalledWith('/academic/classes?programIntakeId=intake-1&page=2&limit=10');
+    });
+  });
+
   describe('updateClass', () => {
     it('should update a class', async () => {
       const updates = { capacity: 60 };
