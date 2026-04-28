@@ -311,11 +311,6 @@ export default function TimetableBuilder() {
       toast.error('Day, start time and end time are required');
       return;
     }
-    if ((d.deliveryMode === 'InPerson' || d.deliveryMode === 'Hybrid') && !d.venueId) {
-      toast.error('Venue is required for in-person or hybrid');
-      return;
-    }
-
     try {
       await academicService.createClass({
         name: d.className.trim(),
