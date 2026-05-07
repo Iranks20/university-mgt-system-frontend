@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { academicService } from '@/services/academic.service';
 import { staffService } from '@/services/staff.service';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -81,6 +82,10 @@ export default function TimetableBuilder() {
   const [creatingAll, setCreatingAll] = useState(false);
 
   const selectedProgram = useMemo(() => programs.find(p => p.id === programId) || null, [programId, programs]);
+  const lecturerOptions = useMemo(
+    () => [{ value: UNASSIGNED, label: 'Unassigned' }, ...lecturers.map(l => ({ value: l.id, label: l.name }))],
+    [lecturers]
+  );
 
   // Prefill from URL: /timetable-builder?programId=...&year=1&semester=1&intakeType=Day
   useEffect(() => {
@@ -541,18 +546,15 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Select
+                          <Combobox
+                            options={lecturerOptions}
                             value={d?.lecturerId ? d.lecturerId : UNASSIGNED}
                             onValueChange={v => updateDraft(c.id, { lecturerId: v === UNASSIGNED ? '' : v })}
-                          >
-                            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Select" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                              {lecturers.map(l => (
-                                <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            placeholder="Select lecturer"
+                            searchPlaceholder="Search lecturer..."
+                            emptyText="No lecturer found."
+                            className="w-[220px]"
+                          />
                         </TableCell>
                         <TableCell>
                           <Select
