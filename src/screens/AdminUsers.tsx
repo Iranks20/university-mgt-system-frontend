@@ -58,8 +58,7 @@ export default function AdminUsers() {
 
   const systemAccountRoles = useMemo(() => {
     const fromApi = systemRoles.length ? systemRoles : ['QA', 'Management', 'Admin'];
-    // This page is for system accounts; keep it scoped even if API returns Student/Lecturer.
-    return fromApi.filter((r) => ['QA', 'Management', 'Admin', 'Staff', 'Lecturer'].includes(r));
+    return fromApi.filter((r) => ['QA', 'Management', 'Admin', 'Staff'].includes(r));
   }, [systemRoles]);
 
   const loadUsers = async (pageNum: number = page) => {
