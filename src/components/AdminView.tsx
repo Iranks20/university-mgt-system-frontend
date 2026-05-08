@@ -1642,7 +1642,7 @@ function StaffTab({
   staffPage: number;
   staffTotal: number;
   pageSize: number;
-  loadStaff: (page: number) => Promise<void>;
+  loadStaff: (page: number, options?: { role?: string; search?: string }) => Promise<void>;
   staffTabMode?: 'non-teaching' | 'staff-role';
 }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -2072,7 +2072,7 @@ function LecturersTab({
   staffPage: number;
   staffTotal: number;
   pageSize: number;
-  loadStaff: (page: number) => Promise<void>;
+  loadStaff: (page: number, options?: { role?: string; search?: string }) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -2089,17 +2089,12 @@ function LecturersTab({
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const lecturerFileRef = useRef<HTMLInputElement>(null);
 
-  // Filter only Lecturers
   const lecturers = staff.filter(s => s.role === 'Lecturer');
-  const filteredLecturers = lecturers.filter(s =>
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const refreshLecturerData = async () => {
       setDepartmentsLoading(true);
       try {
-      await loadStaff(1);
+      await loadStaff(1, { role: 'Lecturer', search: searchTerm.trim() || undefined });
         const depts = await academicService.getDepartments();
         setDepartments(Array.isArray(depts) ? depts.map((d: any) => ({ id: d.id || d.name, name: d.name })) : []);
         if (depts.length > 0 && !addForm.dept) {
@@ -2121,6 +2116,13 @@ function LecturersTab({
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadStaff(1, { role: 'Lecturer', search: searchTerm.trim() || undefined });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm, loadStaff]);
 
   const handleAddLecturer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2228,14 +2230,14 @@ function LecturersTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLecturers.length === 0 ? (
+                {lecturers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       No lecturers found. Add lecturers to get started.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredLecturers.map((lecturer) => {
+                  lecturers.map((lecturer) => {
                     const assignedClasses = classes.filter(c => c.lecturerId === lecturer.id);
                     return (
                       <TableRow key={lecturer.id}>
@@ -2294,9 +2296,9 @@ function LecturersTab({
               <div className="flex items-center justify-between border-t px-4 py-2">
                 <span className="text-sm text-muted-foreground">{staffTotal} total</span>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1)}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1, { role: 'Lecturer', search: searchTerm.trim() || undefined })}>Previous</Button>
                   <span className="text-sm">Page {staffPage} of {Math.max(1, Math.ceil(staffTotal / pageSize))}</span>
-                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1)}>Next</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1, { role: 'Lecturer', search: searchTerm.trim() || undefined })}>Next</Button>
                 </div>
               </div>
             )}
@@ -6621,12 +6623,13 @@ export default function AdminView({
     }
   };
 
-  const loadStaff = async (page: number) => {
+  const loadStaff = async (page: number, options?: { role?: string; search?: string }) => {
     try {
       const res = await staffService.getStaff({
         page,
         limit: LIST_PAGE_SIZE,
-        ...(staffTabMode === 'staff-role' ? { role: 'Staff' } : {}),
+        ...(options?.role ? { role: options.role } : (staffTabMode === 'staff-role' ? { role: 'Staff' } : {})),
+        ...(options?.search ? { search: options.search } : {}),
       });
       const data = res.data || res;
       setStaff(Array.isArray(data) ? data.map((s: any) => ({

@@ -135,12 +135,22 @@ export default function TimetableBuilder() {
     const loadRefs = async () => {
       setRefsLoading(true);
       try {
-        const [venuesRes, lecturersRes] = await Promise.all([
+        const [venuesRes, firstLecturersPage] = await Promise.all([
           academicService.getVenues({ page: 1, limit: 50 }),
           staffService.getStaff({ role: 'Lecturer', page: 1, limit: 50 }),
         ]);
+        const allLecturers = [...(firstLecturersPage?.data ?? [])];
+        const totalLecturers = firstLecturersPage?.total ?? allLecturers.length;
+        let lecturerPage = firstLecturersPage?.page ?? 1;
+        while (allLecturers.length < totalLecturers) {
+          lecturerPage += 1;
+          const next = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 50 });
+          const arr = next?.data ?? [];
+          if (arr.length === 0) break;
+          allLecturers.push(...arr);
+        }
         setVenues((venuesRes?.data ?? []).map((v: any) => ({ id: v.id, name: v.name })));
-        setLecturers((lecturersRes?.data ?? []).map((l: any) => ({ id: l.id, name: `${l.firstName} ${l.lastName}` })));
+        setLecturers(allLecturers.map((l: any) => ({ id: l.id, name: `${l.firstName} ${l.lastName}` })));
       } catch {
         setVenues([]);
         setLecturers([]);
