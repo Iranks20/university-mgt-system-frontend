@@ -202,6 +202,12 @@ export const qaService = {
     }
   },
 
+  seedLectureRecordsFromTimetable: async (date: string): Promise<{ created: number; skipped: number }> => {
+    return await api.post<{ created: number; skipped: number }>('/qa/lecture-records/seed-from-timetable', {
+      date,
+    });
+  },
+
   /**
    * Create a record (legacy method for backward compatibility)
    * Converts QALecturerRecord to QALectureRecord format

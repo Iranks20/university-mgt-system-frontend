@@ -4,12 +4,12 @@
  * TIME FOR STARTING, TIME OUT FOR ENDING, DURATION, TIME LOST, COMMENT
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Search, Filter, Plus, FileSpreadsheet, MoreHorizontal, 
-  Calendar as CalendarIcon, Clock, User, BookOpen, MapPin, 
-  Trash2, Edit, CheckCircle, XCircle, AlertCircle, Download, Upload, LogIn, LogOut,
-  ChevronLeft, ChevronRight, UserCheck
+  Search, Filter, Plus, MoreHorizontal, 
+  Calendar as CalendarIcon, Clock, BookOpen, 
+  Trash2, Edit, CheckCircle, XCircle, Download, Upload, LogIn, LogOut,
+  ChevronLeft, ChevronRight, UserCheck, Loader2, CalendarClock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,8 +33,26 @@ import { academicService, staffService, enrollmentService, studentService } from
 import { exportLectureRecordsToCSV, importLectureRecordsFromCSV, downloadLectureRecordsImportTemplateExcel, LECTURE_RECORDS_IMPORT_CSV_HEADER } from '@/utils/excel';
 import { toast } from 'sonner';
 import type { QALectureRecord } from '@/types/qa';
+import { useAuth } from '@/contexts/AuthContext';
+
+const COMMENT_FILTER_LABELS: Record<string, string> = {
+  PENDING: 'Pending (awaiting QA)',
+  TAUGHT: 'TAUGHT',
+  UNTAUGHT: 'UNTAUGHT',
+  CANCELLED: 'CANCELLED',
+  SUBSTITUTED: 'SUBSTITUTED',
+  COMPENSATION: 'COMPENSATION',
+  MEETING: 'MEETING',
+  SDL: 'SDL',
+  STUDENTS_ORIENTATION: 'STUDENTS ORIENTATION',
+};
 
 export default function LectureRecords() {
+  const { user } = useAuth();
+  const canSeedFromTimetable = useMemo(
+    () => (user?.permissions ?? []).includes('qa.seed_timetable'),
+    [user?.permissions]
+  );
   const [records, setRecords] = useState<QALectureRecord[]>([]);
   const [totalRecords, setTotalRecords] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,7 +78,19 @@ export default function LectureRecords() {
   const [selectedLecturerName, setSelectedLecturerName] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
-  const commentOptions = ['TAUGHT', 'UNTAUGHT', 'COMPENSATION', 'MEETING', 'SDL', 'STUDENTS_ORIENTATION'];
+  const commentOptions = [
+    'PENDING',
+    'TAUGHT',
+    'UNTAUGHT',
+    'CANCELLED',
+    'SUBSTITUTED',
+    'COMPENSATION',
+    'MEETING',
+    'SDL',
+    'STUDENTS_ORIENTATION',
+  ];
+  const [timetableSeedDate, setTimetableSeedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [timetableSeedLoading, setTimetableSeedLoading] = useState(false);
   const [sessionAttendanceOpen, setSessionAttendanceOpen] = useState(false);
   const [sessionRecord, setSessionRecord] = useState<{ classId: string; date: string; className: string } | null>(null);
   const [sessionEnrollments, setSessionEnrollments] = useState<Array<{ studentId: string; student?: { id: string; firstName: string; lastName: string; studentNumber: string } }>>([]);
@@ -249,8 +279,7 @@ export default function LectureRecords() {
       }
 
       if (commentFilter !== 'All') {
-        const commentValue = commentFilter === 'STUDENTS ORIENTATION' ? 'STUDENTS_ORIENTATION' : commentFilter;
-        filter.comment = commentValue;
+        filter.comment = commentFilter;
       }
 
       if (statusFilter !== 'All') {
@@ -296,6 +325,7 @@ export default function LectureRecords() {
   const filteredRecords = records;
   const taughtCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'TAUGHT').length;
   const untaughtCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'UNTAUGHT').length;
+  const pendingCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'PENDING').length;
   const onTimeCount = filteredRecords.filter((r: any) => (r.status || 'OnTime') === 'OnTime').length;
   const onTimeRatePct = filteredRecords.length > 0 ? Math.round((onTimeCount / filteredRecords.length) * 1000) / 10 : 0;
 
@@ -309,6 +339,35 @@ export default function LectureRecords() {
     setAttendanceStatusFilter('All');
     setDateFrom('');
     setDateTo('');
+  };
+
+  const handleSeedFromTimetable = async () => {
+    const d = timetableSeedDate.trim();
+    if (!d) {
+      toast.error('Choose a date for timetable alignment.');
+      return;
+    }
+    setTimetableSeedLoading(true);
+    try {
+      const result = await qaService.seedLectureRecordsFromTimetable(d);
+      const { created = 0, skipped = 0 } = result || {};
+      if (created > 0) {
+        toast.success(`Created ${created} pending row(s) from the timetable.${skipped ? ` ${skipped} slot(s) already had records.` : ''}`);
+      } else if (skipped > 0) {
+        toast.info(`Every scheduled slot for ${d} already has a QA row (${skipped} checked). Adjust date or timetable if needed.`);
+      } else {
+        toast.warning(`No scheduled timetable slots found for ${d}. Ensure classes have weekly times and timetable generation has run for that weekday.`);
+      }
+      setDateFrom(d);
+      setDateTo(d);
+      setPage(1);
+      setCommentFilter('PENDING');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to align timetable into lecture records.';
+      toast.error(msg);
+    } finally {
+      setTimetableSeedLoading(false);
+    }
   };
 
   // Calculate duration from start and end times
@@ -430,16 +489,34 @@ export default function LectureRecords() {
     if (!record) return;
     const nameTrim = (record.lecturerName || '').trim();
     setSelectedLecturerName(nameTrim);
-    const nameMatch = lecturerOptions.find((l) => l.name.trim() === nameTrim);
+    const staffIdFromRecord = record.lecturerId;
+    const nameMatch =
+      (staffIdFromRecord ? lecturerOptions.find((l) => l.id === staffIdFromRecord) : undefined) ||
+      lecturerOptions.find((l) => l.name.trim() === nameTrim);
     setSelectedLecturerId(nameMatch?.id || '');
+    setSelectedDepartmentId('');
+    setSelectedClassId('');
     if (nameMatch?.id) {
+      const classIdFromRecord = record.classId ?? undefined;
       qaService.getLecturerAssignments(nameMatch.id).then((a) => {
         setLecturerAssignments(a ?? null);
+        if (classIdFromRecord && a?.departments) {
+          for (const d of a.departments) {
+            const cls = d.classes.find((c) => c.id === classIdFromRecord);
+            if (cls) {
+              setSelectedDepartmentId(d.id);
+              setSelectedClassId(cls.id);
+              setSelectedClassName(cls.label || record.class || '');
+              return;
+            }
+          }
+        }
+        setSelectedClassName(record.class || '');
       });
     } else {
       setLecturerAssignments(null);
+      setSelectedClassName(record.class || '');
     }
-    setSelectedClassName(record.class || '');
 
     // Try to determine school from the record's class asynchronously
     if (record.class) {
@@ -528,7 +605,6 @@ export default function LectureRecords() {
 
   const formatDate = (date: Date | string): string => {
     if (typeof date === 'string') {
-      // Try to parse various date formats
       const parsed = new Date(date);
       if (!isNaN(parsed.getTime())) {
         return parsed.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
@@ -538,12 +614,34 @@ export default function LectureRecords() {
     return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
   };
 
+  const formatDateForInput = (date: Date | string | undefined | null): string => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const toYmdLocal = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = () => toYmdLocal(new Date());
+    if (date == null || date === '') return today();
+    if (typeof date === 'string') {
+      const trimmed = date.trim();
+      const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+      if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) return toYmdLocal(parsed);
+      return today();
+    }
+    if (Number.isNaN(date.getTime())) return today();
+    return toYmdLocal(date);
+  };
+
   const getCommentBadgeVariant = (comment: string) => {
     switch (comment.toUpperCase()) {
       case 'TAUGHT':
         return 'default';
       case 'UNTAUGHT':
+      case 'CANCELLED':
         return 'destructive';
+      case 'PENDING':
+        return 'secondary';
+      case 'SUBSTITUTED':
       case 'COMPENSATION':
         return 'secondary';
       case 'MEETING':
@@ -562,7 +660,28 @@ export default function LectureRecords() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Lecture Records</h1>
           <p className="text-gray-500">Manage and verify daily teaching activities across all schools.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center justify-end">
+          {canSeedFromTimetable && (
+            <div className="flex flex-wrap items-center gap-2 mr-2 pr-2 border-r border-gray-200">
+              <Input
+                type="date"
+                value={timetableSeedDate}
+                onChange={(e) => setTimetableSeedDate(e.target.value)}
+                className="w-[150px]"
+                aria-label="Date to fill from timetable"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="gap-2"
+                disabled={timetableSeedLoading}
+                onClick={handleSeedFromTimetable}
+              >
+                {timetableSeedLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+                From timetable
+              </Button>
+            </div>
+          )}
           <Button variant="outline" className="gap-2" onClick={handleExport} disabled={filteredRecords.length === 0}>
             <Download size={16} /> Export Excel
           </Button>
@@ -575,7 +694,15 @@ export default function LectureRecords() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {canSeedFromTimetable && (
+        <p className="text-sm text-muted-foreground max-w-3xl">
+          Use <span className="font-medium text-foreground">From timetable</span> to create{' '}
+          <span className="font-medium">Pending</span> rows for every scheduled slot on that day (matches class weekly pattern).
+          Edit each row to set the final outcome; ad-hoc sessions can still use <span className="font-medium">Record Lecture</span>.
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -620,6 +747,17 @@ export default function LectureRecords() {
             </div>
           </CardContent>
         </Card>
+        <Card className="bg-white border-amber-100">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Pending</p>
+              <h3 className="text-2xl font-bold text-amber-700">{isLoading ? '—' : pendingCount}</h3>
+            </div>
+            <div className="h-10 w-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-700">
+              <CalendarIcon size={20} />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -648,9 +786,9 @@ export default function LectureRecords() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Comments</SelectItem>
-                  {commentOptions.map(comment => (
+                  {commentOptions.map((comment) => (
                     <SelectItem key={comment} value={comment}>
-                      {comment === 'STUDENTS_ORIENTATION' ? 'STUDENTS ORIENTATION' : comment}
+                      {COMMENT_FILTER_LABELS[comment] ?? comment}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -769,7 +907,7 @@ export default function LectureRecords() {
                   </TableRow>
                 ) : (
                   filteredRecords.map((record, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={record.id || `lec-${index}`}>
                       <TableCell className="whitespace-nowrap font-medium">
                         {formatDate(record.date)}
                       </TableCell>
@@ -829,7 +967,7 @@ export default function LectureRecords() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={getCommentBadgeVariant(record.comment)}>
-                          {record.comment}
+                          {COMMENT_FILTER_LABELS[(record.comment || '').toUpperCase()] ?? record.comment}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -985,7 +1123,7 @@ export default function LectureRecords() {
       {/* Record/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
-          <form onSubmit={handleSave}>
+          <form key={currentRecordId ?? 'new'} onSubmit={handleSave}>
             <DialogHeader>
               <DialogTitle>{currentRecordId !== null ? 'Edit Lecture Record' : 'Record New Lecture'}</DialogTitle>
               <DialogDescription>
@@ -1002,7 +1140,11 @@ export default function LectureRecords() {
                     name="date" 
                     type="date" 
                     required 
-                    defaultValue={currentRecordId !== null ? formatDate(records.find(r => r.id === currentRecordId)?.date || '') : new Date().toISOString().split('T')[0]} 
+                    defaultValue={
+                      currentRecordId !== null
+                        ? formatDateForInput(records.find((r) => r.id === currentRecordId)?.date)
+                        : formatDateForInput(new Date())
+                    } 
                   />
                 </div>
                 <div className="space-y-2">
@@ -1195,9 +1337,9 @@ export default function LectureRecords() {
                       <SelectValue placeholder="Select comment" />
                     </SelectTrigger>
                     <SelectContent>
-                      {commentOptions.map(comment => (
+                      {commentOptions.map((comment) => (
                         <SelectItem key={comment} value={comment}>
-                          {comment === 'STUDENTS_ORIENTATION' ? 'STUDENTS ORIENTATION' : comment}
+                          {COMMENT_FILTER_LABELS[comment] ?? comment}
                         </SelectItem>
                       ))}
                     </SelectContent>

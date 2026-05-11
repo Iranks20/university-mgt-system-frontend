@@ -12,6 +12,8 @@
 export interface QALectureRecord {
   id?: string; // API record id
   date: Date | string; // Can be Date object or string like "8/25/2025" or "2025-01-09 00:00:00"
+  lecturerId?: string | null;
+  timetableId?: string | null;
   lecturerName: string; // "LECTURER'S NAME"
   class: string; // "CLASS" - e.g., "BAE 1.1", "BBA,BAE, BPG & DBG 1.1"
   classId?: string | null;
