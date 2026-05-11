@@ -1661,11 +1661,7 @@ function StaffTab({
   const listedStaff = isStaffRoleTab
     ? staff.filter(s => s.role === 'Staff')
     : staff.filter(s => s.role !== 'Lecturer');
-  const filteredStaff = listedStaff.filter(
-    s =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredStaff = listedStaff;
 
   // Fetch departments on mount
   useEffect(() => {
@@ -1688,6 +1684,14 @@ function StaffTab({
     loadDepartments();
   }, []);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const role = isStaffRoleTab ? 'Staff' : undefined;
+      loadStaff(1, { role, search: searchTerm.trim() || undefined });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm, isStaffRoleTab, loadStaff]);
+
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -1706,7 +1710,7 @@ function StaffTab({
         tempPassword: addForm.tempPassword || undefined, // Optional temporary password
       } as any);
       
-      await loadStaff(1);
+      await loadStaff(1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined });
       setAddForm({ name: '', email: '', role: 'Staff', dept: departments[0]?.id || departments[0]?.name || '', tempPassword: '' });
       setAddOpen(false);
       toast.success(isStaffRoleTab ? 'Staff member added successfully' : 'Non teaching staff member added successfully');
@@ -1726,7 +1730,7 @@ function StaffTab({
       const result = await staffService.importStaff(file, importCreateAccounts);
       toast.success(`Import completed! Imported: ${result.imported}, Failed: ${result.failed}${result.errors && result.errors.length > 0 ? `. Errors: ${result.errors.slice(0, 3).join(', ')}${result.errors.length > 3 ? '...' : ''}` : ''}`);
       
-      await loadStaff(1);
+      await loadStaff(1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined });
       setImportOpen(false);
     } catch (error: any) {
       console.error('Error importing staff:', error);
@@ -1839,9 +1843,9 @@ function StaffTab({
               <div className="flex items-center justify-between border-t px-4 py-2">
                 <span className="text-sm text-muted-foreground">{staffTotal} total</span>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1)}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined })}>Previous</Button>
                   <span className="text-sm">Page {staffPage} of {Math.max(1, Math.ceil(staffTotal / pageSize))}</span>
-                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1)}>Next</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined })}>Next</Button>
                 </div>
               </div>
             )}
@@ -2507,7 +2511,18 @@ function LecturersTab({
 // -----------------------------------------------------------------------------
 // SUB-COMPONENT: Course/Academic Tab
 // -----------------------------------------------------------------------------
-type CoursesTabRow = { id: string; code: string; name: string; departmentId: string; dept?: string; credits: number };
+type CoursesTabRow = {
+  id: string;
+  code: string;
+  name: string;
+  departmentId: string;
+  dept?: string;
+  programId?: string | null;
+  programName?: string;
+  credits: number;
+  level: number;
+  semester: number;
+};
 const COURSES_PAGE_SIZE = 20;
 
 function CoursesTab() {
@@ -2515,25 +2530,47 @@ function CoursesTab() {
   const [coursesPage, setCoursesPage] = useState(1);
   const [coursesTotal, setCoursesTotal] = useState(0);
   const [depts, setDepts] = useState<Record<string, string>>({});
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string; departmentId: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [courseSearchTerm, setCourseSearchTerm] = useState('');
+  const didInitCourseSearch = useRef(false);
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CoursesTabRow | null>(null);
-  const [courseForm, setCourseForm] = useState({ code: '', name: '', departmentId: '', credits: 0, level: 1, semester: 1 });
+  const [courseForm, setCourseForm] = useState({ code: '', name: '', departmentId: '', programId: '', credits: 0, level: 1, semester: 1 });
 
-  const loadCourses = async (pageNum: number = 1) => {
+  const loadCourses = async (pageNum: number = 1, search?: string) => {
     setLoading(true);
     try {
-      const [courseRes, departmentList] = await Promise.all([
-        academicService.getCourses({ page: pageNum, limit: COURSES_PAGE_SIZE }),
+      const [courseRes, departmentList, programList] = await Promise.all([
+        academicService.getCourses({
+          page: pageNum,
+          limit: COURSES_PAGE_SIZE,
+          ...(search && search.trim() ? { search: search.trim() } : {}),
+        }),
         academicService.getDepartments(),
+        academicService.getPrograms(),
       ]);
       const list = courseRes.data ?? [];
       const deptMap: Record<string, string> = {};
       (Array.isArray(departmentList) ? departmentList : (departmentList as any)?.data ?? []).forEach((d: any) => { deptMap[d.id] = d.name; });
+      const progArr = Array.isArray(programList) ? programList : (programList as any)?.data ?? [];
+      const progMap: Record<string, string> = {};
+      progArr.forEach((p: any) => { progMap[p.id] = p.name; });
+      setPrograms(progArr.map((p: any) => ({ id: p.id, name: p.name, departmentId: p.departmentId })));
       setDepts(deptMap);
-      setCourses(list.map((c: any) => ({ id: c.id, code: c.code, name: c.name, departmentId: c.departmentId, dept: deptMap[c.departmentId], credits: c.credits ?? 0 })));
+      setCourses(list.map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        departmentId: c.departmentId,
+        dept: deptMap[c.departmentId],
+        programId: c.programId ?? null,
+        programName: c.programId ? progMap[c.programId] : undefined,
+        credits: c.credits ?? 0,
+        level: c.level ?? 1,
+        semester: c.semester ?? 1,
+      })));
       setCoursesTotal(courseRes.total ?? 0);
       setCoursesPage(courseRes.page ?? pageNum);
     } catch (error) {
@@ -2544,36 +2581,48 @@ function CoursesTab() {
   };
 
   useEffect(() => {
-    loadCourses(coursesPage);
+    loadCourses(coursesPage, courseSearchTerm);
   }, [coursesPage]);
 
   useEffect(() => {
-    const handleImportComplete = () => loadCourses(1);
+    const handleImportComplete = () => loadCourses(1, courseSearchTerm);
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
 
-  const filteredCourses = courses.filter(
-    (c) =>
-      c.code.toLowerCase().includes(courseSearchTerm.toLowerCase()) ||
-      c.name.toLowerCase().includes(courseSearchTerm.toLowerCase()) ||
-      (c.dept ?? '').toLowerCase().includes(courseSearchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    if (!didInitCourseSearch.current) {
+      didInitCourseSearch.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCoursesPage(1);
+      loadCourses(1, courseSearchTerm);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [courseSearchTerm]);
 
   const openAddCourse = () => {
     setEditingCourse(null);
-    setCourseForm({ code: '', name: '', departmentId: Object.keys(depts)[0] ?? '', credits: 0, level: 1, semester: 1 });
+    setCourseForm({ code: '', name: '', departmentId: Object.keys(depts)[0] ?? '', programId: '', credits: 0, level: 1, semester: 1 });
     setAddCourseOpen(true);
   };
 
-  const openEditCourse = (course: CoursesTabRow) => {
+  const openEditCourse = async (course: CoursesTabRow) => {
     setEditingCourse(course);
-    const courseData = course as any;
+    let courseData: any = course;
+    try {
+      const fresh = await academicService.getCourseById(course.id);
+      if (fresh) courseData = fresh;
+    } catch {
+      // use table data fallback
+    }
     setCourseForm({ 
-      code: course.code, 
-      name: course.name, 
-      departmentId: course.departmentId, 
-      credits: course.credits,
+      code: courseData.code ?? course.code,
+      name: courseData.name ?? course.name,
+      departmentId: courseData.departmentId ?? course.departmentId,
+      programId: courseData.programId ?? '',
+      credits: courseData.credits ?? course.credits,
       level: courseData.level || 1,
       semester: courseData.semester || 1,
     });
@@ -2588,6 +2637,7 @@ function CoursesTab() {
           code: courseForm.code,
           name: courseForm.name,
           departmentId: courseForm.departmentId || undefined,
+          programId: courseForm.programId || null,
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
@@ -2597,6 +2647,7 @@ function CoursesTab() {
           code: courseForm.code,
           name: courseForm.name,
           departmentId: courseForm.departmentId,
+          programId: courseForm.programId || null,
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
@@ -2639,37 +2690,63 @@ function CoursesTab() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : (
-              filteredCourses.map((course) => (
-                <TableRow key={course.id}>
-                  <TableCell className="font-bold">{course.code}</TableCell>
-                  <TableCell>{course.name}</TableCell>
-                  <TableCell>{course.dept ?? course.departmentId}</TableCell>
-                  <TableCell>{course.credits}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditCourse(course)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600" onClick={async () => {
-                          if (confirm(`Delete course "${course.name}"?`)) {
-                            try {
-                              await academicService.deleteCourse(course.id);
-                              await loadCourses(coursesPage);
-                            } catch (error: any) {
-                              console.error('Error deleting course:', error);
-                              toast.error(`Failed to delete course: ${error?.message || 'Unknown error'}`);
-                            }
-                          }
-                        }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              <>
+                <TableRow>
+                  <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <div className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Loading courses...</span>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <TableRow key={`course-loading-${idx}`} className="animate-pulse">
+                    <TableCell><div className="h-4 w-20 rounded bg-muted" /></TableCell>
+                    <TableCell><div className="h-4 w-48 rounded bg-muted" /></TableCell>
+                    <TableCell><div className="h-4 w-36 rounded bg-muted" /></TableCell>
+                    <TableCell><div className="h-4 w-10 rounded bg-muted" /></TableCell>
+                    <TableCell className="text-right"><div className="ml-auto h-8 w-8 rounded bg-muted" /></TableCell>
+                  </TableRow>
+                ))}
+              </>
+            ) : (
+              courses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    No courses found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                courses.map((course) => (
+                  <TableRow key={course.id}>
+                    <TableCell className="font-bold">{course.code}</TableCell>
+                    <TableCell>{course.name}</TableCell>
+                    <TableCell>{course.dept ?? course.departmentId}</TableCell>
+                    <TableCell>{course.credits}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditCourse(course)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={async () => {
+                            if (confirm(`Delete course "${course.name}"?`)) {
+                              try {
+                                await academicService.deleteCourse(course.id);
+                                await loadCourses(coursesPage);
+                              } catch (error: any) {
+                                console.error('Error deleting course:', error);
+                                toast.error(`Failed to delete course: ${error?.message || 'Unknown error'}`);
+                              }
+                            }
+                          }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )
             )}
           </TableBody>
         </Table>
@@ -2708,23 +2785,37 @@ function CoursesTab() {
                   label: name as string,
                 }))}
                 value={courseForm.departmentId}
-                onValueChange={(v) => setCourseForm((f) => ({ ...f, departmentId: v }))}
+                onValueChange={(v) => setCourseForm((f) => ({ ...f, departmentId: v, programId: '' }))}
                 placeholder="Select department"
                 searchPlaceholder="Search departments..."
                 emptyText="No department found."
                 initialDisplayCount={10}
               />
             </div>
+            <div>
+              <Label>Program</Label>
+              <Select value={courseForm.programId || '__none__'} onValueChange={v => setCourseForm(f => ({ ...f, programId: v === '__none__' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder={courseForm.departmentId ? 'Select program (optional)' : 'Select department first'} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No program (Unassigned)</SelectItem>
+                  {programs
+                    .filter((p) => p.departmentId === courseForm.departmentId)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Level</Label>
+                <Label>Year</Label>
                 <Select value={String(courseForm.level)} onValueChange={v => setCourseForm(f => ({ ...f, level: parseInt(v, 10) }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Level 1</SelectItem>
-                    <SelectItem value="2">Level 2</SelectItem>
-                    <SelectItem value="3">Level 3</SelectItem>
-                    <SelectItem value="4">Level 4</SelectItem>
+                    <SelectItem value="1">Year 1</SelectItem>
+                    <SelectItem value="2">Year 2</SelectItem>
+                    <SelectItem value="3">Year 3</SelectItem>
+                    <SelectItem value="4">Year 4</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2774,23 +2865,37 @@ function CoursesTab() {
                   label: name as string,
                 }))}
                 value={courseForm.departmentId}
-                onValueChange={(v) => setCourseForm((f) => ({ ...f, departmentId: v }))}
+                onValueChange={(v) => setCourseForm((f) => ({ ...f, departmentId: v, programId: '' }))}
                 placeholder="Select department"
                 searchPlaceholder="Search departments..."
                 emptyText="No department found."
                 initialDisplayCount={10}
               />
             </div>
+            <div>
+              <Label>Program</Label>
+              <Select value={courseForm.programId || '__none__'} onValueChange={v => setCourseForm(f => ({ ...f, programId: v === '__none__' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder={courseForm.departmentId ? 'Select program (optional)' : 'Select department first'} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No program (Unassigned)</SelectItem>
+                  {programs
+                    .filter((p) => p.departmentId === courseForm.departmentId)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Level</Label>
+                <Label>Year</Label>
                 <Select value={String(courseForm.level)} onValueChange={v => setCourseForm(f => ({ ...f, level: parseInt(v, 10) }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Level 1</SelectItem>
-                    <SelectItem value="2">Level 2</SelectItem>
-                    <SelectItem value="3">Level 3</SelectItem>
-                    <SelectItem value="4">Level 4</SelectItem>
+                    <SelectItem value="1">Year 1</SelectItem>
+                    <SelectItem value="2">Year 2</SelectItem>
+                    <SelectItem value="3">Year 3</SelectItem>
+                    <SelectItem value="4">Year 4</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -4699,7 +4804,7 @@ function ClassesTab({
   classesPage: number;
   classesTotal: number;
   pageSize: number;
-  loadClasses: (page: number, params?: { programIntakeId?: string | null }) => Promise<void>;
+  loadClasses: (page: number, params?: { programIntakeId?: string | null; search?: string }) => Promise<void>;
   programIntakeId: string | null;
   setProgramIntakeId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
@@ -4747,13 +4852,29 @@ function ClassesTab({
 
   const refreshClassData = async () => {
     try {
-      const [coursesRes, venuesRes] = await Promise.all([
-        academicService.getCourses({ limit: 50 }),
-        academicService.getVenues({ limit: 50 }),
-      ]);
-      setAdminCourses((coursesRes.data ?? []).map((c: any) => ({ id: c.id, code: c.code ?? '', name: c.name ?? '' })));
-      setVenues((venuesRes.data ?? []).map((v: any) => ({ id: v.id, name: v.name, code: v.code || '' })));
-      await loadClasses(classesPage);
+      const allCourses: any[] = [];
+      let coursePage = 1;
+      while (true) {
+        const res = await academicService.getCourses({ page: coursePage, limit: 100 });
+        const arr = res.data ?? [];
+        allCourses.push(...arr);
+        if (arr.length === 0 || allCourses.length >= (res.total ?? allCourses.length)) break;
+        coursePage += 1;
+      }
+
+      const allVenues: any[] = [];
+      let venuePage = 1;
+      while (true) {
+        const res = await academicService.getVenues({ page: venuePage, limit: 100 });
+        const arr = res.data ?? [];
+        allVenues.push(...arr);
+        if (arr.length === 0 || allVenues.length >= (res.total ?? allVenues.length)) break;
+        venuePage += 1;
+      }
+
+      setAdminCourses(allCourses.map((c: any) => ({ id: c.id, code: c.code ?? '', name: c.name ?? '' })));
+      setVenues(allVenues.map((v: any) => ({ id: v.id, name: v.name, code: v.code || '' })));
+      await loadClasses(classesPage, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
     } catch (error) {
       console.error('Error refreshing class data:', error);
     }
@@ -4767,6 +4888,13 @@ function ClassesTab({
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadClasses(1, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm, programIntakeId, loadClasses]);
 
   useEffect(() => {
     academicService.getPrograms()
@@ -4791,7 +4919,7 @@ function ClassesTab({
         return;
       }
       setProgramIntakeId(intake.id);
-      await loadClasses(1, { programIntakeId: intake.id });
+      await loadClasses(1, { programIntakeId: intake.id, search: searchTerm.trim() || undefined });
       toast.success('Filtered classes by intake scope');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply intake filter');
@@ -4802,16 +4930,12 @@ function ClassesTab({
 
   const clearScopeFilter = async () => {
     setProgramIntakeId(null);
-    await loadClasses(1, { programIntakeId: null });
+    await loadClasses(1, { programIntakeId: null, search: searchTerm.trim() || undefined });
     toast.success('Showing all classes');
   };
 
   const lecturers = staff.filter(s => s.role === 'Lecturer');
   const filteredClasses = classes.filter(c => {
-    const matchesSearch =
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.course.toLowerCase().includes(searchTerm.toLowerCase());
-    if (!matchesSearch) return false;
     if (lecturerFilter !== 'all' && c.lecturerId !== lecturerFilter) return false;
     if (assignmentFilter === 'assigned' && !c.lecturerId) return false;
     if (assignmentFilter === 'unassigned' && c.lecturerId) return false;
@@ -5438,9 +5562,17 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
 
   const loadLecturers = async () => {
     try {
-      const result = await staffService.getStaff({ role: 'Lecturer', limit: 50 });
-      const lecturers = Array.isArray(result) ? result : (result.data || []);
-      setLecturers(lecturers.filter((s: any) => s.role === 'Lecturer').map((s: any) => ({
+      const allLecturers: any[] = [];
+      let lecturerPage = 1;
+      while (true) {
+        const result = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 100 });
+        const arr = Array.isArray(result) ? result : (result.data || []);
+        allLecturers.push(...arr);
+        const total = Array.isArray(result) ? arr.length : (result.total ?? allLecturers.length);
+        if (arr.length === 0 || allLecturers.length >= total) break;
+        lecturerPage += 1;
+      }
+      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer').map((s: any) => ({
         id: s.id,
         name: `${s.firstName} ${s.lastName}`,
       })));
@@ -5451,10 +5583,24 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   };
 
   useEffect(() => {
-    academicService.getVenues({ limit: 50 }).then((res: any) => {
-      const arr = res?.data ?? [];
-      setVenues(arr.map((v: any) => ({ id: v.id, name: v.name })));
-    }).catch(() => setVenues([]));
+    const loadVenueOptions = async () => {
+      try {
+        const allVenues: any[] = [];
+        let venuePage = 1;
+        while (true) {
+          const res = await academicService.getVenues({ page: venuePage, limit: 100 });
+          const arr = res?.data ?? [];
+          allVenues.push(...arr);
+          const total = res?.total ?? allVenues.length;
+          if (arr.length === 0 || allVenues.length >= total) break;
+          venuePage += 1;
+        }
+        setVenues(allVenues.map((v: any) => ({ id: v.id, name: v.name })));
+      } catch {
+        setVenues([]);
+      }
+    };
+    loadVenueOptions();
     loadLecturers();
   }, []);
 
@@ -6652,10 +6798,16 @@ export default function AdminView({
   const [classesPage, setClassesPage] = useState(1);
   const [classesTotal, setClassesTotal] = useState(0);
   const [classesProgramIntakeId, setClassesProgramIntakeId] = useState<string | null>(null);
-  const loadClasses = async (pageNum: number, params?: { programIntakeId?: string | null }) => {
+  const loadClasses = async (pageNum: number, params?: { programIntakeId?: string | null; search?: string }) => {
     try {
       const programIntakeId = params?.programIntakeId ?? classesProgramIntakeId ?? undefined;
-      const res = await academicService.getClasses({ page: pageNum, limit: LIST_PAGE_SIZE, ...(programIntakeId ? { programIntakeId } : {}) });
+      const search = params?.search;
+      const res = await academicService.getClasses({
+        page: pageNum,
+        limit: LIST_PAGE_SIZE,
+        ...(programIntakeId ? { programIntakeId } : {}),
+        ...(search && search.trim() ? { search: search.trim() } : {}),
+      });
       const arr = res.data ?? [];
       setClasses(arr.map((c: any) => ({
         id: c.id,

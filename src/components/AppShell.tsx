@@ -34,8 +34,6 @@ function roleLabel(r: string): string {
 const ADMIN_USERS_CHILD_PATHS = [
   '/admin-students',
   '/admin-lecturers',
-  '/admin-staff-role',
-  '/admin-staff',
   '/admin-users',
   '/admin-roles',
 ] as const;
@@ -55,8 +53,6 @@ const NAV_PERMISSION: Record<string, string[] | string[][]> = {
   '/admin-roles': ['admin.console'],
   '/admin-students': ['admin.console'],
   '/admin-lecturers': ['admin.console'],
-  '/admin-staff-role': ['admin.console'],
-  '/admin-staff': ['admin.console'],
   '/admin-courses': ['academic.write'],
   '/admin-classes': ['academic.write'],
   '/admin-timetables': ['timetable.ops'],
@@ -67,6 +63,7 @@ const NAV_PERMISSION: Record<string, string[] | string[][]> = {
   '/admin-settings': ['settings.read'],
   '/timetable': [['timetable.student_me'], ['academic.personal_schedule', 'qa.lecturer_portal'], ['timetable.ops']],
   '/timetable-builder': [['academic.read', 'academic.venues', 'academic.program_intakes', 'academic.write', 'staff.read']],
+  '/clinical-rotations': [['clinical.sessions.record'], ['clinical.reports.view'], ['clinical.sites.manage']],
   '/lecture-records': [['qa.review', 'qa.write', 'qa.import', 'staff.read', 'enrollment.class_read', 'students.attendance_staff']],
   '/student-records': [['students.read', 'students.attendance_staff', 'academic.read']],
   '/reports': [['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops']],
@@ -233,6 +230,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Timetable', icon: Calendar, path: '/timetable' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
+          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
           { type: 'single', label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
           { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
           { type: 'single', label: 'Student Records', icon: Users, path: '/student-records' },
@@ -267,6 +265,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'University Overview', icon: BarChart, path: '/management-overview' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
+          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
           { type: 'single', label: 'Department Stats', icon: School, path: '/management-departments' },
           { type: 'single', label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
           { type: 'single', label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
@@ -279,6 +278,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
+          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
           {
             type: 'folder',
             id: 'users',
@@ -287,8 +287,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             children: [
               { label: 'Students', path: '/admin-students', icon: Users },
               { label: 'Lecturers', path: '/admin-lecturers', icon: GraduationCap },
-              { label: 'Staff', path: '/admin-staff-role', icon: UsersRound },
-              { label: 'Non-teaching staff', path: '/admin-staff', icon: Briefcase },
               { label: 'System accounts', path: '/admin-users', icon: UserCog },
               { label: 'Roles & Permissions', path: '/admin-roles', icon: KeyRound },
             ],

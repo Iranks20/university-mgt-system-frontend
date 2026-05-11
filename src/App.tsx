@@ -24,8 +24,6 @@ import AdminUsers from './screens/AdminUsers'
 import AdminCustomRoles from './screens/AdminCustomRoles'
 import AdminTimetables from './screens/AdminTimetables'
 import AdminCourses from './screens/AdminCourses'
-import AdminStaff from './screens/AdminStaff'
-import AdminStaffRole from './screens/AdminStaffRole'
 import AdminLecturers from './screens/AdminLecturers'
 import AdminStudents from './screens/AdminStudents'
 import AdminCalendar from './screens/AdminCalendar'
@@ -37,6 +35,7 @@ import LectureRecords from './screens/LectureRecords'
 import Cancellations from './screens/Cancellations'
 import CurriculumManagement from './screens/CurriculumManagement'
 import TimetableBuilder from './screens/TimetableBuilder'
+import ClinicalRotations from './screens/ClinicalRotations'
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -316,6 +315,21 @@ function AppRoutes() {
 					</ProtectedRoute>
 				} 
 			/>
+			<Route
+				path="/clinical-rotations"
+				element={
+					<ProtectedRoute
+						allowedRoles={['Admin', 'Management', 'QA']}
+						requiredPermissionSets={[
+							['clinical.sessions.record'],
+							['clinical.reports.view'],
+							['clinical.sites.manage'],
+						]}
+					>
+						<ClinicalRotations />
+					</ProtectedRoute>
+				}
+			/>
 			
 			{/* Admin Routes */}
 			<Route 
@@ -323,22 +337,6 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
 						<AdminStudents />
-					</ProtectedRoute>
-				} 
-			/>
-			<Route 
-				path="/admin-staff-role" 
-				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
-						<AdminStaffRole />
-					</ProtectedRoute>
-				} 
-			/>
-			<Route 
-				path="/admin-staff" 
-				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
-						<AdminStaff />
 					</ProtectedRoute>
 				} 
 			/>
