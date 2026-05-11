@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Combobox } from '@/components/ui/combobox';
 import { 
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
@@ -404,6 +405,7 @@ export default function LectureRecords() {
       setIsDialogOpen(false);
       setCurrentRecordId(null);
       setSelectedLecturerName('');
+      setSelectedLecturerId('');
     } catch (error) {
       console.error('Error saving record:', error);
       toast.error('Failed to save record. Please try again.');
@@ -426,7 +428,17 @@ export default function LectureRecords() {
     setCurrentRecordId(id);
     const record = records.find(r => r.id === id);
     if (!record) return;
-    setSelectedLecturerName(record.lecturerName || '');
+    const nameTrim = (record.lecturerName || '').trim();
+    setSelectedLecturerName(nameTrim);
+    const nameMatch = lecturerOptions.find((l) => l.name.trim() === nameTrim);
+    setSelectedLecturerId(nameMatch?.id || '');
+    if (nameMatch?.id) {
+      qaService.getLecturerAssignments(nameMatch.id).then((a) => {
+        setLecturerAssignments(a ?? null);
+      });
+    } else {
+      setLecturerAssignments(null);
+    }
     setSelectedClassName(record.class || '');
 
     // Try to determine school from the record's class asynchronously
@@ -460,7 +472,12 @@ export default function LectureRecords() {
     setSelectedSchool('');
     setClasses([]);
     setSelectedLecturerName('');
+    setSelectedLecturerId('');
+    setSelectedDepartmentId('');
+    setSelectedDepartmentName('');
+    setSelectedClassId('');
     setSelectedClassName('');
+    setLecturerAssignments(null);
     setIsDialogOpen(true);
   };
 
@@ -989,39 +1006,39 @@ export default function LectureRecords() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lecturerName">LECTURER'S NAME *</Label>
-                  <Select
-                    value={selectedLecturerName}
-                    onValueChange={async (value) => {
-                      setSelectedLecturerName(value);
-                      const opt = lecturerOptions.find(l => l.name === value);
-                      const id = opt?.id || '';
+                  <Label>LECTURER&apos;S NAME *</Label>
+                  <Combobox
+                    options={lecturerOptions.map((l) => ({
+                      value: l.id,
+                      label: l.departmentName ? `${l.name} — ${l.departmentName}` : l.name,
+                    }))}
+                    value={selectedLecturerId}
+                    onValueChange={async (id) => {
+                      if (!id) {
+                        setSelectedLecturerId('');
+                        setSelectedLecturerName('');
+                        setSelectedDepartmentId('');
+                        setSelectedDepartmentName('');
+                        setSelectedClassId('');
+                        setSelectedClassName('');
+                        setLecturerAssignments(null);
+                        return;
+                      }
+                      const opt = lecturerOptions.find((l) => l.id === id);
                       setSelectedLecturerId(id);
+                      setSelectedLecturerName(opt?.name || '');
                       setSelectedDepartmentId('');
                       setSelectedDepartmentName('');
                       setSelectedClassId('');
                       setSelectedClassName('');
-                      if (id) {
-                        const assignments = await qaService.getLecturerAssignments(id);
-                        if (assignments) {
-                          setLecturerAssignments(assignments);
-                        } else {
-                          setLecturerAssignments(null);
-                        }
-                      } else {
-                        setLecturerAssignments(null);
-                      }
+                      const assignments = await qaService.getLecturerAssignments(id);
+                      setLecturerAssignments(assignments ?? null);
                     }}
-                  >
-                    <SelectTrigger id="lecturerName">
-                      <SelectValue placeholder="Select a lecturer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allLecturers.map((name) => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select a lecturer"
+                    searchPlaceholder="Search lecturers by name or department..."
+                    emptyText="No lecturer found."
+                    initialDisplayCount={Math.max(lecturerOptions.length, 1)}
+                  />
                 </div>
               </div>
 
