@@ -52,22 +52,30 @@ export function Combobox({
 
   const selectedOption = options.find((option) => option.value === value)
 
+  const searchQuery = search.trim()
+
   const filteredOptions = React.useMemo(() => {
-    if (!search) {
+    if (!searchQuery) {
       return options.slice(0, initialDisplayCount)
     }
-    const searchLower = search.toLowerCase()
+    const q = searchQuery.toLowerCase()
     return options.filter(
       (option) =>
-        option.label.toLowerCase().includes(searchLower) ||
-        option.value.toLowerCase().includes(searchLower)
+        option.label.toLowerCase().includes(q) ||
+        option.value.toLowerCase().includes(q)
     )
-  }, [options, search, initialDisplayCount])
+  }, [options, searchQuery, initialDisplayCount])
 
-  const showMore = !search && options.length > initialDisplayCount
+  const showMore = !searchQuery && options.length > initialDisplayCount
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setSearch("")
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -81,7 +89,7 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder={searchPlaceholder}
             value={search}

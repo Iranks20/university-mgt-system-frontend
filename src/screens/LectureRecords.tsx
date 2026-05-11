@@ -1037,7 +1037,7 @@ export default function LectureRecords() {
                     placeholder="Select a lecturer"
                     searchPlaceholder="Search lecturers by name or department..."
                     emptyText="No lecturer found."
-                    initialDisplayCount={Math.max(lecturerOptions.length, 1)}
+                    initialDisplayCount={10}
                   />
                 </div>
               </div>
