@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Users, BookOpen, Calendar, Settings, Database, 
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
   MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp
+  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2089,7 +2089,9 @@ function LecturersTab({
   const [addForm, setAddForm] = useState({ name: '', email: '', dept: '', tempPassword: '' });
   const [editOpen, setEditOpen] = useState(false);
   const [editingLecturer, setEditingLecturer] = useState<StaffRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', dept: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', dept: '', newPassword: '' });
+  const [addTempPasswordVisible, setAddTempPasswordVisible] = useState(false);
+  const [editPasswordVisible, setEditPasswordVisible] = useState(false);
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const lecturerFileRef = useRef<HTMLInputElement>(null);
 
@@ -2272,7 +2274,8 @@ function LecturersTab({
                               <DropdownMenuItem onClick={() => openAssign(lecturer)}><BookMarked className="mr-2 h-4 w-4" /> Assign classes</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => {
                                 setEditingLecturer(lecturer);
-                                setEditForm({ name: lecturer.name, email: lecturer.email, dept: lecturer.departmentId ?? lecturer.dept });
+                                setEditForm({ name: lecturer.name, email: lecturer.email, dept: lecturer.departmentId ?? lecturer.dept, newPassword: '' });
+                                setEditPasswordVisible(false);
                                 setEditOpen(true);
                               }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
                               <DropdownMenuItem className="text-red-600" onClick={async () => {
@@ -2310,7 +2313,13 @@ function LecturersTab({
         </CardContent>
       </Card>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          setAddOpen(open);
+          if (!open) setAddTempPasswordVisible(false);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Lecturer</DialogTitle>
@@ -2350,7 +2359,26 @@ function LecturersTab({
             </div>
             <div className="space-y-2">
               <Label>Temporary password (for first login)</Label>
-              <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave blank to send reset link" />
+              <div className="relative">
+                <Input
+                  type={addTempPasswordVisible ? 'text' : 'password'}
+                  className="pr-10"
+                  value={addForm.tempPassword}
+                  onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))}
+                  placeholder="Leave blank to send reset link"
+                  autoComplete="new-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setAddTempPasswordVisible(v => !v)}
+                  aria-label={addTempPasswordVisible ? 'Hide password' : 'Show password'}
+                >
+                  {addTempPasswordVisible ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
@@ -2361,7 +2389,16 @@ function LecturersTab({
       </Dialog>
 
       {/* Edit Lecturer Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) {
+            setEditPasswordVisible(false);
+            setEditingLecturer(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Lecturer</DialogTitle>
@@ -2373,18 +2410,20 @@ function LecturersTab({
             try {
               const [firstName, ...lastNameParts] = editForm.name.split(' ');
               const lastName = lastNameParts.join(' ') || firstName;
-              
+              const newPw = editForm.newPassword.trim();
               await staffService.updateStaff(editingLecturer.id, {
                 firstName,
                 lastName,
                 email: editForm.email,
                 role: 'Lecturer' as any,
                 departmentId: editForm.dept,
-              });
+                ...(newPw ? { tempPassword: newPw } : {}),
+              } as any);
               
               await loadStaff(staffPage);
               setEditOpen(false);
               setEditingLecturer(null);
+              setEditPasswordVisible(false);
               toast.success('Lecturer updated successfully');
             } catch (error: any) {
               console.error('Error updating lecturer:', error);
@@ -2422,6 +2461,29 @@ function LecturersTab({
                     initialDisplayCount={10}
                   />
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label>New password (optional)</Label>
+                <div className="relative">
+                  <Input
+                    type={editPasswordVisible ? 'text' : 'password'}
+                    className="pr-10"
+                    value={editForm.newPassword}
+                    onChange={e => setEditForm(f => ({ ...f, newPassword: e.target.value }))}
+                    placeholder="Leave blank to keep current password"
+                    autoComplete="new-password"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setEditPasswordVisible(v => !v)}
+                    aria-label={editPasswordVisible ? 'Hide password' : 'Show password'}
+                  >
+                    {editPasswordVisible ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                  </Button>
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -6769,31 +6831,34 @@ export default function AdminView({
     }
   };
 
-  const loadStaff = async (page: number, options?: { role?: string; search?: string }) => {
-    try {
-      const res = await staffService.getStaff({
-        page,
-        limit: LIST_PAGE_SIZE,
-        ...(options?.role ? { role: options.role } : (staffTabMode === 'staff-role' ? { role: 'Staff' } : {})),
-        ...(options?.search ? { search: options.search } : {}),
-      });
-      const data = res.data || res;
-      setStaff(Array.isArray(data) ? data.map((s: any) => ({
-        id: s.id,
-        name: `${s.firstName} ${s.lastName}`,
-        email: s.email,
-        role: s.role,
-        dept: s.departmentName || s.departmentId || '',
-        departmentId: s.departmentId,
-        status: s.status || 'Active',
-      })) : []);
-      setStaffTotal(res.total ?? 0);
-      setStaffPage(res.page ?? page);
-    } catch (e) {
-      setStaff([]);
-      setStaffTotal(0);
-    }
-  };
+  const loadStaff = useCallback(
+    async (page: number, options?: { role?: string; search?: string }) => {
+      try {
+        const res = await staffService.getStaff({
+          page,
+          limit: LIST_PAGE_SIZE,
+          ...(options?.role ? { role: options.role } : (staffTabMode === 'staff-role' ? { role: 'Staff' } : {})),
+          ...(options?.search ? { search: options.search } : {}),
+        });
+        const data = res.data || res;
+        setStaff(Array.isArray(data) ? data.map((s: any) => ({
+          id: s.id,
+          name: `${s.firstName} ${s.lastName}`,
+          email: s.email,
+          role: s.role,
+          dept: s.departmentName || s.departmentId || '',
+          departmentId: s.departmentId,
+          status: s.status || 'Active',
+        })) : []);
+        setStaffTotal(res.total ?? 0);
+        setStaffPage(res.page ?? page);
+      } catch (e) {
+        setStaff([]);
+        setStaffTotal(0);
+      }
+    },
+    [staffTabMode]
+  );
 
   const [classesPage, setClassesPage] = useState(1);
   const [classesTotal, setClassesTotal] = useState(0);
