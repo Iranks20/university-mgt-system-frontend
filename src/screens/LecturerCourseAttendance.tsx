@@ -38,7 +38,7 @@ export default function LecturerCourseAttendance() {
       
       const coursesWithStats = await Promise.all(
         lecturerClasses.map(async (classData: any) => {
-          const enrollments = await enrollmentService.getClassEnrollments(classData.id);
+          const enrollments = await enrollmentService.getClassEnrollments(classData.id, { roster: true });
           const studentIds = enrollments.map((e: any) => e.studentId);
           
           // Get QA lecture records for this class

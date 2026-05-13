@@ -135,7 +135,7 @@ export default function LectureRecords() {
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
       setSessionLoading(true);
-      enrollmentService.getClassEnrollments(sessionRecord.classId)
+      enrollmentService.getClassEnrollments(sessionRecord.classId, { roster: true })
         .then((list: any[]) => {
           setSessionEnrollments(list);
           setSessionStatusMap({});

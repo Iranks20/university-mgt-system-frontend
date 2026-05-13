@@ -33,9 +33,10 @@ export const enrollmentService = {
     }
   },
 
-  getClassEnrollments: async (classId: string) => {
+  getClassEnrollments: async (classId: string, options?: { roster?: boolean }) => {
     try {
-      const response = await api.get<unknown>(`/enrollments/class/${classId}`);
+      const params = options?.roster ? { roster: 'true' } : undefined;
+      const response = await api.get<unknown>(`/enrollments/class/${classId}`, params as any);
       const r = response as unknown as { data?: unknown[] } | unknown[];
       return Array.isArray(r) ? r : (r as { data?: unknown[] })?.data || [];
     } catch (error) {
