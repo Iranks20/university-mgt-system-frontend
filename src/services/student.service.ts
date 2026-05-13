@@ -213,6 +213,17 @@ export const studentService = {
     }
   },
 
+  getSessionAttendance: async (classId: string, date: string): Promise<Array<{ id: string; studentId: string; classId: string; date: string; status: string; remarks: string | null; markedBy: string | null; markedAt: string }>> => {
+    try {
+      const res = await api.get<any>('/students/attendance/session', { classId, date });
+      const data = (res as any)?.data ?? res;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Error fetching session attendance:', error);
+      return [];
+    }
+  },
+
   createSessionAttendance: async (payload: { classId: string; date: string; records: Array<{ studentId: string; status: string; remarks?: string | null }> }): Promise<{ date: string; classId: string; count: number; results: Array<{ studentId: string; status: string; created: boolean }> }> => {
     try {
       const res = await api.post<any>('/students/attendance/session', payload);

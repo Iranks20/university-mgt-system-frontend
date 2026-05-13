@@ -135,14 +135,25 @@ export default function LectureRecords() {
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
       setSessionLoading(true);
-      enrollmentService.getClassEnrollments(sessionRecord.classId, { roster: true })
-        .then((list: any[]) => {
-          setSessionEnrollments(list);
-          setSessionStatusMap({});
+      Promise.all([
+        enrollmentService.getClassEnrollments(sessionRecord.classId, { roster: true }),
+        studentService.getSessionAttendance(sessionRecord.classId, sessionRecord.date),
+      ])
+        .then(([list, existing]) => {
+          const roster = (list as any[]) || [];
+          setSessionEnrollments(roster);
+          const map: Record<string, string> = {};
+          (existing || []).forEach((a: any) => {
+            if (a?.studentId && a?.status) {
+              map[a.studentId] = a.status;
+            }
+          });
+          setSessionStatusMap(map);
         })
         .catch(() => {
-          toast.error('Failed to load enrolled students.');
+          toast.error("Couldn't load the class list. Please try again.");
           setSessionEnrollments([]);
+          setSessionStatusMap({});
         })
         .finally(() => setSessionLoading(false));
     }
@@ -151,7 +162,7 @@ export default function LectureRecords() {
   const openSessionAttendance = (record: QALectureRecord & { classId?: string | null }) => {
     const classId = (record as any).classId;
     if (!classId) {
-      toast.error('This lecture record has no class linked. Cannot record student attendance.');
+      toast.error('No class is linked to this lecture, so attendance cannot be recorded.');
       return;
     }
     const date = typeof record.date === 'string' 
@@ -167,25 +178,45 @@ export default function LectureRecords() {
     setSessionStatusMap(prev => ({ ...prev, [studentId]: status }));
   };
 
+  const setAllSessionStatus = (status: string) => {
+    if (sessionEnrollments.length === 0) return;
+    const next: Record<string, string> = {};
+    sessionEnrollments.forEach((enr: any) => {
+      if (enr?.studentId) next[enr.studentId] = status;
+    });
+    setSessionStatusMap(next);
+  };
+
   const handleSessionAttendanceSubmit = async () => {
     if (!sessionRecord || sessionEnrollments.length === 0) return;
     setSessionSaving(true);
     try {
-      await studentService.createSessionAttendance({
+      const payload = sessionEnrollments.map(e => ({
+        studentId: e.studentId,
+        status: sessionStatusMap[e.studentId] || 'Absent',
+      }));
+      const result = await studentService.createSessionAttendance({
         classId: sessionRecord.classId,
         date: sessionRecord.date,
-        records: sessionEnrollments.map(e => ({
-          studentId: e.studentId,
-          status: sessionStatusMap[e.studentId] || 'Absent',
-        })),
+        records: payload,
       });
-      toast.success('Student attendance recorded for this session.');
+      const saved = result?.count ?? 0;
+      const skipped = Math.max(0, payload.length - saved);
+      if (skipped > 0) {
+        toast.success('Attendance saved.', {
+          description: `${saved} student${saved === 1 ? '' : 's'} recorded · ${skipped} not in this class.`,
+        });
+      } else {
+        toast.success('Attendance saved.', {
+          description: `${saved} student${saved === 1 ? '' : 's'} recorded.`,
+        });
+      }
       setSessionAttendanceOpen(false);
       setSessionRecord(null);
       setSessionEnrollments([]);
       setSessionStatusMap({});
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save attendance.');
+      toast.error(err?.message || "Couldn't save attendance. Please try again.");
     } finally {
       setSessionSaving(false);
     }
@@ -1027,9 +1058,34 @@ export default function LectureRecords() {
             </DialogDescription>
           </DialogHeader>
           {sessionLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading enrolled students...</div>
+            <div className="py-8 text-center text-muted-foreground">Loading students…</div>
           ) : (
             <>
+              {sessionEnrollments.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {sessionEnrollments.length} student{sessionEnrollments.length === 1 ? '' : 's'} in this class
+                    {Object.keys(sessionStatusMap).length > 0 && (
+                      <> · <span className="text-foreground font-medium">{Object.keys(sessionStatusMap).length}</span> already marked</>
+                    )}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">Mark all:</span>
+                    <Button type="button" size="sm" variant="outline" className="h-7 border-green-600 text-green-700 hover:bg-green-50" onClick={() => setAllSessionStatus('Present')}>
+                      Present
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-7 border-red-600 text-red-700 hover:bg-red-50" onClick={() => setAllSessionStatus('Absent')}>
+                      Absent
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-7 border-amber-600 text-amber-700 hover:bg-amber-50" onClick={() => setAllSessionStatus('Late')}>
+                      Late
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-7 border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => setAllSessionStatus('Excused')}>
+                      Excused
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="overflow-auto flex-1 min-h-0 rounded border">
                 <Table>
                   <TableHeader>
@@ -1043,7 +1099,7 @@ export default function LectureRecords() {
                     {sessionEnrollments.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center py-6 text-muted-foreground">
-                          No enrolled students for this class.
+                          No students in this class yet.
                         </TableCell>
                       </TableRow>
                     ) : (
