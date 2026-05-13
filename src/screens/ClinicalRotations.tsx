@@ -7,9 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { clinicalService } from '@/services/clinical.service';
-import { academicService } from '@/services/academic.service';
-import { studentService } from '@/services/student.service';
+import { clinicalService, academicService, studentService } from '@/services';
 
 export default function ClinicalRotations() {
   const [loading, setLoading] = useState(false);

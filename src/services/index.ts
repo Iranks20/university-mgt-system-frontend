@@ -15,3 +15,4 @@ export * from './settings.service';
 export * from './notification.service';
 export * from './timetable.service';
 export * from './cancellations.service';
+export * from './clinical.service';

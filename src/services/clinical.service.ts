@@ -2,6 +2,13 @@ import api from '@/lib/api';
 
 type Paged<T> = { data: T[]; total: number; page: number; pageSize: number; totalPages?: number };
 
+function toClinicalTimeHm(value: string | null | undefined): string | null | undefined {
+  if (value == null || value === '') return null;
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(String(value).trim());
+  if (!m) return null;
+  return `${m[1].padStart(2, '0')}:${m[2].padStart(2, '0')}`;
+}
+
 export const clinicalService = {
   getSites: async (params?: { page?: number; limit?: number; search?: string }): Promise<Paged<any>> => {
     try {
@@ -80,7 +87,9 @@ export const clinicalService = {
     endTime?: string | null;
     notes?: string | null;
   }) => {
-    return api.post('/clinical/sessions', payload);
+    const startTime = toClinicalTimeHm(payload.startTime ?? null);
+    const endTime = toClinicalTimeHm(payload.endTime ?? null);
+    return api.post('/clinical/sessions', { ...payload, startTime, endTime });
   },
 
   markAttendance: async (
