@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, Filter, MoreHorizontal, FileSpreadsheet,
   User, CheckCircle, XCircle, Clock, MapPin,
-  Trash2, Edit, ChevronLeft, ChevronRight, Plus
+  Trash2, Edit, ChevronLeft, ChevronRight, Plus, GraduationCap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,17 +18,28 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { studentService, academicService } from '@/services';
+import { Combobox } from '@/components/ui/combobox';
+import { studentService, academicService, enrollmentService } from '@/services';
 import { exportAttendanceRecordsToExcel } from '@/utils/excel';
 import type { AttendanceRecordRow } from '@/types/student';
-import type { School } from '@/types';
+import type { School, Department, Level } from '@/types';
 import type { Course } from '@/types';
 import type { Student } from '@/types';
-import type { Class } from '@/types';
 import { toast } from 'sonner';
 
+interface EnrollmentClassOption {
+  enrollmentId: string;
+  classId: string;
+  status: string;
+  className: string;
+  courseId?: string;
+  courseCode?: string;
+  courseName?: string;
+}
+
 const STATUS_OPTIONS = ['Present', 'Absent', 'Late', 'Excused'] as const;
-const ALL_PROGRAMS_VALUE = '__all__';
+const YEAR_OPTIONS = [1, 2, 3, 4, 5] as const;
+const SEMESTER_OPTIONS = [1, 2] as const;
 const ALL_VALUE = '__all__';
 
 export default function StudentRecords() {
@@ -36,12 +47,16 @@ export default function StudentRecords() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [programCodes, setProgramCodes] = useState<string[]>([]);
-  const [selectedProgram, setSelectedProgram] = useState<string>(ALL_PROGRAMS_VALUE);
   const [schools, setSchools] = useState<School[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [allLevels, setAllLevels] = useState<Level[]>([]);
+  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
+  const [allPrograms, setAllPrograms] = useState<Array<{ id: string; name: string; code: string; departmentId: string }>>([]);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<string>(ALL_VALUE);
-  const [selectedCourse, setSelectedCourse] = useState<string>(ALL_VALUE);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>(ALL_VALUE);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(ALL_VALUE);
+  const [selectedYear, setSelectedYear] = useState<string>(ALL_VALUE);
+  const [selectedSemester, setSelectedSemester] = useState<string>(ALL_VALUE);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [dateFrom, setDateFrom] = useState('');
@@ -50,39 +65,118 @@ export default function StudentRecords() {
   const [exporting, setExporting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [currentRecord, setCurrentRecord] = useState<AttendanceRecordRow | null>(null);
+  const [summary, setSummary] = useState<{
+    totalRecords: number;
+    presentCount: number;
+    lateCount: number;
+    absentCount: number;
+    excusedCount: number;
+    uniqueStudentsInRecords: number;
+    totalStudentsInScope: number;
+    attendanceRatePct: number;
+    hasFilters: boolean;
+  } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addStudentId, setAddStudentId] = useState('');
   const [addClassId, setAddClassId] = useState('');
   const [addDate, setAddDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [addStatus, setAddStatus] = useState<string>('Present');
   const [addSaving, setAddSaving] = useState(false);
-  const [studentsForAdd, setStudentsForAdd] = useState<Student[]>([]);
-  const [classesForAdd, setClassesForAdd] = useState<Class[]>([]);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentResults, setStudentResults] = useState<Student[]>([]);
+  const [studentSearchLoading, setStudentSearchLoading] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [studentEnrollments, setStudentEnrollments] = useState<EnrollmentClassOption[]>([]);
+  const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+  const studentSearchSeqRef = useRef(0);
+  const enrollmentsSeqRef = useRef(0);
 
-  useEffect(() => {
-    studentService.getProgramCodes().then(codes => setProgramCodes(codes));
-  }, []);
   useEffect(() => {
     academicService.getSchools().then(list => setSchools(list || []));
-  }, []);
-  useEffect(() => {
-    academicService.getCourses({ limit: 50 }).then(r => setCourses(r.data || []));
+    academicService.getLevels().then(list => setAllLevels(list || []));
+    academicService.getDepartments().then(list => setAllDepartments(list || []));
+    academicService.getPrograms().then(list => setAllPrograms((list as any[]) || []));
+    academicService.getCourses({ limit: 500 }).then(r => setAllCourses(r.data || []));
   }, []);
 
-  const buildFilterParams = useCallback((opts?: { limit?: number; page?: number }) => {
-    const params: Record<string, string | number | undefined> = {
-      page: opts?.page ?? page,
-      limit: opts?.limit ?? pageSize,
-    };
-    if (selectedProgram && selectedProgram !== ALL_PROGRAMS_VALUE) params.program = selectedProgram;
-    if (selectedSchool && selectedSchool !== ALL_VALUE) params.schoolId = selectedSchool;
-    if (selectedCourse && selectedCourse !== ALL_VALUE) params.courseId = selectedCourse;
+  const programToSchoolMap = useMemo(() => {
+    const levelToSchool = new Map(allLevels.map(l => [l.id, l.schoolId]));
+    const deptToSchool = new Map(allDepartments.map(d => [d.id, levelToSchool.get(d.levelId) || '']));
+    return new Map(allPrograms.map(p => [p.id, deptToSchool.get(p.departmentId) || '']));
+  }, [allPrograms, allDepartments, allLevels]);
+
+  const filteredPrograms = useMemo(() => {
+    if (selectedSchool === ALL_VALUE) return allPrograms;
+    return allPrograms.filter(p => programToSchoolMap.get(p.id) === selectedSchool);
+  }, [allPrograms, selectedSchool, programToSchoolMap]);
+
+  const programIdsInScope = useMemo(
+    () => new Set(filteredPrograms.map(p => p.id)),
+    [filteredPrograms]
+  );
+
+  const filteredCourses = useMemo(() => {
+    let list = allCourses;
+    if (selectedProgramId !== ALL_VALUE) {
+      list = list.filter(c => c.programId === selectedProgramId);
+    } else if (selectedSchool !== ALL_VALUE) {
+      list = list.filter(c => c.programId && programIdsInScope.has(c.programId));
+    }
+    if (selectedYear !== ALL_VALUE) {
+      list = list.filter(c => c.level === Number(selectedYear));
+    }
+    if (selectedSemester !== ALL_VALUE) {
+      list = list.filter(c => c.semester === Number(selectedSemester));
+    }
+    return list;
+  }, [allCourses, selectedProgramId, selectedSchool, selectedYear, selectedSemester, programIdsInScope]);
+
+  const handleSchoolChange = (value: string) => {
+    setSelectedSchool(value);
+    setSelectedProgramId(ALL_VALUE);
+    setSelectedCourseId(ALL_VALUE);
+  };
+  const handleProgramChange = (value: string) => {
+    setSelectedProgramId(value);
+    setSelectedCourseId(ALL_VALUE);
+  };
+  const handleYearChange = (value: string) => {
+    setSelectedYear(value);
+    if (selectedCourseId !== ALL_VALUE) {
+      const stillValid = filteredCourses.some(c => c.id === selectedCourseId && (value === ALL_VALUE || c.level === Number(value)));
+      if (!stillValid) setSelectedCourseId(ALL_VALUE);
+    }
+  };
+  const handleSemesterChange = (value: string) => {
+    setSelectedSemester(value);
+    if (selectedCourseId !== ALL_VALUE) {
+      const stillValid = filteredCourses.some(c => c.id === selectedCourseId && (value === ALL_VALUE || c.semester === Number(value)));
+      if (!stillValid) setSelectedCourseId(ALL_VALUE);
+    }
+  };
+
+  const buildScopeParams = useCallback(() => {
+    const params: Record<string, string | number | undefined> = {};
+    if (selectedSchool !== ALL_VALUE) params.schoolId = selectedSchool;
+    if (selectedProgramId !== ALL_VALUE) params.programId = selectedProgramId;
+    if (selectedCourseId !== ALL_VALUE) params.courseId = selectedCourseId;
+    if (selectedYear !== ALL_VALUE) params.level = Number(selectedYear);
+    if (selectedSemester !== ALL_VALUE) params.semester = Number(selectedSemester);
     if (dateFrom) params.startDate = dateFrom;
     if (dateTo) params.endDate = dateTo;
     if (statusFilter !== 'All') params.status = statusFilter;
     if (searchTerm.trim()) params.search = searchTerm.trim();
     return params;
-  }, [selectedProgram, selectedSchool, selectedCourse, dateFrom, dateTo, statusFilter, searchTerm, page, pageSize]);
+  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm]);
+
+  const buildFilterParams = useCallback((opts?: { limit?: number; page?: number }) => {
+    return {
+      page: opts?.page ?? page,
+      limit: opts?.limit ?? pageSize,
+      ...buildScopeParams(),
+    };
+  }, [page, pageSize, buildScopeParams]);
 
   const loadAttendanceRecords = useCallback(async () => {
     setRecordsLoading(true);
@@ -101,33 +195,143 @@ export default function StudentRecords() {
     }
   }, [buildFilterParams]);
 
+  const loadAttendanceSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      const result = await studentService.getAttendanceSummary(buildScopeParams());
+      setSummary(result);
+    } catch (e: any) {
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [buildScopeParams]);
+
   useEffect(() => {
     setPage(1);
-  }, [selectedProgram, selectedSchool, selectedCourse, dateFrom, dateTo, statusFilter, searchTerm]);
+  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm]);
 
   useEffect(() => {
     loadAttendanceRecords();
   }, [loadAttendanceRecords]);
 
   useEffect(() => {
-    if (addOpen) {
-      studentService.getStudents({ limit: 50 }).then(r => setStudentsForAdd(r.data || []));
-      academicService.getClasses({ limit: 50 }).then(r => setClassesForAdd(r.data || []));
+    loadAttendanceSummary();
+  }, [loadAttendanceSummary]);
+
+  const runStudentSearch = useCallback(async (query: string) => {
+    const seq = ++studentSearchSeqRef.current;
+    setStudentSearchLoading(true);
+    try {
+      const trimmed = query.trim();
+      const params = trimmed ? { search: trimmed, limit: 25 } : { limit: 25 };
+      const result = await studentService.getStudents(params);
+      if (seq !== studentSearchSeqRef.current) return;
+      setStudentResults(result.data || []);
+    } catch {
+      if (seq !== studentSearchSeqRef.current) return;
+      setStudentResults([]);
+    } finally {
+      if (seq === studentSearchSeqRef.current) setStudentSearchLoading(false);
     }
-  }, [addOpen]);
+  }, []);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    runStudentSearch('');
+  }, [addOpen, runStudentSearch]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    const handle = setTimeout(() => {
+      runStudentSearch(studentSearch);
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [studentSearch, addOpen, runStudentSearch]);
+
+  const loadStudentEnrollments = useCallback(async (studentId: string) => {
+    const seq = ++enrollmentsSeqRef.current;
+    setEnrollmentsLoading(true);
+    try {
+      const data = await enrollmentService.getStudentEnrollments(studentId);
+      if (seq !== enrollmentsSeqRef.current) return;
+      const list = Array.isArray(data) ? (data as any[]) : [];
+      const mapped: EnrollmentClassOption[] = list
+        .filter((row) => row?.classId && (row.status ? row.status === 'Active' : true))
+        .map((row) => ({
+          enrollmentId: row.id,
+          classId: row.classId,
+          status: row.status || 'Active',
+          className: row.class?.name || row.class?.code || row.classId,
+          courseId: row.class?.course?.id,
+          courseCode: row.class?.course?.code,
+          courseName: row.class?.course?.name,
+        }));
+      const unique = new Map<string, EnrollmentClassOption>();
+      mapped.forEach((opt) => {
+        if (!unique.has(opt.classId)) unique.set(opt.classId, opt);
+      });
+      setStudentEnrollments(Array.from(unique.values()));
+    } catch {
+      if (seq !== enrollmentsSeqRef.current) return;
+      setStudentEnrollments([]);
+    } finally {
+      if (seq === enrollmentsSeqRef.current) setEnrollmentsLoading(false);
+    }
+  }, []);
+
+  const handleStudentSelect = (value: string) => {
+    if (!value || value === addStudentId) {
+      setAddStudentId('');
+      setSelectedStudent(null);
+      setStudentEnrollments([]);
+      setAddClassId('');
+      return;
+    }
+    const fromResults = studentResults.find((s) => s.id === value) || null;
+    setAddStudentId(value);
+    setSelectedStudent(fromResults);
+    setAddClassId('');
+    setStudentEnrollments([]);
+    if (!fromResults) {
+      studentService.getStudentById(value).then((s) => {
+        if (s) setSelectedStudent(s);
+      });
+    }
+    loadStudentEnrollments(value);
+  };
+
+  const programNameForSelected = useMemo(() => {
+    if (!selectedStudent) return '';
+    const programRecord = allPrograms.find((p) => p.id === (selectedStudent as any).programId);
+    if (programRecord) return `${programRecord.code} — ${programRecord.name}`;
+    return selectedStudent.program || '';
+  }, [selectedStudent, allPrograms]);
 
   const openAdd = () => {
     setAddStudentId('');
     setAddClassId('');
     setAddDate(new Date().toISOString().slice(0, 10));
     setAddStatus('Present');
+    setSelectedStudent(null);
+    setStudentEnrollments([]);
+    setStudentSearch('');
+    setStudentResults([]);
     setAddOpen(true);
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addStudentId || !addClassId || !addDate) {
-      toast.error('Please select student, class, and date.');
+    if (!addStudentId) {
+      toast.error('Please select a student.');
+      return;
+    }
+    if (!addClassId) {
+      toast.error('Please select a course the student is enrolled in.');
+      return;
+    }
+    if (!addDate) {
+      toast.error('Please choose a date.');
       return;
     }
     setAddSaving(true);
@@ -141,6 +345,7 @@ export default function StudentRecords() {
       toast.success('Attendance record added.');
       setAddOpen(false);
       loadAttendanceRecords();
+      loadAttendanceSummary();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to add record.');
     } finally {
@@ -152,7 +357,10 @@ export default function StudentRecords() {
     setSearchTerm('');
     setStatusFilter('All');
     setSelectedSchool(ALL_VALUE);
-    setSelectedCourse(ALL_VALUE);
+    setSelectedProgramId(ALL_VALUE);
+    setSelectedCourseId(ALL_VALUE);
+    setSelectedYear(ALL_VALUE);
+    setSelectedSemester(ALL_VALUE);
     setDateFrom('');
     setDateTo('');
   };
@@ -160,8 +368,12 @@ export default function StudentRecords() {
   const handleExportExcel = async () => {
     setExporting(true);
     try {
-      const params = buildFilterParams({ limit: 50, page: 1 });
+      const params = buildFilterParams({ limit: 10000, page: 1 });
       const result = await studentService.getAttendanceRecords(params);
+      if (result.data.length === 0) {
+        toast.warning('No records match the current filters.');
+        return;
+      }
       exportAttendanceRecordsToExcel(result.data);
       toast.success(`Exported ${result.data.length} record(s).`);
     } catch (e: any) {
@@ -171,16 +383,15 @@ export default function StudentRecords() {
     }
   };
 
-  const presentInList = records.filter(r => r.status === 'Present').length;
-  const lateInList = records.filter(r => r.status === 'Late').length;
-  const absentInList = records.filter(r => r.status === 'Absent').length;
-  const excusedInList = records.filter(r => r.status === 'Excused').length;
-  const uniqueStudents = new Set(records.map(r => r.studentId)).size;
-  const effectiveAttendedInList = presentInList + 0.5 * lateInList;
-  const expectedInList = Math.max(0, records.length - excusedInList);
-  const attendanceRatePct = expectedInList > 0
-    ? Math.round((effectiveAttendedInList / expectedInList) * 1000) / 10
-    : 0;
+  const totalStudentsLabel = summary?.hasFilters ? 'Students in scope' : 'Total Students';
+  const presentLabel = summary?.hasFilters ? 'Present (filtered)' : 'Present (all-time)';
+  const absentLabel = summary?.hasFilters ? 'Absent (filtered)' : 'Absent (all-time)';
+  const attendanceRateLabel = summary?.hasFilters ? 'Attendance Rate (filtered)' : 'Attendance Rate (overall)';
+
+  const totalStudentsValue = summary?.totalStudentsInScope ?? 0;
+  const presentValue = summary?.presentCount ?? 0;
+  const absentValue = summary?.absentCount ?? 0;
+  const attendanceRateValue = summary?.attendanceRatePct ?? 0;
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this attendance record?')) return;
@@ -188,6 +399,7 @@ export default function StudentRecords() {
       await studentService.deleteAttendanceRecord(id);
       setRecords(prev => prev.filter(r => r.id !== id));
       setTotal(prev => Math.max(0, prev - 1));
+      loadAttendanceSummary();
       toast.success('Record deleted.');
     } catch (error: any) {
       toast.error(error?.message || 'Failed to delete record.');
@@ -208,6 +420,7 @@ export default function StudentRecords() {
       await studentService.updateAttendanceRecord(currentRecord.id, { status: updatedStatus as any });
       setRecords(prev => prev.map(r => r.id === currentRecord.id ? { ...r, status: updatedStatus } : r));
       setEditOpen(false);
+      loadAttendanceSummary();
       toast.success('Status updated.');
     } catch (error: any) {
       toast.error(error?.message || 'Failed to update status.');
@@ -234,39 +447,6 @@ export default function StudentRecords() {
           <p className="text-gray-500">View and manage student presence across courses.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Select value={selectedProgram} onValueChange={setSelectedProgram}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All programs" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_PROGRAMS_VALUE}>All programs</SelectItem>
-              {programCodes.map(code => (
-                <SelectItem key={code} value={code}>{code}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedSchool} onValueChange={setSelectedSchool}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All schools" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-              {schools.map(s => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="All courses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-              {courses.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.code} – {c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Button variant="outline" className="gap-2" onClick={handleExportExcel} disabled={exporting}>
             <FileSpreadsheet size={16} /> {exporting ? 'Exporting…' : 'Export Excel'}
           </Button>
@@ -280,8 +460,8 @@ export default function StudentRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Students (in list)</p>
-              <h3 className="text-2xl font-bold text-gray-900">{recordsLoading ? '—' : uniqueStudents}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{totalStudentsLabel}</p>
+              <h3 className="text-2xl font-bold text-gray-900">{summaryLoading ? '—' : totalStudentsValue}</h3>
             </div>
             <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
               <User size={20} />
@@ -291,8 +471,8 @@ export default function StudentRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Present (filtered)</p>
-              <h3 className="text-2xl font-bold text-[#015F2B]">{recordsLoading ? '—' : presentInList}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{presentLabel}</p>
+              <h3 className="text-2xl font-bold text-[#015F2B]">{summaryLoading ? '—' : presentValue}</h3>
             </div>
             <div className="h-10 w-10 bg-green-50 rounded-full flex items-center justify-center text-[#015F2B]">
               <CheckCircle size={20} />
@@ -302,8 +482,8 @@ export default function StudentRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Absent (filtered)</p>
-              <h3 className="text-2xl font-bold text-red-600">{recordsLoading ? '—' : absentInList}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{absentLabel}</p>
+              <h3 className="text-2xl font-bold text-red-600">{summaryLoading ? '—' : absentValue}</h3>
             </div>
             <div className="h-10 w-10 bg-red-50 rounded-full flex items-center justify-center text-red-600">
               <XCircle size={20} />
@@ -313,8 +493,8 @@ export default function StudentRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Attendance Rate</p>
-              <h3 className="text-2xl font-bold text-blue-600">{recordsLoading ? '—' : (attendanceRatePct + '%')}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{attendanceRateLabel}</p>
+              <h3 className="text-2xl font-bold text-blue-600">{summaryLoading ? '—' : (attendanceRateValue + '%')}</h3>
             </div>
             <div className="h-10 w-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
               <Clock size={20} />
@@ -331,12 +511,12 @@ export default function StudentRecords() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4 mb-6">
-            <div className="flex flex-col md:flex-row gap-4 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
+          <div className="space-y-3 mb-6">
+            <div className="flex flex-col md:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[220px]">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search student name or ID..."
+                  placeholder="Search student name or number..."
                   className="pl-8"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -344,11 +524,11 @@ export default function StudentRecords() {
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[170px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All Statuses</SelectItem>
+                  <SelectItem value="All">All statuses</SelectItem>
                   {STATUS_OPTIONS.map(s => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
@@ -356,6 +536,69 @@ export default function StudentRecords() {
               </Select>
               <Input type="date" placeholder="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[150px]" />
               <Input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
+            </div>
+            <div className="flex flex-col md:flex-row gap-3 flex-wrap">
+              <Select value={selectedSchool} onValueChange={handleSchoolChange}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="School" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All schools</SelectItem>
+                  {schools.map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedProgramId} onValueChange={handleProgramChange}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Program" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>
+                    {selectedSchool === ALL_VALUE ? 'All programs' : `All programs in school`}
+                  </SelectItem>
+                  {filteredPrograms.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.code} — {p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder="Course" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>
+                    {selectedProgramId === ALL_VALUE && selectedSchool === ALL_VALUE
+                      ? 'All courses'
+                      : 'All courses in scope'}
+                  </SelectItem>
+                  {filteredCourses.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.code} – {c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedYear} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All years</SelectItem>
+                  {YEAR_OPTIONS.map(y => (
+                    <SelectItem key={y} value={String(y)}>Year {y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedSemester} onValueChange={handleSemesterChange}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Semester" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_VALUE}>All semesters</SelectItem>
+                  {SEMESTER_OPTIONS.map(s => (
+                    <SelectItem key={s} value={String(s)}>Semester {s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button variant="outline" onClick={loadAttendanceRecords} className="gap-2">
                 <Filter className="h-4 w-4" /> Apply
               </Button>
@@ -495,72 +738,129 @@ export default function StudentRecords() {
       </Dialog>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add attendance record</DialogTitle>
             <DialogDescription>
-              Record attendance for a student in a class on a given date.
+              Search for a student, pick a course they are enrolled in, and record their attendance for the chosen date.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddSubmit}>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-5 py-4">
               <div className="space-y-2">
-                <Label htmlFor="add-student">Student</Label>
-                <Select value={addStudentId} onValueChange={setAddStudentId} required>
-                  <SelectTrigger id="add-student">
-                    <SelectValue placeholder="Select student" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {studentsForAdd.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.firstName} {s.lastName}{s.studentNumber ? ` (${s.studentNumber})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-class">Class</Label>
-                <Select value={addClassId} onValueChange={setAddClassId} required>
-                  <SelectTrigger id="add-class">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classesForAdd.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name || c.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-date">Date</Label>
-                <Input
-                  id="add-date"
-                  type="date"
-                  value={addDate}
-                  onChange={e => setAddDate(e.target.value)}
-                  required
+                <Label htmlFor="add-student">Student *</Label>
+                <Combobox
+                  options={studentResults.map((s) => ({
+                    value: s.id,
+                    label: `${s.firstName} ${s.lastName}${s.studentNumber ? ` (${s.studentNumber})` : ''}`,
+                    description: s.email,
+                  }))}
+                  value={addStudentId}
+                  onValueChange={handleStudentSelect}
+                  onSearchChange={setStudentSearch}
+                  manualFiltering
+                  loading={studentSearchLoading}
+                  placeholder="Search and select a student..."
+                  searchPlaceholder="Search by name, number, or email…"
+                  emptyText={studentSearch.trim() ? 'No matching students.' : 'Start typing to search students.'}
+                  selectedLabel={selectedStudent ? `${selectedStudent.firstName} ${selectedStudent.lastName}${selectedStudent.studentNumber ? ` (${selectedStudent.studentNumber})` : ''}` : undefined}
                 />
               </div>
+
+              {selectedStudent && (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <div className="flex items-center gap-2 mb-2 text-gray-900 font-medium">
+                    <GraduationCap className="h-4 w-4 text-[#015F2B]" />
+                    {selectedStudent.firstName} {selectedStudent.lastName}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Program</p>
+                      <p className="font-medium text-gray-800 break-words">{programNameForSelected || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Year</p>
+                      <p className="font-medium text-gray-800">{selectedStudent.year || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Semester</p>
+                      <p className="font-medium text-gray-800">{selectedStudent.semester || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="add-status">Status</Label>
-                <Select value={addStatus} onValueChange={setAddStatus}>
-                  <SelectTrigger id="add-status">
-                    <SelectValue />
+                <Label htmlFor="add-class">Course *</Label>
+                <Select
+                  value={addClassId}
+                  onValueChange={setAddClassId}
+                  disabled={!addStudentId || enrollmentsLoading}
+                  required
+                >
+                  <SelectTrigger id="add-class">
+                    <SelectValue
+                      placeholder={
+                        !addStudentId
+                          ? 'Select a student first'
+                          : enrollmentsLoading
+                          ? 'Loading enrolled courses…'
+                          : studentEnrollments.length === 0
+                          ? 'No active enrollments found'
+                          : 'Select a course'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {STATUS_OPTIONS.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    {studentEnrollments.map((opt) => (
+                      <SelectItem key={opt.classId} value={opt.classId}>
+                        {opt.courseCode ? `${opt.courseCode} — ` : ''}
+                        {opt.courseName || opt.className}
+                        {opt.className && opt.courseName ? ` · ${opt.className}` : ''}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {addStudentId && !enrollmentsLoading && studentEnrollments.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    This student has no active class enrollments yet. Enrollments are derived from the student&apos;s program intake — confirm their program, year and semester are set.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="add-date">Date *</Label>
+                  <Input
+                    id="add-date"
+                    type="date"
+                    value={addDate}
+                    onChange={e => setAddDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="add-status">Status</Label>
+                  <Select value={addStatus} onValueChange={setAddStatus}>
+                    <SelectTrigger id="add-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B] hover:bg-[#014022]" disabled={addSaving}>
+              <Button
+                type="submit"
+                className="bg-[#015F2B] hover:bg-[#014022]"
+                disabled={addSaving || !addStudentId || !addClassId}
+              >
                 {addSaving ? 'Saving…' : 'Add record'}
               </Button>
             </DialogFooter>

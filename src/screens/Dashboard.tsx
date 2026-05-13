@@ -345,7 +345,7 @@ function QADashboard() {
 
       {/* Record Lecture Dialog */}
       <Dialog open={recordLectureOpen} onOpenChange={setRecordLectureOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Record Lecture</DialogTitle>
             <DialogDescription>Create a new lecture attendance record</DialogDescription>

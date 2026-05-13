@@ -162,8 +162,11 @@ export const studentService = {
 
   getAttendanceRecords: async (params: {
     program?: string;
+    programId?: string;
     schoolId?: string;
     courseId?: string;
+    level?: number;
+    semester?: number;
     startDate?: string;
     endDate?: string;
     status?: string;
@@ -183,6 +186,60 @@ export const studentService = {
     } catch (error) {
       console.error('Error fetching attendance records:', error);
       return { data: [], total: 0, page: 1, pageSize: 0 };
+    }
+  },
+
+  getAttendanceSummary: async (params: {
+    program?: string;
+    programId?: string;
+    schoolId?: string;
+    courseId?: string;
+    level?: number;
+    semester?: number;
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+    courseName?: string;
+    studentId?: string;
+    search?: string;
+  }): Promise<{
+    totalRecords: number;
+    presentCount: number;
+    lateCount: number;
+    absentCount: number;
+    excusedCount: number;
+    uniqueStudentsInRecords: number;
+    totalStudentsInScope: number;
+    attendanceRatePct: number;
+    hasFilters: boolean;
+  }> => {
+    try {
+      const res = await api.get<any>('/students/attendance/summary', params);
+      const data = (res as any)?.data ?? res;
+      return {
+        totalRecords: Number(data?.totalRecords ?? 0),
+        presentCount: Number(data?.presentCount ?? 0),
+        lateCount: Number(data?.lateCount ?? 0),
+        absentCount: Number(data?.absentCount ?? 0),
+        excusedCount: Number(data?.excusedCount ?? 0),
+        uniqueStudentsInRecords: Number(data?.uniqueStudentsInRecords ?? 0),
+        totalStudentsInScope: Number(data?.totalStudentsInScope ?? 0),
+        attendanceRatePct: Number(data?.attendanceRatePct ?? 0),
+        hasFilters: Boolean(data?.hasFilters ?? false),
+      };
+    } catch (error) {
+      console.error('Error fetching attendance summary:', error);
+      return {
+        totalRecords: 0,
+        presentCount: 0,
+        lateCount: 0,
+        absentCount: 0,
+        excusedCount: 0,
+        uniqueStudentsInRecords: 0,
+        totalStudentsInScope: 0,
+        attendanceRatePct: 0,
+        hasFilters: false,
+      };
     }
   },
 

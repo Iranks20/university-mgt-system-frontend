@@ -314,7 +314,7 @@ export default function LecturerCourseAttendance() {
 
         {/* Session Details Dialog */}
         <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Session Details</DialogTitle>
               <DialogDescription>

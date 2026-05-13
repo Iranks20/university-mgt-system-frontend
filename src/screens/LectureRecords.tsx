@@ -108,8 +108,18 @@ export default function LectureRecords() {
   } | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [summary, setSummary] = useState<{
+    totalRecords: number;
+    taughtCount: number;
+    untaughtCount: number;
+    pendingCount: number;
+    cancelledCount: number;
+    onTimeCount: number;
+    onTimeRatePct: number;
+    hasFilters: boolean;
+  } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
-  // Debounce search term
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -117,7 +127,6 @@ export default function LectureRecords() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Load initial data on mount
   useEffect(() => {
     loadSchools();
     loadLecturers();
@@ -131,6 +140,10 @@ export default function LectureRecords() {
   useEffect(() => {
     loadRecords();
   }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter]);
 
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
@@ -285,45 +298,32 @@ export default function LectureRecords() {
     }
   };
 
+  const buildBaseFilter = () => {
+    const filter: any = {};
+    if (schoolFilter !== 'All') filter.school = schoolFilter;
+    if (lecturerFilter !== 'All') {
+      filter.lecturerName = lecturerFilter;
+    } else if (debouncedSearchTerm.trim()) {
+      filter.lecturerName = debouncedSearchTerm.trim();
+    }
+    if (classFilter !== 'All') filter.class = classFilter;
+    if (commentFilter !== 'All') filter.comment = commentFilter;
+    if (statusFilter !== 'All') filter.checkInStatus = statusFilter;
+    if (dateFrom) filter.startDate = dateFrom;
+    if (dateTo) filter.endDate = dateTo;
+    return filter;
+  };
+
   const loadRecords = async () => {
     setIsLoading(true);
     try {
       const filter: any = {
+        ...buildBaseFilter(),
         page,
         limit: pageSize,
         sortBy: 'date',
         sortOrder: 'desc',
       };
-
-      if (schoolFilter !== 'All') {
-        filter.school = schoolFilter;
-      }
-
-      if (lecturerFilter !== 'All') {
-        filter.lecturerName = lecturerFilter;
-      } else if (debouncedSearchTerm.trim()) {
-        filter.lecturerName = debouncedSearchTerm.trim();
-      }
-
-      if (classFilter !== 'All') {
-        filter.class = classFilter;
-      }
-
-      if (commentFilter !== 'All') {
-        filter.comment = commentFilter;
-      }
-
-      if (statusFilter !== 'All') {
-        filter.checkInStatus = statusFilter;
-      }
-
-      if (dateFrom) {
-        filter.startDate = dateFrom;
-      }
-
-      if (dateTo) {
-        filter.endDate = dateTo;
-      }
 
       const response = await qaService.getLectureRecords(filter);
       let data: QALectureRecord[] = [];
@@ -353,12 +353,25 @@ export default function LectureRecords() {
     }
   };
 
+  const loadSummary = async () => {
+    setSummaryLoading(true);
+    try {
+      const result = await qaService.getLectureRecordsSummary(buildBaseFilter());
+      setSummary(result);
+    } catch {
+      setSummary(null);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const filteredRecords = records;
-  const taughtCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'TAUGHT').length;
-  const untaughtCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'UNTAUGHT').length;
-  const pendingCount = filteredRecords.filter((r: QALectureRecord) => (r.comment || '').toUpperCase() === 'PENDING').length;
-  const onTimeCount = filteredRecords.filter((r: any) => (r.status || 'OnTime') === 'OnTime').length;
-  const onTimeRatePct = filteredRecords.length > 0 ? Math.round((onTimeCount / filteredRecords.length) * 1000) / 10 : 0;
+  const taughtCount = summary?.taughtCount ?? 0;
+  const untaughtCount = summary?.untaughtCount ?? 0;
+  const pendingCount = summary?.pendingCount ?? 0;
+  const onTimeRatePct = summary?.onTimeRatePct ?? 0;
+  const summaryTotalRecords = summary?.totalRecords ?? 0;
+  const summaryHasFilters = summary?.hasFilters ?? false;
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -492,6 +505,7 @@ export default function LectureRecords() {
         await qaService.createLectureRecord(newRecord);
       }
       await loadRecords();
+      loadSummary();
       setIsDialogOpen(false);
       setCurrentRecordId(null);
       setSelectedLecturerName('');
@@ -507,6 +521,7 @@ export default function LectureRecords() {
       try {
         await qaService.deleteLectureRecord(id);
         await loadRecords();
+        loadSummary();
       } catch (error) {
         console.error('Error deleting record:', error);
         toast.error('Failed to delete record. Please try again.');
@@ -591,13 +606,28 @@ export default function LectureRecords() {
 
   const handleExport = async () => {
     try {
-      if (filteredRecords.length === 0) {
-        toast.warning('No records to export. Please apply filters to see records.');
+      const filter: any = {
+        ...buildBaseFilter(),
+        page: 1,
+        limit: 10000,
+        sortBy: 'date',
+        sortOrder: 'desc',
+      };
+      const response = await qaService.getLectureRecords(filter);
+      const data: QALectureRecord[] = Array.isArray(response)
+        ? response
+        : ((response as any)?.data || []);
+      const enriched = data.map((record: any) => ({
+        ...record,
+        class: record.class || record.className || '',
+      }));
+      if (enriched.length === 0) {
+        toast.warning('No records match the current filters.');
         return;
       }
       const filename = `Lecture_Records_${new Date().toISOString().split('T')[0]}.xlsx`;
-      exportLectureRecordsToCSV(filteredRecords, filename);
-      toast.success(`Exported ${filteredRecords.length} record(s) to Excel.`);
+      exportLectureRecordsToCSV(enriched, filename);
+      toast.success(`Exported ${enriched.length} record(s) to Excel.`);
     } catch (error) {
       console.error('Error exporting:', error);
       toast.error('Failed to export records. Please try again.');
@@ -628,6 +658,7 @@ export default function LectureRecords() {
       setImportOpen(false);
       lectureImportFileRef.current!.value = '';
       await loadRecords();
+      loadSummary();
     } catch (error: any) {
       console.error('Error importing lecture records:', error);
       toast.error(`Failed to import: ${error?.message || 'Unknown error'}`);
@@ -713,7 +744,7 @@ export default function LectureRecords() {
               </Button>
             </div>
           )}
-          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={filteredRecords.length === 0}>
+          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={summaryLoading || summaryTotalRecords === 0}>
             <Download size={16} /> Export Excel
           </Button>
           <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
@@ -725,20 +756,12 @@ export default function LectureRecords() {
         </div>
       </div>
 
-      {canSeedFromTimetable && (
-        <p className="text-sm text-muted-foreground max-w-3xl">
-          Use <span className="font-medium text-foreground">From timetable</span> to create{' '}
-          <span className="font-medium">Pending</span> rows for every scheduled slot on that day (matches class weekly pattern).
-          Edit each row to set the final outcome; ad-hoc sessions can still use <span className="font-medium">Record Lecture</span>.
-        </p>
-      )}
-
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total Lectures (in list)</p>
-              <h3 className="text-2xl font-bold text-gray-900">{isLoading ? '—' : filteredRecords.length}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'Total Lectures (filtered)' : 'Total Lectures'}</p>
+              <h3 className="text-2xl font-bold text-gray-900">{summaryLoading ? '—' : summaryTotalRecords}</h3>
             </div>
             <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
               <BookOpen size={20} />
@@ -748,8 +771,8 @@ export default function LectureRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Taught (filtered)</p>
-              <h3 className="text-2xl font-bold text-[#015F2B]">{isLoading ? '—' : taughtCount}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'Taught (filtered)' : 'Taught (all-time)'}</p>
+              <h3 className="text-2xl font-bold text-[#015F2B]">{summaryLoading ? '—' : taughtCount}</h3>
             </div>
             <div className="h-10 w-10 bg-green-50 rounded-full flex items-center justify-center text-[#015F2B]">
               <CheckCircle size={20} />
@@ -759,8 +782,8 @@ export default function LectureRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Untaught (filtered)</p>
-              <h3 className="text-2xl font-bold text-red-600">{isLoading ? '—' : untaughtCount}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'Untaught (filtered)' : 'Untaught (all-time)'}</p>
+              <h3 className="text-2xl font-bold text-red-600">{summaryLoading ? '—' : untaughtCount}</h3>
             </div>
             <div className="h-10 w-10 bg-red-50 rounded-full flex items-center justify-center text-red-600">
               <XCircle size={20} />
@@ -770,8 +793,8 @@ export default function LectureRecords() {
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">On-time rate</p>
-              <h3 className="text-2xl font-bold text-blue-600">{isLoading ? '—' : (onTimeRatePct + '%')}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'On-time rate (filtered)' : 'On-time rate (overall)'}</p>
+              <h3 className="text-2xl font-bold text-blue-600">{summaryLoading ? '—' : (onTimeRatePct + '%')}</h3>
             </div>
             <div className="h-10 w-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
               <Clock size={20} />
@@ -781,8 +804,8 @@ export default function LectureRecords() {
         <Card className="bg-white border-amber-100">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Pending</p>
-              <h3 className="text-2xl font-bold text-amber-700">{isLoading ? '—' : pendingCount}</h3>
+              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'Pending (filtered)' : 'Pending (all-time)'}</p>
+              <h3 className="text-2xl font-bold text-amber-700">{summaryLoading ? '—' : pendingCount}</h3>
             </div>
             <div className="h-10 w-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-700">
               <CalendarIcon size={20} />
@@ -1050,7 +1073,7 @@ export default function LectureRecords() {
       </Card>
 
       <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); } }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Record student attendance</DialogTitle>
             <DialogDescription>
@@ -1114,7 +1137,7 @@ export default function LectureRecords() {
                             <TableCell className="text-muted-foreground">{num}</TableCell>
                             <TableCell>
                               <Select value={status} onValueChange={(v) => setSessionStudentStatus(enr.studentId, v)}>
-                                <SelectTrigger className="w-[130px]">
+                                <SelectTrigger className="w-[150px]">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1147,7 +1170,7 @@ export default function LectureRecords() {
 
       {/* Import Lecture Records Dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Import Lecture Records</DialogTitle>
             <DialogDescription>
@@ -1178,7 +1201,7 @@ export default function LectureRecords() {
 
       {/* Record/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-y-auto">
           <form key={currentRecordId ?? 'new'} onSubmit={handleSave}>
             <DialogHeader>
               <DialogTitle>{currentRecordId !== null ? 'Edit Lecture Record' : 'Record New Lecture'}</DialogTitle>

@@ -34,6 +34,83 @@ export const qaService = {
     }
   },
 
+  getLectureRecordsSummary: async (filter?: QAFilter): Promise<{
+    totalRecords: number;
+    taughtCount: number;
+    untaughtCount: number;
+    pendingCount: number;
+    cancelledCount: number;
+    substitutedCount: number;
+    compensationCount: number;
+    meetingCount: number;
+    sdlCount: number;
+    orientationCount: number;
+    onTimeCount: number;
+    lateCount: number;
+    lecturerAbsentCount: number;
+    earlyDepartureCount: number;
+    onTimeRatePct: number;
+    hasFilters: boolean;
+  }> => {
+    try {
+      const params: Record<string, any> = {};
+      if (filter) {
+        if (filter.startDate) {
+          params.startDate = typeof filter.startDate === 'string' ? filter.startDate : filter.startDate.toISOString().split('T')[0];
+        }
+        if (filter.endDate) {
+          params.endDate = typeof filter.endDate === 'string' ? filter.endDate : filter.endDate.toISOString().split('T')[0];
+        }
+        if (filter.school) params.school = filter.school;
+        if (filter.lecturerName) params.lecturerName = filter.lecturerName;
+        if (filter.courseCode) params.courseCode = filter.courseCode;
+        if (filter.class) params.class = filter.class;
+        if (filter.comment) params.comment = filter.comment;
+        if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+      }
+      const response = await api.get<any>('/qa/lecture-records-summary', params);
+      const data = (response as any)?.data ?? response;
+      return {
+        totalRecords: Number(data?.totalRecords ?? 0),
+        taughtCount: Number(data?.taughtCount ?? 0),
+        untaughtCount: Number(data?.untaughtCount ?? 0),
+        pendingCount: Number(data?.pendingCount ?? 0),
+        cancelledCount: Number(data?.cancelledCount ?? 0),
+        substitutedCount: Number(data?.substitutedCount ?? 0),
+        compensationCount: Number(data?.compensationCount ?? 0),
+        meetingCount: Number(data?.meetingCount ?? 0),
+        sdlCount: Number(data?.sdlCount ?? 0),
+        orientationCount: Number(data?.orientationCount ?? 0),
+        onTimeCount: Number(data?.onTimeCount ?? 0),
+        lateCount: Number(data?.lateCount ?? 0),
+        lecturerAbsentCount: Number(data?.lecturerAbsentCount ?? 0),
+        earlyDepartureCount: Number(data?.earlyDepartureCount ?? 0),
+        onTimeRatePct: Number(data?.onTimeRatePct ?? 0),
+        hasFilters: Boolean(data?.hasFilters ?? false),
+      };
+    } catch (error) {
+      console.error('Error fetching lecture records summary:', error);
+      return {
+        totalRecords: 0,
+        taughtCount: 0,
+        untaughtCount: 0,
+        pendingCount: 0,
+        cancelledCount: 0,
+        substitutedCount: 0,
+        compensationCount: 0,
+        meetingCount: 0,
+        sdlCount: 0,
+        orientationCount: 0,
+        onTimeCount: 0,
+        lateCount: 0,
+        lecturerAbsentCount: 0,
+        earlyDepartureCount: 0,
+        onTimeRatePct: 0,
+        hasFilters: false,
+      };
+    }
+  },
+
   /**
    * Get current lecturer's own lecture records (for Lecturer dashboard).
    */

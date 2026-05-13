@@ -481,7 +481,7 @@ export default function ManagementLecturerPerformance() {
 
       {/* Lecturer Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Lecturer Performance Details</DialogTitle>
             <DialogDescription>

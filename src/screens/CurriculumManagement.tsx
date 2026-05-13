@@ -331,7 +331,7 @@ export default function CurriculumManagement() {
       </Card>
 
       <Dialog open={assignmentOpen} onOpenChange={setAssignmentOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="w-[96vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Assign Curriculum</DialogTitle>
             <DialogDescription>Create a mock curriculum assignment for UI review flow.</DialogDescription>
@@ -381,7 +381,7 @@ export default function CurriculumManagement() {
       </Dialog>
 
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="w-[95vw] sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Review Curriculum Submission</DialogTitle>
             <DialogDescription>

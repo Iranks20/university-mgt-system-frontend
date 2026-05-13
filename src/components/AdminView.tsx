@@ -1854,7 +1854,7 @@ function StaffTab({
       </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{isStaffRoleTab ? 'Add Staff Member' : 'Add Non Teaching Staff Member'}</DialogTitle>
             <DialogDescription>
@@ -2018,7 +2018,7 @@ function StaffTab({
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{isStaffRoleTab ? 'Import Staff' : 'Import Non Teaching Staff'}</DialogTitle>
             <DialogDescription>
@@ -2320,7 +2320,7 @@ function LecturersTab({
           if (!open) setAddTempPasswordVisible(false);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Lecturer</DialogTitle>
             <DialogDescription>Create a lecturer record for teaching staff who conduct classes.</DialogDescription>
@@ -2495,7 +2495,7 @@ function LecturersTab({
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Import Lecturers</DialogTitle>
             <DialogDescription>Upload a CSV or Excel (.xlsx) file with columns: name, email, role (must be "Lecturer"), dept. Optionally create login accounts with a temporary password.</DialogDescription>
@@ -2527,7 +2527,7 @@ function LecturersTab({
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={(open) => !open && setAssignOpen(false)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Assign lecturer to classes</DialogTitle>
             <DialogDescription>{selectedLecturer ? `${selectedLecturer.name} – select classes to teach.` : 'Select classes.'}</DialogDescription>
@@ -5350,7 +5350,7 @@ function ClassesTab({
       </div>
 
       <Dialog open={addEditOpen} onOpenChange={setAddEditOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingClass ? 'Edit class' : 'Add class group'}</DialogTitle>
             <DialogDescription>Set course, lecturer assignment, schedule, and venue. Use Enrollments on the table to assign students.</DialogDescription>
@@ -5477,7 +5477,7 @@ function ClassesTab({
       </Dialog>
 
       <Dialog open={enrollOpen} onOpenChange={(open) => !open && setEnrollOpen(false)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Manage enrollments</DialogTitle>
             <DialogDescription>{enrollClass ? `Class: ${enrollClass.name}. Select students to enroll.` : 'Select students.'}</DialogDescription>
@@ -6441,7 +6441,7 @@ function UsersTab() {
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>

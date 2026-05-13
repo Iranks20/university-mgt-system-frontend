@@ -562,7 +562,7 @@ export default function Cancellations() {
       )}
 
       <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
-        <DialogContent className="w-full max-w-2xl">
+        <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Request cancellation</DialogTitle>
             <DialogDescription>Select a session, provide a reason, and optionally when you will compensate the lesson. QA will review your request.</DialogDescription>
@@ -704,7 +704,7 @@ export default function Cancellations() {
       </Dialog>
 
       <Dialog open={detailsOpen && !!selectedRequest} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cancellation details</DialogTitle>
             <DialogDescription>Full information about this cancellation request and any compensation session.</DialogDescription>
