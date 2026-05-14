@@ -406,7 +406,7 @@ function AttendanceHistoryContent() {
 
         {/* Details Dialog */}
         <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <DialogContent>
+          <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Attendance Record Details</DialogTitle>
               <DialogDescription>

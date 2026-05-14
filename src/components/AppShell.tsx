@@ -604,7 +604,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       </div>
 
       <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Change password</DialogTitle>
             <DialogDescription>Enter your current password and choose a new password.</DialogDescription>

@@ -446,7 +446,7 @@ export default function TimetableBuilder() {
       </Card>
 
       <Dialog open={intakeUtilitiesOpen} onOpenChange={setIntakeUtilitiesOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Intake utilities</DialogTitle>
             <DialogDescription>

@@ -24,14 +24,14 @@ export interface QALectureRecord {
   timeOutForEnding: string; // "TIME OUT FOR ENDING" - Scheduled end time e.g., "10:00:00"
   duration: string; // "DURATION" - Calculated from check-in to check-out e.g., "00:50:00", "02:00:00"
   timeLost: string; // "TIME LOST" - e.g., "00:50:00", "0", "02:00:00"
-  comment: string; // "COMMENT" - e.g., "TAUGHT", "UNTAUGHT", "COMPENSATION", "MEETING", "SDL", "STUDENTS ORIENTATION"
-  // Check-in/Check-out tracking
-  checkInTime?: string; // Actual check-in time when lecturer arrives e.g., "09:15:00"
-  checkOutTime?: string; // Actual check-out time when lecturer leaves e.g., "10:05:00"
-  checkInTimestamp?: Date; // Full timestamp for check-in
-  checkOutTimestamp?: Date; // Full timestamp for check-out
-  lessonTimeout?: string; // Duration of the lesson from check-in to check-out
-  status?: 'OnTime' | 'Late' | 'Absent' | 'EarlyDeparture'; // Lecturer attendance status
+  comment: string; // Lecture status enum: "TAUGHT", "UNTAUGHT", "COMPENSATION", "MEETING", "SDL", "STUDENTS ORIENTATION"
+  remarks?: string | null; // QA free-text comment explaining the chosen status
+  checkInTime?: string;
+  checkOutTime?: string;
+  checkInTimestamp?: Date;
+  checkOutTimestamp?: Date;
+  lessonTimeout?: string;
+  status?: 'OnTime' | 'Late' | 'Absent' | 'EarlyDeparture';
 }
 
 /**

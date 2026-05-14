@@ -316,7 +316,7 @@ export default function AdminUsers() {
       </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
             <DialogDescription>Create a new system user (QA, Management or Admin). They can log in with email and the password you set.</DialogDescription>
@@ -354,7 +354,7 @@ export default function AdminUsers() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit user</DialogTitle>
             <DialogDescription>Update name, role and active status.</DialogDescription>
@@ -392,7 +392,7 @@ export default function AdminUsers() {
       </Dialog>
 
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
             <DialogDescription>Set a new password for {selectedUser?.name}. They will use this to log in.</DialogDescription>
@@ -411,7 +411,7 @@ export default function AdminUsers() {
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Assign roles</DialogTitle>
             <DialogDescription>

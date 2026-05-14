@@ -493,7 +493,7 @@ export default function AdminCustomRoles() {
       </Tabs>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add role</DialogTitle>
             <DialogDescription>Create a new custom role. Code is used as a stable identifier.</DialogDescription>
@@ -520,7 +520,7 @@ export default function AdminCustomRoles() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit role</DialogTitle>
             <DialogDescription>Update role display fields and status.</DialogDescription>
@@ -550,7 +550,7 @@ export default function AdminCustomRoles() {
       </Dialog>
 
       <Dialog open={permOpen} onOpenChange={setPermOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Role permissions</DialogTitle>
             <DialogDescription>{selected ? `${selected.name} (${selected.code})` : ''}</DialogDescription>
@@ -602,7 +602,7 @@ export default function AdminCustomRoles() {
       </Dialog>
 
       <Dialog open={groupCreateOpen} onOpenChange={setGroupCreateOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add permission group</DialogTitle>
             <DialogDescription>Groups are used to organize permissions in role editors.</DialogDescription>
@@ -655,7 +655,7 @@ export default function AdminCustomRoles() {
       </Dialog>
 
       <Dialog open={groupEditOpen} onOpenChange={setGroupEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit permission group</DialogTitle>
             <DialogDescription>{selectedGroup ? `Key: ${selectedGroup.key}` : ''}</DialogDescription>
@@ -704,7 +704,7 @@ export default function AdminCustomRoles() {
       </Dialog>
 
       <Dialog open={catalogEditOpen} onOpenChange={setCatalogEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit permission</DialogTitle>
             <DialogDescription>{selectedPermission ? selectedPermission.code : ''}</DialogDescription>

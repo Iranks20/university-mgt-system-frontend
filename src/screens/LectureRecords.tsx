@@ -486,6 +486,8 @@ export default function LectureRecords() {
       }
     }
 
+    const remarksRaw = ((formData.get('remarks') as string) || '').trim();
+
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
       lecturerName: selectedLecturerName.trim(),
@@ -498,6 +500,7 @@ export default function LectureRecords() {
       duration: duration,
       timeLost: '0',
       comment: formData.get('comment') as string,
+      remarks: remarksRaw ? remarksRaw : null,
       checkInTime: checkInTime || undefined,
       checkOutTime: checkOutTime || undefined,
       lessonTimeout: lessonTimeout,
@@ -905,10 +908,10 @@ export default function LectureRecords() {
               </div>
               <Select value={commentFilter} onValueChange={setCommentFilter}>
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Comment" />
+                  <SelectValue placeholder="Filter Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All Comments</SelectItem>
+                  <SelectItem value="All">All statuses</SelectItem>
                   {commentOptions.map((comment) => (
                     <SelectItem key={comment} value={comment}>
                       {COMMENT_FILTER_LABELS[comment] ?? comment}
@@ -1004,8 +1007,8 @@ export default function LectureRecords() {
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
                   <TableHead className="whitespace-nowrap">TIME LOST</TableHead>
+                  <TableHead>ATTENDANCE</TableHead>
                   <TableHead>STATUS</TableHead>
-                  <TableHead>COMMENT</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1203,7 +1206,7 @@ export default function LectureRecords() {
                       <p className="font-medium text-gray-900">{detailsRecord.lessonTimeout || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Status</p>
+                      <p className="text-xs text-muted-foreground">Attendance</p>
                       <Badge variant="outline" className={statusCfg.className}>{statusCfg.label}</Badge>
                     </div>
                   </div>
@@ -1211,10 +1214,18 @@ export default function LectureRecords() {
 
                 <section className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">QA outcome</h4>
-                  <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Comment:</span>
+                      <span className="text-xs text-muted-foreground">Status:</span>
                       <Badge variant={getCommentBadgeVariant(detailsRecord.comment)}>{commentLabel}</Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Comment</p>
+                      {detailsRecord.remarks?.trim() ? (
+                        <p className="whitespace-pre-wrap text-gray-900">{detailsRecord.remarks}</p>
+                      ) : (
+                        <p className="italic text-muted-foreground">No comment provided.</p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1339,7 +1350,7 @@ export default function LectureRecords() {
 
       {/* Import Lecture Records Dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import Lecture Records</DialogTitle>
             <DialogDescription>
@@ -1575,13 +1586,13 @@ export default function LectureRecords() {
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">QA outcome</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="comment">COMMENT *</Label>
+                    <Label htmlFor="comment">STATUS *</Label>
                     <Select
                       name="comment"
                       defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.comment || 'TAUGHT' : 'TAUGHT'}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select comment" />
+                      <SelectTrigger id="comment">
+                        <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
                         {commentOptions.map((comment) => (
@@ -1592,6 +1603,17 @@ export default function LectureRecords() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="remarks">COMMENT</Label>
+                  <Textarea
+                    id="remarks"
+                    name="remarks"
+                    rows={3}
+                    placeholder="Briefly explain the reason for the chosen status (e.g. why the lecture was untaught, who substituted, what was covered)."
+                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.remarks || '' : ''}
+                  />
+                  <p className="text-xs text-muted-foreground">Optional. Provide context behind the status above so reviewers understand the decision.</p>
                 </div>
               </section>
             </div>

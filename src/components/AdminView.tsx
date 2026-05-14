@@ -582,7 +582,7 @@ function StudentsTab({
       </div>
 
       <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
-        <DialogContent className="w-[95vw] sm:w-full max-w-xl">
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Filters</DialogTitle>
             <DialogDescription>Filter students by program, year, semester, intake and status.</DialogDescription>
@@ -1854,7 +1854,7 @@ function StaffTab({
       </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isStaffRoleTab ? 'Add Staff Member' : 'Add Non Teaching Staff Member'}</DialogTitle>
             <DialogDescription>
@@ -1925,9 +1925,8 @@ function StaffTab({
         </DialogContent>
       </Dialog>
 
-      {/* Edit Staff Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isStaffRoleTab ? 'Edit Staff Member' : 'Edit Non Teaching Staff Member'}</DialogTitle>
             <DialogDescription>
@@ -2018,7 +2017,7 @@ function StaffTab({
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isStaffRoleTab ? 'Import Staff' : 'Import Non Teaching Staff'}</DialogTitle>
             <DialogDescription>
@@ -2320,7 +2319,7 @@ function LecturersTab({
           if (!open) setAddTempPasswordVisible(false);
         }}
       >
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Lecturer</DialogTitle>
             <DialogDescription>Create a lecturer record for teaching staff who conduct classes.</DialogDescription>
@@ -2399,7 +2398,7 @@ function LecturersTab({
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Lecturer</DialogTitle>
             <DialogDescription>Update lecturer information.</DialogDescription>
@@ -2495,7 +2494,7 @@ function LecturersTab({
       </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import Lecturers</DialogTitle>
             <DialogDescription>Upload a CSV or Excel (.xlsx) file with columns: name, email, role (must be "Lecturer"), dept. Optionally create login accounts with a temporary password.</DialogDescription>
@@ -2527,7 +2526,7 @@ function LecturersTab({
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={(open) => !open && setAssignOpen(false)}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Assign lecturer to classes</DialogTitle>
             <DialogDescription>{selectedLecturer ? `${selectedLecturer.name} – select classes to teach.` : 'Select classes.'}</DialogDescription>
@@ -2825,7 +2824,7 @@ function CoursesTab() {
       </div>
 
       <Dialog open={addCourseOpen} onOpenChange={setAddCourseOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Course</DialogTitle>
             <DialogDescription>Create a new course and assign it to a department.</DialogDescription>
@@ -2905,7 +2904,7 @@ function CoursesTab() {
       </Dialog>
 
       <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Course</DialogTitle>
             <DialogDescription>Update course details.</DialogDescription>
@@ -3124,7 +3123,7 @@ function VenuesTab({
       </Card>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Venue</DialogTitle>
           </DialogHeader>
@@ -3176,7 +3175,7 @@ function VenuesTab({
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Venue</DialogTitle>
           </DialogHeader>
@@ -4471,9 +4470,8 @@ function SchoolsTab() {
       </Card>
       </div>
 
-      {/* Add School Dialog */}
       <Dialog open={addSchoolOpen} onOpenChange={setAddSchoolOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add School</DialogTitle>
             <DialogDescription>Create a new school/faculty. Programs will be added under schools.</DialogDescription>
@@ -4495,9 +4493,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit School Dialog */}
       <Dialog open={editSchoolOpen} onOpenChange={setEditSchoolOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit School</DialogTitle>
           </DialogHeader>
@@ -4518,9 +4515,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Level Dialog */}
       <Dialog open={addLevelOpen} onOpenChange={setAddLevelOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Level</DialogTitle>
             <DialogDescription>Create an academic level (e.g. Undergraduate, Masters, PhD) under a school.</DialogDescription>
@@ -4556,9 +4552,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Level Dialog */}
       <Dialog open={editLevelOpen} onOpenChange={setEditLevelOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Level</DialogTitle>
           </DialogHeader>
@@ -4592,9 +4587,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Department Dialog */}
       <Dialog open={addDeptOpen} onOpenChange={setAddDeptOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Department</DialogTitle>
             <DialogDescription>Create a new department under a school and level.</DialogDescription>
@@ -4651,9 +4645,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Department Dialog */}
       <Dialog open={editDeptOpen} onOpenChange={setEditDeptOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Department</DialogTitle>
           </DialogHeader>
@@ -4709,9 +4702,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Degree Program Dialog */}
       <Dialog open={addProgramOpen} onOpenChange={setAddProgramOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Degree Program</DialogTitle>
             <DialogDescription>Create a degree program (e.g. BSc, BCFCI) under this department.</DialogDescription>
@@ -4751,9 +4743,8 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Degree Program Dialog */}
       <Dialog open={editProgramOpen} onOpenChange={setEditProgramOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Degree Program</DialogTitle>
           </DialogHeader>
@@ -4792,12 +4783,11 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Create course in selected semester */}
       <Dialog open={addCourseOpen} onOpenChange={(open) => {
         setAddCourseOpen(open);
         if (!open) setEditingCourse(null);
       }}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCourse ? 'Edit course' : 'Create course'}</DialogTitle>
             <DialogDescription>
@@ -5350,7 +5340,7 @@ function ClassesTab({
       </div>
 
       <Dialog open={addEditOpen} onOpenChange={setAddEditOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingClass ? 'Edit class' : 'Add class group'}</DialogTitle>
             <DialogDescription>Set course, lecturer assignment, schedule, and venue. Use Enrollments on the table to assign students.</DialogDescription>
@@ -5477,7 +5467,7 @@ function ClassesTab({
       </Dialog>
 
       <Dialog open={enrollOpen} onOpenChange={(open) => !open && setEnrollOpen(false)}>
-        <DialogContent className="w-[95vw] sm:max-w-md">
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Manage enrollments</DialogTitle>
             <DialogDescription>{enrollClass ? `Class: ${enrollClass.name}. Select students to enroll.` : 'Select students.'}</DialogDescription>
@@ -6060,7 +6050,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Class</DialogTitle>
             <DialogDescription>
@@ -6080,7 +6070,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Class</DialogTitle>
             <DialogDescription>Update class details</DialogDescription>
@@ -6664,7 +6654,7 @@ function AcademicCalendarTab() {
       </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Calendar Event</DialogTitle>
           </DialogHeader>
@@ -6716,7 +6706,7 @@ function AcademicCalendarTab() {
       </Dialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Calendar Event</DialogTitle>
           </DialogHeader>

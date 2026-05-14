@@ -706,7 +706,7 @@ export default function StudentRecords() {
       </Card>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Attendance Status</DialogTitle>
             <DialogDescription>
