@@ -494,13 +494,15 @@ export function QAAttendanceForm({ onSuccess, onCancel }: QAAttendanceFormProps)
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="remarks">Remarks</Label>
+            <Label htmlFor="remarks">Comment</Label>
             <Textarea
               id="remarks"
               value={formData.remarks || ''}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
               rows={3}
+              placeholder="Briefly explain the reason for the chosen status."
             />
+            <p className="text-xs text-muted-foreground">Optional. Provide context behind the status above so reviewers understand the decision.</p>
           </div>
 
           <div className="flex justify-end gap-2">

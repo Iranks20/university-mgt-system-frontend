@@ -21,7 +21,6 @@ export function exportLectureRecordsToCSV(
   filename?: string
 ): void {
   const data = [
-    // Header row - exact match to 3.csv with check-in/check-out columns
     [
       'DATE',
       'LECTURER\'S NAME',
@@ -34,9 +33,9 @@ export function exportLectureRecordsToCSV(
       'DURATION',
       'LESSON TIMEOUT',
       'TIME LOST',
+      'STATUS',
       'COMMENT',
     ],
-    // Data rows
     ...records.map(record => [
       formatDateForCSV(record.date),
       record.lecturerName,
@@ -50,25 +49,26 @@ export function exportLectureRecordsToCSV(
       record.lessonTimeout || record.duration,
       record.timeLost,
       record.comment,
+      record.remarks || '',
     ]),
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
+
   ws['!cols'] = [
-    { wch: 15 }, // DATE
-    { wch: 25 }, // LECTURER'S NAME
-    { wch: 30 }, // CLASS
-    { wch: 35 }, // COURSE UNIT
-    { wch: 18 }, // TIME FOR STARTING
-    { wch: 18 }, // TIME OUT FOR ENDING
-    { wch: 15 }, // CHECK-IN TIME
-    { wch: 15 }, // CHECK-OUT TIME
-    { wch: 12 }, // DURATION
-    { wch: 15 }, // LESSON TIMEOUT
-    { wch: 12 }, // TIME LOST
-    { wch: 20 }, // COMMENT
+    { wch: 15 },
+    { wch: 25 },
+    { wch: 30 },
+    { wch: 35 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 20 },
+    { wch: 40 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -284,9 +284,8 @@ export function exportAllQAReports(
     XLSX.utils.book_append_sheet(wb, lecturerSheet, report.school.substring(0, 31)); // Excel sheet name limit
   });
 
-  // Sheet 3: Detailed Lecture Records (3.csv format with check-in/check-out)
   const lectureData = [
-    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'LESSON TIMEOUT', 'TIME LOST', 'COMMENT'],
+    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'LESSON TIMEOUT', 'TIME LOST', 'STATUS', 'COMMENT'],
     ...lectureRecords.map(r => [
       formatDateForCSV(r.date),
       r.lecturerName,
@@ -300,10 +299,11 @@ export function exportAllQAReports(
       r.lessonTimeout || r.duration,
       r.timeLost,
       r.comment,
+      r.remarks || '',
     ]),
   ];
   const lectureSheet = XLSX.utils.aoa_to_sheet(lectureData);
-  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }];
+  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 40 }];
   XLSX.utils.book_append_sheet(wb, lectureSheet, 'Lecture Records');
 
   const defaultFilename = `QA_Complete_Report_${formatDate(new Date())}.xlsx`;

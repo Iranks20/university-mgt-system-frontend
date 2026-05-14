@@ -68,7 +68,7 @@ export function QAAttendanceTable({ records, onExport }: QAAttendanceTableProps)
               <TableHead>Duration</TableHead>
               <TableHead>Venue</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Remarks</TableHead>
+              <TableHead>Comment</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
