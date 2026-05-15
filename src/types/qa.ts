@@ -24,8 +24,10 @@ export interface QALectureRecord {
   timeOutForEnding: string; // "TIME OUT FOR ENDING" - Scheduled end time e.g., "10:00:00"
   duration: string; // "DURATION" - Calculated from check-in to check-out e.g., "00:50:00", "02:00:00"
   timeLost: string; // "TIME LOST" - e.g., "00:50:00", "0", "02:00:00"
-  comment: string; // Lecture status enum: "TAUGHT", "UNTAUGHT", "COMPENSATION", "MEETING", "SDL", "STUDENTS ORIENTATION"
+  comment: string; // Lecture status enum: "TAUGHT", "UNTAUGHT", "COMPENSATION", "MEETING", "SDL", "STUDENTS ORIENTATION", "SUBSTITUTED"
   remarks?: string | null; // QA free-text comment explaining the chosen status
+  substituteLecturerId?: string | null; // Staff id of the lecturer who actually taught when comment === 'SUBSTITUTED'
+  substituteLecturerName?: string | null; // Resolved display name for the substitute lecturer
   checkInTime?: string;
   checkOutTime?: string;
   checkInTimestamp?: Date;

@@ -100,6 +100,9 @@ export default function LectureRecords() {
   const [selectedClassName, setSelectedClassName] = useState('');
   const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
   const [selectedLecturerId, setSelectedLecturerId] = useState('');
+  const [selectedComment, setSelectedComment] = useState<string>('TAUGHT');
+  const [selectedSubstituteId, setSelectedSubstituteId] = useState<string>('');
+  const [selectedSubstituteName, setSelectedSubstituteName] = useState<string>('');
   const [selectedDepartmentName, setSelectedDepartmentName] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [lecturerAssignments, setLecturerAssignments] = useState<{
@@ -487,6 +490,20 @@ export default function LectureRecords() {
     }
 
     const remarksRaw = ((formData.get('remarks') as string) || '').trim();
+    const commentValue = (formData.get('comment') as string) || selectedComment;
+
+    if (commentValue === 'SUBSTITUTED' && !selectedSubstituteId) {
+      toast.error('Please choose the substitute lecturer who taught the class.');
+      return;
+    }
+    if (
+      commentValue === 'SUBSTITUTED' &&
+      selectedLecturerId &&
+      selectedSubstituteId === selectedLecturerId
+    ) {
+      toast.error('Substitute lecturer cannot be the same as the scheduled lecturer.');
+      return;
+    }
 
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
@@ -499,8 +516,10 @@ export default function LectureRecords() {
       timeOutForEnding: endTime,
       duration: duration,
       timeLost: '0',
-      comment: formData.get('comment') as string,
+      comment: commentValue,
       remarks: remarksRaw ? remarksRaw : null,
+      substituteLecturerId:
+        commentValue === 'SUBSTITUTED' && selectedSubstituteId ? selectedSubstituteId : null,
       checkInTime: checkInTime || undefined,
       checkOutTime: checkOutTime || undefined,
       lessonTimeout: lessonTimeout,
@@ -518,6 +537,9 @@ export default function LectureRecords() {
       setCurrentRecordId(null);
       setSelectedLecturerName('');
       setSelectedLecturerId('');
+      setSelectedSubstituteId('');
+      setSelectedSubstituteName('');
+      setSelectedComment('TAUGHT');
     } catch (error) {
       console.error('Error saving record:', error);
       toast.error('Failed to save record. Please try again.');
@@ -553,6 +575,21 @@ export default function LectureRecords() {
     const recordDeptName = (record.department || '').trim();
     setSelectedDepartmentName(recordDeptName);
     setSelectedClassName(record.class || '');
+    setSelectedComment(record.comment || 'TAUGHT');
+    const subIdFromRecord = (record.substituteLecturerId || '').trim();
+    setSelectedSubstituteId(subIdFromRecord);
+    if (subIdFromRecord) {
+      const subFromOptions = lecturerOptions.find((l) => l.id === subIdFromRecord);
+      if (subFromOptions) {
+        setSelectedSubstituteName(subFromOptions.name);
+      } else if (record.substituteLecturerName) {
+        setSelectedSubstituteName(record.substituteLecturerName);
+      } else {
+        setSelectedSubstituteName('');
+      }
+    } else {
+      setSelectedSubstituteName('');
+    }
 
     const staffIdFromRecord = record.lecturerId;
     const normalizedRecordName = normalizeName(record.lecturerName);
@@ -673,6 +710,9 @@ export default function LectureRecords() {
     setSelectedClassId('');
     setSelectedClassName('');
     setLecturerAssignments(null);
+    setSelectedComment('TAUGHT');
+    setSelectedSubstituteId('');
+    setSelectedSubstituteName('');
     setIsDialogOpen(true);
   };
 
@@ -1059,9 +1099,18 @@ export default function LectureRecords() {
                         })()}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getCommentBadgeVariant(record.comment)}>
-                          {COMMENT_FILTER_LABELS[(record.comment || '').toUpperCase()] ?? record.comment}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={getCommentBadgeVariant(record.comment)}>
+                            {COMMENT_FILTER_LABELS[(record.comment || '').toUpperCase()] ?? record.comment}
+                          </Badge>
+                          {record.comment === 'SUBSTITUTED' && (record.substituteLecturerName || record.substituteLecturerId) && (
+                            <span className="text-xs text-muted-foreground">
+                              Sub: {record.substituteLecturerName
+                                || lecturerOptions.find((l) => l.id === record.substituteLecturerId)?.name
+                                || 'on file'}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -1219,6 +1268,23 @@ export default function LectureRecords() {
                       <span className="text-xs text-muted-foreground">Status:</span>
                       <Badge variant={getCommentBadgeVariant(detailsRecord.comment)}>{commentLabel}</Badge>
                     </div>
+                    {detailsRecord.comment === 'SUBSTITUTED' && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Substitute lecturer</p>
+                        <p className="font-medium text-gray-900">
+                          {(() => {
+                            if (detailsRecord.substituteLecturerName?.trim()) {
+                              return detailsRecord.substituteLecturerName;
+                            }
+                            const subId = detailsRecord.substituteLecturerId;
+                            const match = subId ? lecturerOptions.find((l) => l.id === subId) : undefined;
+                            if (match) return match.name;
+                            if (subId) return 'Substitute on file';
+                            return 'Not recorded';
+                          })()}
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground">Comment</p>
                       {detailsRecord.remarks?.trim() ? (
@@ -1589,7 +1655,14 @@ export default function LectureRecords() {
                     <Label htmlFor="comment">STATUS *</Label>
                     <Select
                       name="comment"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.comment || 'TAUGHT' : 'TAUGHT'}
+                      value={selectedComment}
+                      onValueChange={(value) => {
+                        setSelectedComment(value);
+                        if (value !== 'SUBSTITUTED') {
+                          setSelectedSubstituteId('');
+                          setSelectedSubstituteName('');
+                        }
+                      }}
                     >
                       <SelectTrigger id="comment">
                         <SelectValue placeholder="Select status" />
@@ -1603,6 +1676,38 @@ export default function LectureRecords() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {selectedComment === 'SUBSTITUTED' && (
+                    <div className="space-y-2">
+                      <Label>SUBSTITUTE LECTURER *</Label>
+                      <Combobox
+                        options={lecturerOptions
+                          .filter((l) => l.id !== selectedLecturerId)
+                          .map((l) => ({
+                            value: l.id,
+                            label: l.departmentName ? `${l.name} — ${l.departmentName}` : l.name,
+                          }))}
+                        value={selectedSubstituteId}
+                        selectedLabel={selectedSubstituteName || undefined}
+                        onValueChange={(id) => {
+                          if (!id) {
+                            setSelectedSubstituteId('');
+                            setSelectedSubstituteName('');
+                            return;
+                          }
+                          const opt = lecturerOptions.find((l) => l.id === id);
+                          setSelectedSubstituteId(id);
+                          setSelectedSubstituteName(opt?.name || '');
+                        }}
+                        placeholder="Select substitute lecturer"
+                        searchPlaceholder="Search lecturers by name or department..."
+                        emptyText="No lecturer found."
+                        initialDisplayCount={10}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Who actually taught this session in place of {selectedLecturerName || 'the scheduled lecturer'}?
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="remarks">COMMENT</Label>
@@ -1613,7 +1718,6 @@ export default function LectureRecords() {
                     placeholder="Briefly explain the reason for the chosen status (e.g. why the lecture was untaught, who substituted, what was covered)."
                     defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.remarks || '' : ''}
                   />
-                  <p className="text-xs text-muted-foreground">Optional. Provide context behind the status above so reviewers understand the decision.</p>
                 </div>
               </section>
             </div>

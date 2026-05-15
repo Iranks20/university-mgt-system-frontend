@@ -502,7 +502,6 @@ export function QAAttendanceForm({ onSuccess, onCancel }: QAAttendanceFormProps)
               rows={3}
               placeholder="Briefly explain the reason for the chosen status."
             />
-            <p className="text-xs text-muted-foreground">Optional. Provide context behind the status above so reviewers understand the decision.</p>
           </div>
 
           <div className="flex justify-end gap-2">

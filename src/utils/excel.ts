@@ -35,6 +35,7 @@ export function exportLectureRecordsToCSV(
       'TIME LOST',
       'STATUS',
       'COMMENT',
+      'SUBSTITUTE LECTURER',
     ],
     ...records.map(record => [
       formatDateForCSV(record.date),
@@ -50,6 +51,7 @@ export function exportLectureRecordsToCSV(
       record.timeLost,
       record.comment,
       record.remarks || '',
+      record.substituteLecturerName || '',
     ]),
   ];
 
@@ -69,6 +71,7 @@ export function exportLectureRecordsToCSV(
     { wch: 12 },
     { wch: 20 },
     { wch: 40 },
+    { wch: 25 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -285,7 +288,7 @@ export function exportAllQAReports(
   });
 
   const lectureData = [
-    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'LESSON TIMEOUT', 'TIME LOST', 'STATUS', 'COMMENT'],
+    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'LESSON TIMEOUT', 'TIME LOST', 'STATUS', 'COMMENT', 'SUBSTITUTE LECTURER'],
     ...lectureRecords.map(r => [
       formatDateForCSV(r.date),
       r.lecturerName,
@@ -300,10 +303,11 @@ export function exportAllQAReports(
       r.timeLost,
       r.comment,
       r.remarks || '',
+      r.substituteLecturerName || '',
     ]),
   ];
   const lectureSheet = XLSX.utils.aoa_to_sheet(lectureData);
-  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 40 }];
+  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 40 }, { wch: 25 }];
   XLSX.utils.book_append_sheet(wb, lectureSheet, 'Lecture Records');
 
   const defaultFilename = `QA_Complete_Report_${formatDate(new Date())}.xlsx`;
