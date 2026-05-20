@@ -119,3 +119,44 @@ export interface AttendanceRecordRow {
   markedAt: string | null;
   markedBy: string;
 }
+
+export interface ClassAttendanceSummaryRow {
+  studentId: string;
+  studentName: string;
+  registrationNumber: string;
+  totalAttendedClasses: number;
+  totalLateClasses: number;
+  totalMissedClasses: number;
+  expectedAttendance: number;
+  percentage: number;
+}
+
+export interface ClassAttendanceSummaryReport {
+  title: string;
+  reportName: string;
+  generatedAt: string;
+  filters: {
+    schoolId: string | null;
+    schoolName: string | null;
+    programId: string | null;
+    programName: string | null;
+    programIntakeId: string | null;
+    intakeLabel: string | null;
+    courseId: string | null;
+    courseName: string | null;
+    classId: string | null;
+    className: string | null;
+    level: number | null;
+    semester: number | null;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  students: ClassAttendanceSummaryRow[];
+  totals: {
+    studentCount: number;
+    totalAttendedClasses: number;
+    totalLateClasses: number;
+    totalMissedClasses: number;
+    expectedAttendance: number;
+  };
+}

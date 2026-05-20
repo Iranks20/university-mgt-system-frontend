@@ -455,7 +455,7 @@ function AppRoutes() {
 				path="/reports" 
 				element={
 					<ProtectedRoute
-						allowedRoles={['QA', 'Management', 'Admin']}
+						allowedRoles={['QA', 'Management']}
 						requiredPermissionSets={[
 							['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops'],
 						]}

@@ -38,17 +38,49 @@ export const analyticsService = {
     }
   },
 
-  getWorstPerformingStudents: async (limit: number = 10, dateFrom?: string, dateTo?: string) => {
+  getWorstPerformingStudents: async (options: {
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    schoolId?: string;
+    programId?: string;
+    programIntakeId?: string;
+    courseId?: string;
+    classId?: string;
+    level?: number;
+    semester?: number;
+  } = {}) => {
     try {
-      const params: Record<string, string> = { limit: String(limit) };
-      if (dateFrom) params.dateFrom = dateFrom;
-      if (dateTo) params.dateTo = dateTo;
+      const params: Record<string, string> = {};
+      if (options.limit != null) params.limit = String(options.limit);
+      if (options.dateFrom) params.dateFrom = options.dateFrom;
+      if (options.dateTo) params.dateTo = options.dateTo;
+      if (options.schoolId) params.schoolId = options.schoolId;
+      if (options.programId) params.programId = options.programId;
+      if (options.programIntakeId) params.programIntakeId = options.programIntakeId;
+      if (options.courseId) params.courseId = options.courseId;
+      if (options.classId) params.classId = options.classId;
+      if (options.level != null) params.level = String(options.level);
+      if (options.semester != null) params.semester = String(options.semester);
       const response = await api.get<unknown>('/analytics/worst-students', params);
-      const r = response as unknown as { data?: unknown[] } | unknown[];
-      return Array.isArray(r) ? r : (r as { data?: unknown[] })?.data || [];
+      const r = response as {
+        data?: unknown[] | { students?: unknown[] };
+        meta?: { thresholdPercent?: number; minSessions?: number };
+      };
+      const rawData = r?.data;
+      const students = Array.isArray(rawData)
+        ? rawData
+        : Array.isArray((rawData as { students?: unknown[] })?.students)
+          ? (rawData as { students: unknown[] }).students
+          : [];
+      return {
+        students,
+        thresholdPercent: r?.meta?.thresholdPercent ?? 70,
+        minSessions: r?.meta?.minSessions ?? 3,
+      };
     } catch (error) {
       console.error('Error fetching worst students:', error);
-      return [];
+      return { students: [], thresholdPercent: 70, minSessions: 3 };
     }
   },
 

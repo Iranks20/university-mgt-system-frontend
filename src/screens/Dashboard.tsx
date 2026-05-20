@@ -19,6 +19,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import WorstPerformers from '@/components/WorstPerformers';
+import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 import { qaService } from '@/services/qa.service';
 import { analyticsService } from '@/services/analytics.service';
 import { reportService } from '@/services/report.service';
@@ -706,12 +707,7 @@ function StudentDashboard() {
               try {
                 const att = await studentService.getStudentAttendance(student.id, { classId: classItem.id });
                 const arr = Array.isArray(att) ? att : [];
-                const present = arr.filter((r: any) => r.status === 'Present').length;
-                const late = arr.filter((r: any) => r.status === 'Late').length;
-                const excused = arr.filter((r: any) => r.status === 'Excused').length;
-                const expected = Math.max(0, arr.length - excused);
-                const attended = present + 0.5 * late;
-                attendancePct = expected > 0 ? Math.round((attended / expected) * 100) : 0;
+                attendancePct = computeAttendanceFromRecords(arr, { percentageDecimalPlaces: 0 }).percentage;
               } catch (_) {}
             }
             const status = live ? 'Live' : attendancePct >= attThresholds.present ? 'Present' : attendancePct > attThresholds.atRisk ? 'At Risk' : 'Upcoming';
@@ -1089,10 +1085,8 @@ function ManagementDashboard() {
         // Calculate critical alerts from worst performers API data
         // Uses real API data - counts students with attendance rate < 50% from API
         try {
-          const worstPerformers = await analyticsService.getWorstPerformingStudents(10);
-          const criticalCount = Array.isArray(worstPerformers) 
-            ? worstPerformers.filter((s: any) => (s.attendanceRate || 0) < 50).length 
-            : 0;
+          const { students: worstPerformers } = await analyticsService.getWorstPerformingStudents({ limit: 10 });
+          const criticalCount = worstPerformers.filter((s: any) => (s.attendanceRate || 0) < 50).length;
           setCriticalAlerts(criticalCount);
         } catch (e) {
           setCriticalAlerts(0); // Show 0 if API fails (no estimation)

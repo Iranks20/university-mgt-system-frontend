@@ -1,11 +1,12 @@
 import api from '@/lib/api';
 import type { Student, StudentAttendance } from '@/types';
-import type { 
-  StudentAttendanceReport, 
-  ProgramAttendanceData, 
+import type {
+  ClassAttendanceSummaryReport,
+  StudentAttendanceReport,
+  ProgramAttendanceData,
   StudentAttendanceRecord,
   WeeklyAttendanceSummary,
-  AttendanceRecordRow 
+  AttendanceRecordRow,
 } from '@/types/student';
 
 export const studentService = {
@@ -186,6 +187,29 @@ export const studentService = {
     } catch (error) {
       console.error('Error fetching attendance records:', error);
       return { data: [], total: 0, page: 1, pageSize: 0 };
+    }
+  },
+
+  getClassAttendanceSummaryReport: async (params: {
+    schoolId?: string;
+    programId?: string;
+    programIntakeId?: string;
+    courseId?: string;
+    classId?: string;
+    level?: number;
+    semester?: number;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ClassAttendanceSummaryReport | null> => {
+    try {
+      const res = await api.get<ClassAttendanceSummaryReport | { data: ClassAttendanceSummaryReport }>(
+        '/students/attendance/class-summary-report',
+        params as Record<string, string | number | undefined>
+      );
+      return (res as { data?: ClassAttendanceSummaryReport })?.data ?? (res as ClassAttendanceSummaryReport);
+    } catch (error) {
+      console.error('Error fetching class attendance summary report:', error);
+      throw error;
     }
   },
 

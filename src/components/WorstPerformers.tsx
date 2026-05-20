@@ -36,7 +36,14 @@ export default function WorstPerformers({ maxItems = 10, showExport = true }: Wo
           api.get('/analytics/worst-students', { limit: maxItems }),
         ]);
         setWorstLecturers(Array.isArray(lecturers) ? lecturers : (lecturers as any)?.data || []);
-        setWorstStudents(Array.isArray(students) ? students : (students as any)?.data || []);
+        const studentPayload = (students as { data?: unknown })?.data ?? students;
+        setWorstStudents(
+          Array.isArray(studentPayload)
+            ? studentPayload
+            : Array.isArray((studentPayload as { students?: unknown[] })?.students)
+              ? (studentPayload as { students: unknown[] }).students
+              : []
+        );
       } catch (error) {
         console.error('Error fetching worst performers:', error);
         setWorstLecturers([]);

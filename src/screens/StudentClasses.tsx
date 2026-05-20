@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { BookOpen } from "lucide-react";
 import { enrollmentService, studentService, settingsService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
+import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 
 export default function StudentClasses() {
   const { user } = useAuth();
@@ -48,13 +49,9 @@ export default function StudentClasses() {
             const attendanceRecords = await studentService.getStudentAttendance(studentId, {
               classId: enrollment.classId,
             });
-            const presentCount = attendanceRecords.filter((r: any) => r.status === 'Present').length;
-            const lateCount = attendanceRecords.filter((r: any) => r.status === 'Late').length;
-            const excusedCount = attendanceRecords.filter((r: any) => r.status === 'Excused').length;
-            const totalCount = attendanceRecords.length;
-            const expectedCount = Math.max(0, totalCount - excusedCount);
-            const attended = presentCount + 0.5 * lateCount;
-            attendance = expectedCount > 0 ? Math.round((attended / expectedCount) * 100) : 0;
+            attendance = computeAttendanceFromRecords(attendanceRecords, {
+              percentageDecimalPlaces: 0,
+            }).percentage;
           } catch (err) {
             console.warn('Could not load attendance for class', enrollment.classId, err);
           }

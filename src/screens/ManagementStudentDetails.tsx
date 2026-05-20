@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { studentService, reportService, settingsService } from '@/services';
+import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 import { exportStudentAttendanceReport } from '@/utils/excel';
 import type { StudentAttendanceReport } from '@/types/student';
 import { toast } from 'sonner';
@@ -64,17 +65,12 @@ export default function ManagementStudentDetails() {
             try {
               // Fetch attendance records for this student
               const attendanceRecords = await studentService.getStudentAttendance(s.id);
-              const presentRecords = attendanceRecords.filter((a: any) => a.status === 'Present');
-              const lateRecords = attendanceRecords.filter((a: any) => a.status === 'Late');
-              const excusedRecords = attendanceRecords.filter((a: any) => a.status === 'Excused');
-              
+              const metrics = computeAttendanceFromRecords(attendanceRecords, {
+                percentageDecimalPlaces: 0,
+              });
               totalLectures = attendanceRecords.length;
-              const expectedLectures = Math.max(0, totalLectures - excusedRecords.length);
-              attendedLectures = presentRecords.length + 0.5 * lateRecords.length;
-              
-              if (expectedLectures > 0) {
-                attendance = Math.round((attendedLectures / expectedLectures) * 100);
-              }
+              attendedLectures = metrics.attended;
+              attendance = metrics.percentage;
               
               // Calculate status based on attendance rate
               // Use thresholds from API

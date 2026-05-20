@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line 
 } from 'recharts';
 import { 
   FileText, Download, Filter, Calendar, Users, Building, 
-  TrendingUp, AlertCircle, CheckCircle, Search
+  TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,6 +20,11 @@ import { reportService } from '@/services/report.service';
 import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { timetableService } from '@/services/timetable.service';
+import { studentService } from '@/services/student.service';
+import { exportClassAttendanceSummaryReport } from '@/utils/excel';
+import { formatWeightedAttendedCount } from '@/lib/attendance-metrics';
+import type { ClassAttendanceSummaryReport } from '@/types/student';
+import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -36,8 +41,18 @@ export default function Reports() {
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [schoolsLoading, setSchoolsLoading] = useState(false);
   const [lecturersLoading, setLecturersLoading] = useState(false);
-  const [studentsReport, setStudentsReport] = useState<{ id: string; name: string; program?: string; attendanceRate?: number; missed?: number }[]>([]);
+  const [studentsReport, setStudentsReport] = useState<{
+    id: string;
+    name: string;
+    program?: string;
+    registrationNumber?: string;
+    attendanceRate?: number;
+    missed?: number;
+    expectedSessions?: number;
+    attendedSessions?: number;
+  }[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const [atRiskMeta, setAtRiskMeta] = useState<{ thresholdPercent: number; minSessions: number } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [lecturerSearch, setLecturerSearch] = useState('');
   const [schoolFilter, setSchoolFilter] = useState<string>('all');
@@ -58,6 +73,24 @@ export default function Reports() {
   const [lecturerDateRange, setLecturerDateRange] = useState<'all' | 'last_30_days' | 'this_term'>('all');
   const [studentAttendDateRange, setStudentAttendDateRange] = useState<'all' | 'last_30_days' | 'this_term'>('all');
   const [studentAttendLimit, setStudentAttendLimit] = useState<number>(100);
+  const ALL_VALUE = '__all__';
+  const [attendSchools, setAttendSchools] = useState<School[]>([]);
+  const [attendLevels, setAttendLevels] = useState<Level[]>([]);
+  const [attendDepartments, setAttendDepartments] = useState<Department[]>([]);
+  const [attendPrograms, setAttendPrograms] = useState<Array<{ id: string; name: string; code: string; departmentId: string }>>([]);
+  const [attendCourses, setAttendCourses] = useState<Course[]>([]);
+  const [attendClasses, setAttendClasses] = useState<Class[]>([]);
+  const [attendSelectedSchool, setAttendSelectedSchool] = useState(ALL_VALUE);
+  const [attendSelectedProgramId, setAttendSelectedProgramId] = useState(ALL_VALUE);
+  const [attendSelectedCourseId, setAttendSelectedCourseId] = useState(ALL_VALUE);
+  const [attendSelectedClassId, setAttendSelectedClassId] = useState(ALL_VALUE);
+  const [attendSelectedYear, setAttendSelectedYear] = useState(ALL_VALUE);
+  const [attendSelectedSemester, setAttendSelectedSemester] = useState(ALL_VALUE);
+  const [attendDateFrom, setAttendDateFrom] = useState('');
+  const [attendDateTo, setAttendDateTo] = useState('');
+  const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
+  const [classAttendLoading, setClassAttendLoading] = useState(false);
+  const [classAttendExporting, setClassAttendExporting] = useState(false);
   const [compDateFrom, setCompDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -234,8 +267,215 @@ export default function Reports() {
     academicService.getSchools().then((list) => {
       const arr = Array.isArray(list) ? list : [];
       setSchoolsList(arr.map((s: any) => ({ id: s.id, name: s.name ?? '—' })));
+      setAttendSchools(arr as School[]);
     }).catch(() => setSchoolsList([]));
+    academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
+    academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
+    academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
+    academicService.getCourses({ limit: 500 }).then((r) => setAttendCourses(r.data || [])).catch(() => setAttendCourses([]));
   }, []);
+
+  const attendProgramToSchoolMap = useMemo(() => {
+    const levelToSchool = new Map(attendLevels.map((l) => [l.id, l.schoolId]));
+    const deptToSchool = new Map(attendDepartments.map((d) => [d.id, levelToSchool.get(d.levelId) || '']));
+    return new Map(attendPrograms.map((p) => [p.id, deptToSchool.get(p.departmentId) || '']));
+  }, [attendPrograms, attendDepartments, attendLevels]);
+
+  const attendFilteredPrograms = useMemo(() => {
+    if (attendSelectedSchool === ALL_VALUE) return attendPrograms;
+    return attendPrograms.filter((p) => attendProgramToSchoolMap.get(p.id) === attendSelectedSchool);
+  }, [attendPrograms, attendSelectedSchool, attendProgramToSchoolMap]);
+
+  const attendProgramIdsInScope = useMemo(
+    () => new Set(attendFilteredPrograms.map((p) => p.id)),
+    [attendFilteredPrograms]
+  );
+
+  const attendFilteredCourses = useMemo(() => {
+    let list = attendCourses;
+    if (attendSelectedProgramId !== ALL_VALUE) {
+      list = list.filter((c) => c.programId === attendSelectedProgramId);
+    } else if (attendSelectedSchool !== ALL_VALUE) {
+      list = list.filter((c) => c.programId && attendProgramIdsInScope.has(c.programId));
+    }
+    if (attendSelectedYear !== ALL_VALUE) {
+      list = list.filter((c) => c.level === Number(attendSelectedYear));
+    }
+    if (attendSelectedSemester !== ALL_VALUE) {
+      list = list.filter((c) => c.semester === Number(attendSelectedSemester));
+    }
+    return list;
+  }, [
+    attendCourses,
+    attendSelectedProgramId,
+    attendSelectedSchool,
+    attendSelectedYear,
+    attendSelectedSemester,
+    attendProgramIdsInScope,
+  ]);
+
+  useEffect(() => {
+    if (attendSelectedCourseId === ALL_VALUE) {
+      setAttendClasses([]);
+      return;
+    }
+    academicService
+      .getClasses({ courseId: attendSelectedCourseId, limit: 200 })
+      .then((r) => setAttendClasses(r.data || []))
+      .catch(() => setAttendClasses([]));
+  }, [attendSelectedCourseId]);
+
+  const buildClassAttendReportParams = useCallback(() => {
+    const params: Record<string, string | number> = {};
+    if (attendSelectedSchool !== ALL_VALUE) params.schoolId = attendSelectedSchool;
+    if (attendSelectedProgramId !== ALL_VALUE) params.programId = attendSelectedProgramId;
+    if (attendSelectedCourseId !== ALL_VALUE) params.courseId = attendSelectedCourseId;
+    if (attendSelectedClassId !== ALL_VALUE) params.classId = attendSelectedClassId;
+    if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
+    if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
+    if (attendDateFrom) params.startDate = attendDateFrom;
+    if (attendDateTo) params.endDate = attendDateTo;
+    return params;
+  }, [
+    attendSelectedSchool,
+    attendSelectedProgramId,
+    attendSelectedCourseId,
+    attendSelectedClassId,
+    attendSelectedYear,
+    attendSelectedSemester,
+    attendDateFrom,
+    attendDateTo,
+  ]);
+
+  const canLoadClassAttendReport =
+    attendSelectedSchool !== ALL_VALUE ||
+    attendSelectedProgramId !== ALL_VALUE ||
+    attendSelectedCourseId !== ALL_VALUE ||
+    attendSelectedClassId !== ALL_VALUE;
+
+  const loadClassAttendanceReport = async () => {
+    if (!canLoadClassAttendReport) {
+      toast.error('Select at least a school, program, or course to generate the report.');
+      return;
+    }
+    setClassAttendLoading(true);
+    try {
+      const report = await studentService.getClassAttendanceSummaryReport(buildClassAttendReportParams());
+      if (!report) {
+        toast.warning('No report data returned.');
+        setClassAttendReport(null);
+        return;
+      }
+      setClassAttendReport(report);
+      if (report.students.length === 0) {
+        toast.info('No enrolled students found for the selected scope.');
+      }
+    } catch (e: any) {
+      setClassAttendReport(null);
+      toast.error(e?.message || 'Failed to load attendance summary report');
+    } finally {
+      setClassAttendLoading(false);
+    }
+  };
+
+  const handleExportClassAttendanceReport = () => {
+    if (!classAttendReport || classAttendReport.students.length === 0) {
+      toast.warning('Generate the report first.');
+      return;
+    }
+    setClassAttendExporting(true);
+    try {
+      exportClassAttendanceSummaryReport(classAttendReport);
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setClassAttendExporting(false);
+    }
+  };
+
+  const resetClassAttendanceFilters = () => {
+    setAttendSelectedSchool(ALL_VALUE);
+    setAttendSelectedProgramId(ALL_VALUE);
+    setAttendSelectedCourseId(ALL_VALUE);
+    setAttendSelectedClassId(ALL_VALUE);
+    setAttendSelectedYear(ALL_VALUE);
+    setAttendSelectedSemester(ALL_VALUE);
+    setAttendDateFrom('');
+    setAttendDateTo('');
+    setAttendClasses([]);
+    setClassAttendReport(null);
+    setStudentsReport([]);
+    setAtRiskMeta(null);
+    setStudentAttendDateRange('all');
+  };
+
+  const buildAtRiskReportParams = useCallback(() => {
+    const presetDates = getStudentAttendDateParams();
+    const params: {
+      limit: number;
+      dateFrom?: string;
+      dateTo?: string;
+      schoolId?: string;
+      programId?: string;
+      courseId?: string;
+      classId?: string;
+      level?: number;
+      semester?: number;
+    } = { limit: studentAttendLimit };
+    const dateFrom = attendDateFrom || presetDates?.dateFrom;
+    const dateTo = attendDateTo || presetDates?.dateTo;
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo) params.dateTo = dateTo;
+    if (attendSelectedSchool !== ALL_VALUE) params.schoolId = attendSelectedSchool;
+    if (attendSelectedProgramId !== ALL_VALUE) params.programId = attendSelectedProgramId;
+    if (attendSelectedCourseId !== ALL_VALUE) params.courseId = attendSelectedCourseId;
+    if (attendSelectedClassId !== ALL_VALUE) params.classId = attendSelectedClassId;
+    if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
+    if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
+    return params;
+  }, [
+    studentAttendLimit,
+    attendDateFrom,
+    attendDateTo,
+    attendSelectedSchool,
+    attendSelectedProgramId,
+    attendSelectedCourseId,
+    attendSelectedClassId,
+    attendSelectedYear,
+    attendSelectedSemester,
+    studentAttendDateRange,
+  ]);
+
+  const loadAtRiskStudents = async () => {
+    setStudentsLoading(true);
+    try {
+      const { students, thresholdPercent, minSessions } =
+        await analyticsService.getWorstPerformingStudents(buildAtRiskReportParams());
+      setAtRiskMeta({ thresholdPercent, minSessions });
+      setStudentsReport(
+        students.map((s: any) => ({
+          id: s.studentId || s.id || '',
+          name: s.studentName ?? s.name ?? '—',
+          registrationNumber: s.registrationNumber ?? s.studentNumber ?? '—',
+          program: s.programCode ?? s.program ?? '—',
+          attendanceRate: s.attendanceRate ?? s.attendancePercent,
+          missed: s.missedCount ?? s.missed ?? 0,
+          expectedSessions: s.expectedSessions,
+          attendedSessions: s.attendedSessions,
+        }))
+      );
+      if (students.length === 0) {
+        toast.info('No students below the attendance threshold for the selected filters.');
+      }
+    } catch (e: any) {
+      setStudentsReport([]);
+      setAtRiskMeta(null);
+      toast.error(e?.message || 'Failed to load at-risk students');
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
 
   const loadReconciliationReport = async () => {
     setReconciliationLoading(true);
@@ -276,21 +516,6 @@ export default function Reports() {
     URL.revokeObjectURL(link.href);
     toast.success('Export downloaded');
   };
-
-  useEffect(() => {
-    setStudentsLoading(true);
-    const params = getStudentAttendDateParams();
-    analyticsService.getWorstPerformingStudents(studentAttendLimit, params?.dateFrom, params?.dateTo).then((list) => {
-      const arr = Array.isArray(list) ? list : [];
-      setStudentsReport(arr.map((s: any) => ({
-        id: s.studentId || s.id || '',
-        name: s.studentName ?? s.name ?? '—',
-        program: s.programCode ?? s.program ?? '—',
-        attendanceRate: s.attendanceRate ?? s.attendancePercent ?? s.attendance,
-        missed: s.missedCount ?? s.missed ?? 0,
-      })));
-    }).catch(() => setStudentsReport([])).finally(() => setStudentsLoading(false));
-  }, [studentAttendDateRange, studentAttendLimit]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -362,6 +587,7 @@ export default function Reports() {
             <TabsTrigger value="schools">School Performance</TabsTrigger>
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
+            <TabsTrigger value="students-at-risk">Students at Risk</TabsTrigger>
             <TabsTrigger value="compensation">Compensation Tracking</TabsTrigger>
           </TabsList>
 
@@ -849,70 +1075,330 @@ export default function Reports() {
              </Card>
           </TabsContent>
 
-           {/* STUDENTS TAB - from analytics worst-performing students */}
            <TabsContent value="students" className="space-y-4">
-             <div className="flex flex-wrap items-center gap-3">
-               <Select value={studentAttendDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setStudentAttendDateRange(v)}>
-                 <SelectTrigger className="w-[180px]">
-                   <SelectValue placeholder="Date range" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="all">All time</SelectItem>
-                   <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                   <SelectItem value="this_term">Last 3 months</SelectItem>
-                 </SelectContent>
-               </Select>
-               <Select value={String(studentAttendLimit)} onValueChange={(v) => setStudentAttendLimit(Number(v))}>
-                 <SelectTrigger className="w-[160px]">
-                   <SelectValue placeholder="Show top" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="50">Top 50</SelectItem>
-                   <SelectItem value="100">Top 100</SelectItem>
-                   <SelectItem value="200">Top 200</SelectItem>
-                 </SelectContent>
-               </Select>
-             </div>
               <Card>
                 <CardHeader>
-                  <CardTitle>Student Attendance Report</CardTitle>
-                  <CardDescription>
-                    Students with lowest attendance (at-risk). Attendance % = Present ÷ total records in the selected period. Missed = number of Absent records.
-                  </CardDescription>
+                  <CardTitle>{classAttendReport?.title ?? 'Class / course attendance summary'}</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
+                    <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">School</label>
+                      <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
+                        <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All schools</SelectItem>
+                          {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Program</label>
+                      <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
+                        <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All programs</SelectItem>
+                          {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Course</label>
+                      <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
+                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All courses</SelectItem>
+                          {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Class</label>
+                      <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
+                        <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
+                          {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Year</label>
+                      <Select value={attendSelectedYear} onValueChange={setAttendSelectedYear}>
+                        <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All</SelectItem>
+                          {[1, 2, 3, 4, 5].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Semester</label>
+                      <Select value={attendSelectedSemester} onValueChange={setAttendSelectedSemester}>
+                        <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All</SelectItem>
+                          <SelectItem value="1">1</SelectItem>
+                          <SelectItem value="2">2</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Date from</label>
+                      <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                      <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
+                    </div>
+                    <Button variant="outline" onClick={resetClassAttendanceFilters}>
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Reset filters
+                    </Button>
+                    <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadClassAttendanceReport} disabled={classAttendLoading || !canLoadClassAttendReport}>
+                      {classAttendLoading ? 'Loading…' : 'Generate report'}
+                    </Button>
+                    <Button variant="outline" onClick={handleExportClassAttendanceReport} disabled={classAttendExporting || !classAttendReport?.students.length}>
+                      <Download className="mr-2 h-4 w-4" />
+                      {classAttendExporting ? 'Exporting…' : 'Export Excel'}
+                    </Button>
+                  </div>
+
+                  {classAttendReport && (
+                    <p className="text-sm text-muted-foreground">
+                      {classAttendReport.totals.studentCount} students ·{' '}
+                      {formatWeightedAttendedCount(classAttendReport.totals.totalAttendedClasses)} attended ·{' '}
+                      {classAttendReport.totals.totalLateClasses ?? 0} late · {classAttendReport.totals.totalMissedClasses} missed ·{' '}
+                      {classAttendReport.totals.expectedAttendance} expected sessions
+                    </p>
+                  )}
+
+                  <div className="rounded-md border overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">No.</TableHead>
+                          <TableHead>Student&apos;s Name</TableHead>
+                          <TableHead>Registration No.</TableHead>
+                          <TableHead className="text-right">Total Attended</TableHead>
+                          <TableHead className="text-right">Total Late</TableHead>
+                          <TableHead className="text-right">Total Missed</TableHead>
+                          <TableHead className="text-right">Expected</TableHead>
+                          <TableHead className="text-right">Percentage</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {classAttendLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading report…</TableCell>
+                          </TableRow>
+                        ) : !classAttendReport ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                              Choose filters and click Generate report.
+                            </TableCell>
+                          </TableRow>
+                        ) : classAttendReport.students.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                              No enrolled students in this scope.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          classAttendReport.students.map((row, idx) => (
+                            <TableRow key={row.studentId}>
+                              <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                              <TableCell className="font-medium">{row.studentName}</TableCell>
+                              <TableCell>{row.registrationNumber}</TableCell>
+                              <TableCell className="text-right">
+                                {formatWeightedAttendedCount(row.totalAttendedClasses)}
+                              </TableCell>
+                              <TableCell className="text-right">{row.totalLateClasses ?? 0}</TableCell>
+                              <TableCell className="text-right">{row.totalMissedClasses}</TableCell>
+                              <TableCell className="text-right">{row.expectedAttendance}</TableCell>
+                              <TableCell className="text-right">
+                                <span className={row.percentage < 75 ? 'text-red-600 font-medium' : ''}>
+                                  {row.percentage.toFixed(2)}%
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+          </TabsContent>
+
+          <TabsContent value="students-at-risk" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Students at risk (low attendance)</CardTitle>
+                {atRiskMeta && (
+                  <CardDescription>
+                    Students below {atRiskMeta.thresholdPercent}% attendance with at least {atRiskMeta.minSessions} counted sessions in the selected scope.
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
+                  <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Period</label>
+                    <Select value={studentAttendDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setStudentAttendDateRange(v)}>
+                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="Date range" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All time</SelectItem>
+                        <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                        <SelectItem value="this_term">Last 3 months</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">School</label>
+                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
+                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Program</label>
+                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All programs</SelectItem>
+                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Course</label>
+                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
+                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Class</label>
+                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
+                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
+                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Year</label>
+                    <Select value={attendSelectedYear} onValueChange={setAttendSelectedYear}>
+                      <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All</SelectItem>
+                        {[1, 2, 3, 4, 5].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Semester</label>
+                    <Select value={attendSelectedSemester} onValueChange={setAttendSelectedSemester}>
+                      <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All</SelectItem>
+                        <SelectItem value="1">1</SelectItem>
+                        <SelectItem value="2">2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Date from</label>
+                    <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                    <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Max results</label>
+                    <Select value={String(studentAttendLimit)} onValueChange={(v) => setStudentAttendLimit(Number(v))}>
+                      <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="200">200</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="outline" onClick={resetClassAttendanceFilters}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset filters
+                  </Button>
+                  <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadAtRiskStudents} disabled={studentsLoading}>
+                    {studentsLoading ? 'Loading…' : 'Load report'}
+                  </Button>
+                </div>
+
+                <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Student</TableHead>
+                        <TableHead>Registration No.</TableHead>
                         <TableHead>Program</TableHead>
                         <TableHead className="text-right">Attendance %</TableHead>
+                        <TableHead className="text-right">Attended</TableHead>
+                        <TableHead className="text-right">Expected</TableHead>
                         <TableHead className="text-right">Missed</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {studentsLoading ? (
-                        <TableRow><TableCell colSpan={4} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell>
+                        </TableRow>
                       ) : studentsReport.length === 0 ? (
-                        <TableRow><TableCell colSpan={4} className="text-center py-4 text-muted-foreground">No student attendance data yet.</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            Click Load report to see students below the attendance threshold.
+                          </TableCell>
+                        </TableRow>
                       ) : (
                         studentsReport.map((s) => (
                           <TableRow key={s.id}>
                             <TableCell className="font-medium">{s.name}</TableCell>
+                            <TableCell>{s.registrationNumber ?? '—'}</TableCell>
                             <TableCell>{s.program ?? '—'}</TableCell>
                             <TableCell className="text-right">
-                              <span className={s.attendanceRate != null && s.attendanceRate < 75 ? 'text-red-600 font-medium' : ''}>
-                                {s.attendanceRate != null ? `${s.attendanceRate}%` : '—'}
+                              <span
+                                className={
+                                  atRiskMeta && s.attendanceRate != null && s.attendanceRate < atRiskMeta.thresholdPercent
+                                    ? 'text-red-600 font-medium'
+                                    : ''
+                                }
+                              >
+                                {s.attendanceRate != null ? `${Number(s.attendanceRate).toFixed(2)}%` : '—'}
                               </span>
                             </TableCell>
+                            <TableCell className="text-right">
+                              {s.attendedSessions != null ? formatWeightedAttendedCount(s.attendedSessions) : '—'}
+                            </TableCell>
+                            <TableCell className="text-right">{s.expectedSessions ?? '—'}</TableCell>
                             <TableCell className="text-right">{s.missed ?? '—'}</TableCell>
                           </TableRow>
                         ))
                       )}
                     </TableBody>
                   </Table>
-                </CardContent>
-              </Card>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="compensation" className="space-y-4">

@@ -10,7 +10,12 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord } from '@/types/qa';
-import type { ProgramAttendanceData, StudentAttendanceReport, AttendanceRecordRow } from '@/types/student';
+import type {
+  ProgramAttendanceData,
+  StudentAttendanceReport,
+  AttendanceRecordRow,
+  ClassAttendanceSummaryReport,
+} from '@/types/student';
 
 /**
  * Export Lecture Records to CSV/Excel (matches 3.csv format exactly)
@@ -121,6 +126,77 @@ export function exportAttendanceRecordsToExcel(
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Attendance Records');
   const defaultFilename = `Student_Attendance_Records_${formatDate(new Date())}.xlsx`;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, filename || defaultFilename);
+}
+
+function formatReportDateLabel(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export function exportClassAttendanceSummaryReport(
+  report: ClassAttendanceSummaryReport,
+  filename?: string
+): void {
+  const filterParts: string[] = [];
+  if (report.filters.schoolName) filterParts.push(`School: ${report.filters.schoolName}`);
+  if (report.filters.programName) filterParts.push(`Program: ${report.filters.programName}`);
+  if (report.filters.courseName) filterParts.push(`Course: ${report.filters.courseName}`);
+  if (report.filters.className) filterParts.push(`Class: ${report.filters.className}`);
+  if (report.filters.level != null) filterParts.push(`Year: ${report.filters.level}`);
+  if (report.filters.semester != null) filterParts.push(`Semester: ${report.filters.semester}`);
+  if (report.filters.intakeLabel) filterParts.push(`Cohort: ${report.filters.intakeLabel}`);
+  if (report.filters.startDate || report.filters.endDate) {
+    const from = formatReportDateLabel(report.filters.startDate);
+    const to = formatReportDateLabel(report.filters.endDate);
+    if (from && to) filterParts.push(`Period: ${from} – ${to}`);
+    else if (from) filterParts.push(`From: ${from}`);
+    else if (to) filterParts.push(`Until: ${to}`);
+  }
+  filterParts.push(`Generated: ${formatReportDateLabel(report.generatedAt.slice(0, 10))}`);
+
+  const data: (string | number)[][] = [
+    [report.title],
+    [filterParts.join(' | ')],
+    [],
+    ['No.', "Student's Name", 'Registration No.', 'Total Attended Classes', 'Total Late Classes', 'Total Missed Classes', 'Expected Attendance', 'Percentage'],
+    ...report.students.map((row, index) => [
+      index + 1,
+      row.studentName,
+      row.registrationNumber,
+      row.totalAttendedClasses,
+      row.totalLateClasses ?? 0,
+      row.totalMissedClasses,
+      row.expectedAttendance,
+      `${row.percentage.toFixed(2)}%`,
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const colCount = 8;
+
+  ws['!cols'] = [
+    { wch: 6 },
+    { wch: 32 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 12 },
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Attendance Summary');
+  const safeName = report.title.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 80);
+  const defaultFilename = `${safeName}_${formatDate(new Date())}.xlsx`;
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, filename || defaultFilename);

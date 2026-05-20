@@ -10,6 +10,7 @@ import { academicService, enrollmentService, studentService, qaService } from '@
 import { useAuth } from '@/contexts/AuthContext';
 import { exportLectureRecordsToCSV } from '@/utils/excel';
 import { toast } from 'sonner';
+import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 
 export default function LecturerCourseAttendance() {
   const { user } = useAuth();
@@ -62,13 +63,9 @@ export default function LecturerCourseAttendance() {
               });
               if (attendance && attendance.length > 0) {
                 hasAttendanceData = true;
-                const present = attendance.filter((a: any) => a.status === 'Present').length;
-                const late = attendance.filter((a: any) => a.status === 'Late').length;
-                const excused = attendance.filter((a: any) => a.status === 'Excused').length;
-                const expected = Math.max(0, attendance.length - excused);
-                const attended = present + 0.5 * late;
-                totalAttendance += attended;
-                totalSessions += expected;
+                const metrics = computeAttendanceFromRecords(attendance);
+                totalAttendance += metrics.attended;
+                totalSessions += metrics.expected;
               }
             } catch (error) {
               // Skip students with no attendance data
