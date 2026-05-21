@@ -9,8 +9,11 @@ import {
   Search, Filter, Plus, MoreHorizontal, 
   Calendar as CalendarIcon, Clock, BookOpen, 
   Trash2, Edit, CheckCircle, XCircle, Download, Upload, LogIn, LogOut,
-  ChevronLeft, ChevronRight, UserCheck, Loader2, CalendarClock, Eye
+  ChevronLeft, ChevronRight, UserCheck, Loader2, CalendarClock, Eye,
+  ArrowUp, ArrowDown,
 } from 'lucide-react';
+import type { StudentSortDirection } from '@/lib/attendance-metrics';
+import { AttendanceStatusSelect } from '@/components/AttendanceStatusSelect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -97,6 +100,7 @@ export default function LectureRecords() {
   const [sessionStatusMap, setSessionStatusMap] = useState<Record<string, string>>({});
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionSaving, setSessionSaving] = useState(false);
+  const [sessionStudentSortDirection, setSessionStudentSortDirection] = useState<StudentSortDirection>('asc');
   const [selectedClassName, setSelectedClassName] = useState('');
   const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
   const [selectedLecturerId, setSelectedLecturerId] = useState('');
@@ -189,8 +193,29 @@ export default function LectureRecords() {
     const className = record.class || (record as any).className || 'Class';
     setSessionRecord({ classId, date, className });
     setSessionStatusMap({});
+    setSessionStudentSortDirection('asc');
     setSessionAttendanceOpen(true);
   };
+
+  const sessionEnrollmentStudentName = (
+    enr: { student?: { firstName?: string; lastName?: string } }
+  ) => {
+    const student = enr.student;
+    return student
+      ? `${student.firstName || ''} ${student.lastName || ''}`.trim() || '—'
+      : '—';
+  };
+
+  const sortedSessionEnrollments = useMemo(() => {
+    return [...sessionEnrollments].sort((a, b) => {
+      const cmp = sessionEnrollmentStudentName(a).localeCompare(
+        sessionEnrollmentStudentName(b),
+        undefined,
+        { sensitivity: 'base' }
+      );
+      return sessionStudentSortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [sessionEnrollments, sessionStudentSortDirection]);
 
   const setSessionStudentStatus = (studentId: string, status: string) => {
     setSessionStatusMap(prev => ({ ...prev, [studentId]: status }));
@@ -233,6 +258,7 @@ export default function LectureRecords() {
       setSessionRecord(null);
       setSessionEnrollments([]);
       setSessionStatusMap({});
+      setSessionStudentSortDirection('asc');
     } catch (err: any) {
       toast.error(err?.message || "Couldn't save attendance. Please try again.");
     } finally {
@@ -1316,7 +1342,7 @@ export default function LectureRecords() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); } }}>
+      <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortDirection('asc'); } }}>
         <DialogContent className="w-[96vw] max-w-6xl max-h-[92vh] flex flex-col p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b">
             <DialogTitle>Record student attendance</DialogTitle>
@@ -1358,7 +1384,25 @@ export default function LectureRecords() {
                   <TableHeader className="sticky top-0 bg-background z-10">
                     <TableRow>
                       <TableHead className="w-12 text-center">#</TableHead>
-                      <TableHead>Student</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSessionStudentSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+                          }
+                          disabled={sessionEnrollments.length === 0}
+                          className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] disabled:opacity-50 -ml-1 px-1 py-0.5 rounded"
+                        >
+                          Student
+                          {sessionEnrollments.length > 0 ? (
+                            sessionStudentSortDirection === 'asc' ? (
+                              <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            ) : (
+                              <ArrowDown className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            )
+                          ) : null}
+                        </button>
+                      </TableHead>
                       <TableHead className="w-40">Student number</TableHead>
                       <TableHead className="w-44">Status</TableHead>
                     </TableRow>
@@ -1371,10 +1415,9 @@ export default function LectureRecords() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      sessionEnrollments.map((enr: any, idx: number) => {
-                        const student = enr.student;
-                        const name = student ? `${student.firstName || ''} ${student.lastName || ''}`.trim() || '—' : '—';
-                        const num = student?.studentNumber || '—';
+                      sortedSessionEnrollments.map((enr: any, idx: number) => {
+                        const name = sessionEnrollmentStudentName(enr);
+                        const num = enr.student?.studentNumber || '—';
                         const status = sessionStatusMap[enr.studentId] || 'Absent';
                         return (
                           <TableRow key={enr.studentId}>
@@ -1382,17 +1425,19 @@ export default function LectureRecords() {
                             <TableCell className="font-medium">{name}</TableCell>
                             <TableCell className="text-muted-foreground">{num}</TableCell>
                             <TableCell>
-                              <Select value={status} onValueChange={(v) => setSessionStudentStatus(enr.studentId, v)}>
-                                <SelectTrigger className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Present">Present</SelectItem>
-                                  <SelectItem value="Absent">Absent</SelectItem>
-                                  <SelectItem value="Late">Late</SelectItem>
-                                  <SelectItem value="Excused">Excused</SelectItem>
-                                </SelectContent>
-                              </Select>
+                              <AttendanceStatusSelect
+                                value={
+                                  status === 'Present' ||
+                                  status === 'Absent' ||
+                                  status === 'Late' ||
+                                  status === 'Excused'
+                                    ? status
+                                    : 'Absent'
+                                }
+                                includeExcused
+                                onValueChange={(v) => setSessionStudentStatus(enr.studentId, v)}
+                                triggerClassName="w-full"
+                              />
                             </TableCell>
                           </TableRow>
                         );
@@ -1402,7 +1447,7 @@ export default function LectureRecords() {
                 </Table>
               </div>
               <DialogFooter className="px-6 py-3 border-t">
-                <Button type="button" variant="outline" onClick={() => { setSessionAttendanceOpen(false); setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); }}>
+                <Button type="button" variant="outline" onClick={() => { setSessionAttendanceOpen(false); setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortDirection('asc'); }}>
                   Cancel
                 </Button>
                 <Button onClick={handleSessionAttendanceSubmit} disabled={sessionSaving || sessionEnrollments.length === 0} className="bg-[#015F2B] hover:bg-[#014022]">

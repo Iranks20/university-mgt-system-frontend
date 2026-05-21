@@ -5,7 +5,8 @@ import {
 } from 'recharts';
 import { 
   FileText, Download, Filter, Calendar, Users, Building, 
-  TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw
+  TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw,
+  ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -22,7 +23,12 @@ import { academicService } from '@/services/academic.service';
 import { timetableService } from '@/services/timetable.service';
 import { studentService } from '@/services/student.service';
 import { exportClassAttendanceSummaryReport, exportCourseWiseAttendanceSummaryReport } from '@/utils/excel';
-import { formatWeightedAttendedCount } from '@/lib/attendance-metrics';
+import WeeklyAttendanceMatrixPanel from '@/features/student/components/WeeklyAttendanceMatrixPanel';
+import {
+  formatWeightedAttendedCount,
+  sortCourseWiseAttendanceRows,
+  type CourseWiseRowSortDirection,
+} from '@/lib/attendance-metrics';
 import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } from '@/types/student';
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
@@ -96,6 +102,7 @@ export default function Reports() {
   const [courseWiseReport, setCourseWiseReport] = useState<CourseWiseAttendanceSummaryReport | null>(null);
   const [courseWiseLoading, setCourseWiseLoading] = useState(false);
   const [courseWiseExporting, setCourseWiseExporting] = useState(false);
+  const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
   >([]);
@@ -382,6 +389,15 @@ export default function Reports() {
     attendSelectedCourseId !== ALL_VALUE ||
     attendSelectedClassId !== ALL_VALUE;
 
+  const courseWiseSortedRows = useMemo(() => {
+    if (!courseWiseReport?.rows.length) return [];
+    return sortCourseWiseAttendanceRows(courseWiseReport.rows, courseWiseNameSort);
+  }, [courseWiseReport, courseWiseNameSort]);
+
+  const toggleCourseWiseNameSort = () => {
+    setCourseWiseNameSort((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  };
+
   const loadClassAttendanceReport = async () => {
     if (!canLoadClassAttendReport) {
       toast.error('Select at least a school, program, or course to generate the report.');
@@ -437,6 +453,7 @@ export default function Reports() {
         return;
       }
       setCourseWiseReport(report);
+      setCourseWiseNameSort('asc');
       if (report.rows.length === 0) {
         toast.info('No enrolled course units found for the selected scope.');
       }
@@ -456,10 +473,13 @@ export default function Reports() {
     setCourseWiseExporting(true);
     try {
       const generatedBy = user?.name || user?.email || '—';
-      exportCourseWiseAttendanceSummaryReport(courseWiseReport, {
-        generatedBy,
-        poweredBy: 'KCU ERP System',
-      });
+      exportCourseWiseAttendanceSummaryReport(
+        { ...courseWiseReport, rows: courseWiseSortedRows },
+        {
+          generatedBy,
+          poweredBy: 'KCU ERP System',
+        }
+      );
       toast.success('Excel report downloaded');
     } catch {
       toast.error('Export failed');
@@ -482,6 +502,7 @@ export default function Reports() {
     setAttendProgramIntakes([]);
     setClassAttendReport(null);
     setCourseWiseReport(null);
+    setCourseWiseNameSort('asc');
     setStudentsReport([]);
     setAtRiskMeta(null);
     setStudentAttendDateRange('all');
@@ -655,8 +676,8 @@ export default function Reports() {
           </div>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="bg-gray-100 p-1">
+        <Tabs defaultValue="overview" className="min-w-0 w-full space-y-4">
+          <TabsList className="bg-gray-100 h-auto w-full max-w-full flex flex-wrap items-center justify-start gap-1 p-1 [&_[data-slot=tabs-trigger]]:h-8 [&_[data-slot=tabs-trigger]]:shrink-0 [&_[data-slot=tabs-trigger]]:flex-none">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="reconciliation">Teaching Reconciliation</TabsTrigger>
             <TabsTrigger value="school-summary">School Summary</TabsTrigger>
@@ -665,6 +686,7 @@ export default function Reports() {
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
             <TabsTrigger value="course-wise-attendance">Course-wise Attendance</TabsTrigger>
+            <TabsTrigger value="weekly-matrix">Weekly Matrix</TabsTrigger>
             <TabsTrigger value="students-at-risk">Students at Risk</TabsTrigger>
             <TabsTrigger value="compensation">Compensation Tracking</TabsTrigger>
           </TabsList>
@@ -1445,6 +1467,9 @@ export default function Reports() {
                     {courseWiseReport.totals.studentCount} students · {courseWiseReport.totals.rowCount} course rows ·{' '}
                     {courseWiseReport.totals.totalPresents} presents · {courseWiseReport.totals.totalAbsents} absents ·{' '}
                     {courseWiseReport.totals.totalSessions} sessions
+                    {courseWiseReport.rows.length > 0 && (
+                      <> · Sorted by student name ({courseWiseNameSort === 'asc' ? 'A–Z' : 'Z–A'})</>
+                    )}
                   </p>
                 )}
 
@@ -1454,7 +1479,24 @@ export default function Reports() {
                       <TableRow>
                         <TableHead className="w-12">Serial No.</TableHead>
                         <TableHead>Registration No.</TableHead>
-                        <TableHead>Student Name</TableHead>
+                        <TableHead>
+                          <button
+                            type="button"
+                            onClick={toggleCourseWiseNameSort}
+                            disabled={!courseWiseReport?.rows.length}
+                            className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] disabled:opacity-50 disabled:pointer-events-none -ml-1 px-1 py-0.5 rounded"
+                          >
+                            Student Name
+                            {courseWiseNameSort === 'asc' ? (
+                              <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            ) : (
+                              <ArrowDown className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            )}
+                            <span className="sr-only">
+                              Sorted {courseWiseNameSort === 'asc' ? 'A to Z' : 'Z to A'}. Click to reverse.
+                            </span>
+                          </button>
+                        </TableHead>
                         <TableHead>Course</TableHead>
                         <TableHead className="text-right">Total Sessions</TableHead>
                         <TableHead className="text-right">Total Presents</TableHead>
@@ -1481,7 +1523,7 @@ export default function Reports() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        courseWiseReport.rows.map((row) => (
+                        courseWiseSortedRows.map((row) => (
                           <TableRow key={`${row.registrationNumber}-${row.courseId}`}>
                             <TableCell className="text-muted-foreground">{row.serialNo}</TableCell>
                             <TableCell>{row.registrationNumber}</TableCell>
@@ -1504,6 +1546,15 @@ export default function Reports() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="weekly-matrix" className="space-y-4">
+            <WeeklyAttendanceMatrixPanel
+              schools={attendSchools.map((s) => ({ id: s.id, name: s.name }))}
+              programs={attendPrograms}
+              programToSchoolMap={attendProgramToSchoolMap}
+              generatedBy={user?.name || user?.email}
+            />
           </TabsContent>
 
           <TabsContent value="students-at-risk" className="space-y-4">

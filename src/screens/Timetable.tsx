@@ -1,8 +1,9 @@
 import Components from "../components"
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Clock, MapPin, 
-  ChevronLeft, ChevronRight, BookOpen, User, LogIn, LogOut
+  ChevronLeft, ChevronRight, BookOpen, User, LogIn, LogOut,
+  Edit, Trash2, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,12 +11,14 @@ import { Badge } from '@/components/ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Combobox } from '@/components/ui/combobox';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { useRole } from '@/components/RoleProvider';
-import { qaService, academicService, timetableService } from '@/services';
+import { qaService, academicService, timetableService, staffService } from '@/services';
+import type { TimetableClass } from '@/services/timetable.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -27,6 +30,46 @@ const getDayNames = (): string[] => {
 };
 
 const DAYS = getDayNames();
+
+const QA_DAY_OPTIONS = [
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+];
+
+function normalizeTimeForEdit(value: string | null | undefined): string {
+  if (!value) return '';
+  if (value.includes('T')) {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    }
+  }
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
+  return value.slice(0, 5);
+}
+
+function resolveClassVenueId(cls: TimetableClass): string {
+  return cls.venueId || cls.venue?.id || '';
+}
+
+function resolveClassLecturerId(cls: TimetableClass): string {
+  return cls.lecturerId || cls.lecturer?.id || '';
+}
+
+function normalizeTimetableClassRecord(item: TimetableClass): TimetableClass {
+  const venueId = item.venueId || item.venue?.id || null;
+  const lecturerId = item.lecturerId || item.lecturer?.id || null;
+  return {
+    ...item,
+    venueId,
+    lecturerId,
+  };
+}
 
 interface TimetableItem {
   id: string;
@@ -54,6 +97,22 @@ export default function Timetable() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
   const [qaFilters, setQaFilters] = useState({ day: 'all', search: '' });
+  const [qaRawClasses, setQaRawClasses] = useState<Record<string, TimetableClass>>({});
+  const [qaEditOpen, setQaEditOpen] = useState(false);
+  const [qaEditingClass, setQaEditingClass] = useState<TimetableClass | null>(null);
+  const [qaEditForm, setQaEditForm] = useState({
+    dayOfWeek: 1,
+    lecturerId: '',
+    venueId: '',
+    capacity: 50,
+    startTime: '',
+    endTime: '',
+  });
+  const [qaDeleteOpen, setQaDeleteOpen] = useState(false);
+  const [qaDeletingClass, setQaDeletingClass] = useState<TimetableClass | null>(null);
+  const [qaDeleting, setQaDeleting] = useState(false);
+  const [qaVenues, setQaVenues] = useState<{ id: string; name: string }[]>([]);
+  const [qaLecturers, setQaLecturers] = useState<{ id: string; name: string }[]>([]);
 
   const refreshCheckInState = async () => {
     if (role === 'Lecturer') {
@@ -122,6 +181,11 @@ export default function Timetable() {
         const result = await timetableService.getTimetable({ page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' });
         data = result.data || [];
         setQaTotal(result.total || 0);
+        const rawMap: Record<string, TimetableClass> = {};
+        (data as TimetableClass[]).forEach((item) => {
+          if (item?.id) rawMap[item.id] = normalizeTimetableClassRecord(item);
+        });
+        setQaRawClasses(rawMap);
       } else {
         data = await academicService.getTimetable();
       }
@@ -189,6 +253,156 @@ export default function Timetable() {
       setSelectedDay(todayName);
     }
   }, [role]);
+
+  useEffect(() => {
+    if (role !== 'QA') return;
+    const loadQaEditOptions = async () => {
+      try {
+        const lecturerRes = await staffService.getLecturers({ limit: 5000 });
+        setQaLecturers(
+          (lecturerRes.data || []).map((l) => ({
+            id: l.id,
+            name: `${l.firstName || ''} ${l.lastName || ''}`.trim() || l.email || l.id,
+          }))
+        );
+      } catch {
+        setQaLecturers([]);
+      }
+      try {
+        const allVenues: { id: string; name: string }[] = [];
+        let venuePage = 1;
+        while (true) {
+          const res = await academicService.getVenues({ page: venuePage, limit: 100 });
+          const arr = res?.data ?? [];
+          allVenues.push(...arr.map((v) => ({ id: v.id, name: v.name })));
+          const total = res?.total ?? allVenues.length;
+          if (arr.length === 0 || allVenues.length >= total) break;
+          venuePage += 1;
+        }
+        setQaVenues(allVenues);
+      } catch {
+        setQaVenues([]);
+      }
+    };
+    loadQaEditOptions();
+  }, [role]);
+
+  const openQaEdit = (classId: string) => {
+    const cls = qaRawClasses[classId];
+    if (!cls) {
+      toast.error('Could not load class details for editing.');
+      return;
+    }
+    let venueId = resolveClassVenueId(cls);
+    let lecturerId = resolveClassLecturerId(cls);
+    if (!venueId && cls.venue?.name) {
+      const venueByName = qaVenues.find(
+        (v) => v.name.trim().toLowerCase() === cls.venue!.name.trim().toLowerCase()
+      );
+      if (venueByName) venueId = venueByName.id;
+    }
+    if (!lecturerId && cls.lecturer?.name) {
+      const lecturerByName = qaLecturers.find(
+        (l) => l.name.trim().toLowerCase() === cls.lecturer!.name.trim().toLowerCase()
+      );
+      if (lecturerByName) lecturerId = lecturerByName.id;
+    }
+    if (venueId && cls.venue?.name) {
+      setQaVenues((prev) =>
+        prev.some((v) => v.id === venueId) ? prev : [...prev, { id: venueId, name: cls.venue!.name }]
+      );
+    }
+    if (lecturerId && cls.lecturer?.name) {
+      setQaLecturers((prev) =>
+        prev.some((l) => l.id === lecturerId) ? prev : [...prev, { id: lecturerId, name: cls.lecturer!.name }]
+      );
+    }
+    setQaEditingClass(cls);
+    setQaEditForm({
+      dayOfWeek: cls.dayOfWeek ?? 1,
+      lecturerId,
+      venueId,
+      capacity: cls.capacity ?? 50,
+      startTime: normalizeTimeForEdit(cls.startTime),
+      endTime: normalizeTimeForEdit(cls.endTime),
+    });
+    setQaEditOpen(true);
+  };
+
+  const qaVenueComboboxOptions = useMemo(() => {
+    const options = [
+      { value: 'none', label: 'None' },
+      ...qaVenues.map((v) => ({ value: v.id, label: v.name })),
+    ];
+    const currentId = qaEditForm.venueId || (qaEditingClass ? resolveClassVenueId(qaEditingClass) : '');
+    const currentLabel = qaEditingClass?.venue?.name;
+    if (currentId && currentLabel && !options.some((o) => o.value === currentId)) {
+      options.splice(1, 0, { value: currentId, label: currentLabel });
+    }
+    return options;
+  }, [qaVenues, qaEditForm.venueId, qaEditingClass]);
+
+  const qaLecturerComboboxOptions = useMemo(() => {
+    const options = [
+      { value: 'none', label: 'None' },
+      ...qaLecturers.map((l) => ({ value: l.id, label: l.name })),
+    ];
+    const currentId = qaEditForm.lecturerId || (qaEditingClass ? resolveClassLecturerId(qaEditingClass) : '');
+    const currentLabel = qaEditingClass?.lecturer?.name;
+    if (currentId && currentLabel && !options.some((o) => o.value === currentId)) {
+      options.splice(1, 0, { value: currentId, label: currentLabel });
+    }
+    return options;
+  }, [qaLecturers, qaEditForm.lecturerId, qaEditingClass]);
+
+  const qaVenueComboboxValue = qaEditForm.venueId || 'none';
+  const qaLecturerComboboxValue = qaEditForm.lecturerId || 'none';
+
+  const handleQaSaveEdit = async () => {
+    if (!qaEditingClass) return;
+    try {
+      await timetableService.updateClass(qaEditingClass.id, {
+        dayOfWeek: qaEditForm.dayOfWeek,
+        lecturerId: qaEditForm.lecturerId || null,
+        venueId: qaEditForm.venueId || null,
+        capacity: parseInt(String(qaEditForm.capacity), 10) || 50,
+        startTime: qaEditForm.startTime || undefined,
+        endTime: qaEditForm.endTime || undefined,
+      });
+      toast.success('Session updated');
+      setQaEditOpen(false);
+      setQaEditingClass(null);
+      await loadTimetable();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update session');
+    }
+  };
+
+  const openQaDelete = (classId: string) => {
+    const cls = qaRawClasses[classId];
+    if (!cls) {
+      toast.error('Could not load class details for deletion.');
+      return;
+    }
+    setQaDeletingClass(cls);
+    setQaDeleteOpen(true);
+  };
+
+  const handleQaConfirmDelete = async () => {
+    if (!qaDeletingClass) return;
+    setQaDeleting(true);
+    try {
+      await timetableService.deleteClass(qaDeletingClass.id);
+      toast.success('Session removed from timetable');
+      setQaDeleteOpen(false);
+      setQaDeletingClass(null);
+      await loadTimetable();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete session');
+    } finally {
+      setQaDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (role !== 'Lecturer') return;
@@ -355,7 +569,7 @@ export default function Timetable() {
               University Timetable
             </h1>
             <p className="text-gray-500">
-              View all timetable classes across the university with filters by day, course and lecturer.
+              View and manage timetable sessions. Edit to move a class to another day or time; delete to remove unwanted slots.
             </p>
           </div>
         </div>
@@ -415,6 +629,7 @@ export default function Timetable() {
                       <TableHead>CODE</TableHead>
                       <TableHead>VENUE</TableHead>
                       <TableHead>LECTURER</TableHead>
+                      <TableHead className="text-right w-28">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -426,6 +641,29 @@ export default function Timetable() {
                         <TableCell>{t.code}</TableCell>
                         <TableCell>{t.venue}</TableCell>
                         <TableCell>{t.lecturer}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openQaEdit(t.id)}
+                              aria-label={`Edit ${t.course}`}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => openQaDelete(t.id)}
+                              aria-label={`Delete ${t.course}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -459,6 +697,115 @@ export default function Timetable() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={qaDeleteOpen} onOpenChange={setQaDeleteOpen}>
+          <DialogContent className="w-[95vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete session</DialogTitle>
+              <DialogDescription>
+                Remove &quot;{qaDeletingClass?.name || qaDeletingClass?.course?.name}&quot; from the timetable? This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setQaDeleteOpen(false)} disabled={qaDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleQaConfirmDelete} disabled={qaDeleting}>
+                {qaDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={qaEditOpen} onOpenChange={setQaEditOpen}>
+          <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit session</DialogTitle>
+              <DialogDescription>
+                {qaEditingClass?.course?.name || qaEditingClass?.name} ({qaEditingClass?.course?.code})
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Day</Label>
+                <Select
+                  value={String(qaEditForm.dayOfWeek)}
+                  onValueChange={(v) => setQaEditForm((f) => ({ ...f, dayOfWeek: parseInt(v, 10) }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                  <SelectContent>
+                    {QA_DAY_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Lecturer</Label>
+                <Combobox
+                  options={qaLecturerComboboxOptions}
+                  value={qaLecturerComboboxValue}
+                  selectedLabel={
+                    qaLecturerComboboxValue === 'none' ? undefined : qaEditingClass?.lecturer?.name
+                  }
+                  onValueChange={(v) => setQaEditForm((f) => ({ ...f, lecturerId: v === 'none' ? '' : v }))}
+                  placeholder="Select lecturer"
+                  searchPlaceholder="Search lecturers..."
+                  emptyText="No lecturer found."
+                  initialDisplayCount={10}
+                />
+              </div>
+              <div>
+                <Label>Venue</Label>
+                <Combobox
+                  options={qaVenueComboboxOptions}
+                  value={qaVenueComboboxValue}
+                  selectedLabel={
+                    qaVenueComboboxValue === 'none' ? undefined : qaEditingClass?.venue?.name
+                  }
+                  onValueChange={(v) => setQaEditForm((f) => ({ ...f, venueId: v === 'none' ? '' : v }))}
+                  placeholder="Select venue"
+                  searchPlaceholder="Search venues..."
+                  emptyText="No venue found."
+                  initialDisplayCount={10}
+                />
+              </div>
+              <div>
+                <Label>Start time (HH:MM)</Label>
+                <Input
+                  value={qaEditForm.startTime}
+                  onChange={(e) => setQaEditForm((f) => ({ ...f, startTime: e.target.value }))}
+                  placeholder="08:00"
+                />
+              </div>
+              <div>
+                <Label>End time (HH:MM)</Label>
+                <Input
+                  value={qaEditForm.endTime}
+                  onChange={(e) => setQaEditForm((f) => ({ ...f, endTime: e.target.value }))}
+                  placeholder="10:00"
+                />
+              </div>
+              <div>
+                <Label>Capacity</Label>
+                <Input
+                  type="number"
+                  value={qaEditForm.capacity}
+                  onChange={(e) =>
+                    setQaEditForm((f) => ({ ...f, capacity: parseInt(e.target.value, 10) || 50 }))
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setQaEditOpen(false)}>Cancel</Button>
+              <Button onClick={handleQaSaveEdit} className="bg-[#015F2B] hover:bg-[#014022]">
+                Save changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }

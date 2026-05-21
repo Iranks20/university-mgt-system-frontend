@@ -3,6 +3,8 @@ import type { Student, StudentAttendance } from '@/types';
 import type {
   ClassAttendanceSummaryReport,
   CourseWiseAttendanceSummaryReport,
+  DailyMarkingGrid,
+  WeeklyAttendanceMatrixReport,
   StudentAttendanceReport,
   ProgramAttendanceData,
   StudentAttendanceRecord,
@@ -212,6 +214,41 @@ export const studentService = {
       console.error('Error fetching class attendance summary report:', error);
       throw error;
     }
+  },
+
+  getDailyMarkingGrid: async (params: {
+    programIntakeId: string;
+    date: string;
+  }): Promise<DailyMarkingGrid | null> => {
+    const res = await api.get<DailyMarkingGrid | { data: DailyMarkingGrid }>(
+      '/students/attendance/daily-marking-grid',
+      params
+    );
+    return (res as { data?: DailyMarkingGrid })?.data ?? (res as DailyMarkingGrid);
+  },
+
+  saveDailyMarkingGrid: async (payload: {
+    programIntakeId: string;
+    date: string;
+    records: Array<{ studentId: string; classId: string; status: string }>;
+  }): Promise<{ count: number }> => {
+    const res = await api.post<{ data: { count: number } }>(
+      '/students/attendance/daily-marking-grid',
+      payload
+    );
+    return (res as { data?: { count: number } })?.data ?? { count: 0 };
+  },
+
+  getWeeklyAttendanceMatrixReport: async (params: {
+    programIntakeId: string;
+    startDate: string;
+    endDate: string;
+  }): Promise<WeeklyAttendanceMatrixReport | null> => {
+    const res = await api.get<
+      WeeklyAttendanceMatrixReport | { data: WeeklyAttendanceMatrixReport }
+    >('/students/attendance/weekly-matrix-report', params);
+    return (res as { data?: WeeklyAttendanceMatrixReport })?.data ??
+      (res as WeeklyAttendanceMatrixReport);
   },
 
   getCourseWiseAttendanceSummaryReport: async (params: {

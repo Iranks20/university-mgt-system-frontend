@@ -89,6 +89,49 @@ export interface CourseWiseAttendanceCounts {
   absentPercentage: number;
 }
 
+export type CourseWiseRowSortDirection = 'asc' | 'desc';
+
+export type StudentSortField = 'studentName' | 'registrationNumber';
+export type StudentSortDirection = 'asc' | 'desc';
+
+export function sortDailyGridStudents<
+  T extends { studentId: string; studentName: string; registrationNumber: string; serialNo: number },
+>(students: T[], field: StudentSortField, direction: StudentSortDirection): T[] {
+  const sorted = [...students].sort((a, b) => {
+    const aVal = field === 'studentName' ? a.studentName : a.registrationNumber;
+    const bVal = field === 'studentName' ? b.studentName : b.registrationNumber;
+    const cmp = aVal.localeCompare(bVal, undefined, { sensitivity: 'base' });
+    if (cmp !== 0) return direction === 'asc' ? cmp : -cmp;
+    const tieField = field === 'studentName' ? 'registrationNumber' : 'studentName';
+    const aTie = tieField === 'studentName' ? a.studentName : a.registrationNumber;
+    const bTie = tieField === 'studentName' ? b.studentName : b.registrationNumber;
+    return aTie.localeCompare(bTie, undefined, { sensitivity: 'base' });
+  });
+  return sorted.map((row, index) => ({ ...row, serialNo: index + 1 }));
+}
+
+export function sortCourseWiseAttendanceRows<
+  T extends {
+    serialNo: number;
+    registrationNumber: string;
+    studentName: string;
+    course: string;
+  },
+>(rows: ReadonlyArray<T>, direction: CourseWiseRowSortDirection): T[] {
+  const sorted = [...rows].sort((a, b) => {
+    const nameCmp = a.studentName.localeCompare(b.studentName, undefined, {
+      sensitivity: 'base',
+    });
+    if (nameCmp !== 0) return direction === 'asc' ? nameCmp : -nameCmp;
+    const regCmp = a.registrationNumber.localeCompare(b.registrationNumber, undefined, {
+      sensitivity: 'base',
+    });
+    if (regCmp !== 0) return regCmp;
+    return a.course.localeCompare(b.course, undefined, { sensitivity: 'base' });
+  });
+  return sorted.map((row, index) => ({ ...row, serialNo: index + 1 }));
+}
+
 export function computeCourseWiseAttendanceFromCounts(
   counts: AttendanceStatusCounts,
   options?: { percentageDecimalPlaces?: 0 | 1 | 2 }

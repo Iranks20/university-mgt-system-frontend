@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DailyAttendanceGrid from '@/features/student/components/DailyAttendanceGrid';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -456,6 +458,25 @@ export default function StudentRecords() {
         </div>
       </div>
 
+      <Tabs defaultValue="log" className="space-y-4">
+        <TabsList className="bg-gray-100 p-1">
+          <TabsTrigger value="log">Attendance log</TabsTrigger>
+          <TabsTrigger value="daily-bulk">Daily bulk marking</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="daily-bulk" className="mt-0">
+          <DailyAttendanceGrid
+            schools={schools.map((s) => ({ id: s.id, name: s.name }))}
+            programs={allPrograms}
+            programToSchoolMap={programToSchoolMap}
+            onSaved={() => {
+              loadAttendanceRecords();
+              loadAttendanceSummary();
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="log" className="mt-0 space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
@@ -867,6 +888,8 @@ export default function StudentRecords() {
           </form>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

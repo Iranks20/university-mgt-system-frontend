@@ -175,6 +175,81 @@ export interface CourseWiseAttendanceSummaryRow {
   absentPercentage: number;
 }
 
+export interface DailyMarkingSlot {
+  classId: string;
+  className: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string;
+  dayOfWeek: number;
+  dayLabel: string;
+  dayShort: string;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+export interface DailyMarkingGridStudent {
+  serialNo: number;
+  studentId: string;
+  studentName: string;
+  registrationNumber: string;
+  attendance: Record<string, string | null>;
+}
+
+export interface DailyMarkingGrid {
+  programIntakeId: string;
+  programIntakeLabel: string;
+  programName: string;
+  programCode: string;
+  date: string;
+  dayOfWeek: number;
+  dayName: string;
+  slots: DailyMarkingSlot[];
+  students: DailyMarkingGridStudent[];
+}
+
+export interface WeeklyMatrixDayGroup {
+  dayOfWeek: number;
+  dayLabel: string;
+  dayShort: string;
+  slots: DailyMarkingSlot[];
+}
+
+export interface WeeklyAttendanceMatrixStudent {
+  serialNo: number;
+  studentId: string;
+  studentName: string;
+  registrationNumber: string;
+  cells: Record<string, { value: number; status: string | null }>;
+  totalAttended: number;
+  expected: number;
+  presentPercentage: number;
+}
+
+export interface WeeklyAttendanceMatrixReport {
+  title: string;
+  reportName: string;
+  universityName: string;
+  generatedAt: string;
+  programIntakeId: string;
+  programIntakeLabel: string;
+  programName: string;
+  programCode: string;
+  weekRangeLabel: string;
+  filters: {
+    programIntakeId: string;
+    startDate: string;
+    endDate: string;
+  };
+  dayGroups: WeeklyMatrixDayGroup[];
+  slots: DailyMarkingSlot[];
+  students: WeeklyAttendanceMatrixStudent[];
+  totals: {
+    studentCount: number;
+    slotCount: number;
+  };
+}
+
 export interface CourseWiseAttendanceSummaryReport {
   title: string;
   reportName: string;
