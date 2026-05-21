@@ -80,3 +80,28 @@ export function computeAttendanceFromRecords(
 export function formatWeightedAttendedCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
+
+export interface CourseWiseAttendanceCounts {
+  totalSessions: number;
+  totalPresents: number;
+  totalAbsents: number;
+  presentPercentage: number;
+  absentPercentage: number;
+}
+
+export function computeCourseWiseAttendanceFromCounts(
+  counts: AttendanceStatusCounts,
+  options?: { percentageDecimalPlaces?: 0 | 1 | 2 }
+): CourseWiseAttendanceCounts {
+  const totalSessions = counts.present + counts.late + counts.absent;
+  const totalPresents = counts.present + counts.late;
+  const totalAbsents = counts.absent;
+  const decimalPlaces = options?.percentageDecimalPlaces ?? 2;
+  return {
+    totalSessions,
+    totalPresents,
+    totalAbsents,
+    presentPercentage: attendancePercentage(totalPresents, totalSessions, decimalPlaces),
+    absentPercentage: attendancePercentage(totalAbsents, totalSessions, decimalPlaces),
+  };
+}

@@ -160,3 +160,50 @@ export interface ClassAttendanceSummaryReport {
     expectedAttendance: number;
   };
 }
+
+export interface CourseWiseAttendanceSummaryRow {
+  serialNo: number;
+  registrationNumber: string;
+  studentName: string;
+  course: string;
+  courseId: string;
+  courseCode: string;
+  totalSessions: number;
+  totalPresents: number;
+  totalAbsents: number;
+  presentPercentage: number;
+  absentPercentage: number;
+}
+
+export interface CourseWiseAttendanceSummaryReport {
+  title: string;
+  reportName: string;
+  universityName: string;
+  generatedAt: string;
+  filters: {
+    schoolId: string | null;
+    schoolName: string | null;
+    programId: string | null;
+    programName: string | null;
+    programIntakeId: string | null;
+    intakeLabel: string | null;
+    academicYear: number | null;
+    courseId: string | null;
+    courseName: string | null;
+    classId: string | null;
+    className: string | null;
+    level: number | null;
+    semester: number | null;
+    studentId: string | null;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  rows: CourseWiseAttendanceSummaryRow[];
+  totals: {
+    rowCount: number;
+    studentCount: number;
+    totalSessions: number;
+    totalPresents: number;
+    totalAbsents: number;
+  };
+}

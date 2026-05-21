@@ -21,15 +21,17 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { timetableService } from '@/services/timetable.service';
 import { studentService } from '@/services/student.service';
-import { exportClassAttendanceSummaryReport } from '@/utils/excel';
+import { exportClassAttendanceSummaryReport, exportCourseWiseAttendanceSummaryReport } from '@/utils/excel';
 import { formatWeightedAttendedCount } from '@/lib/attendance-metrics';
-import type { ClassAttendanceSummaryReport } from '@/types/student';
+import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } from '@/types/student';
+import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 
 export default function Reports() {
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState('week');
   const [reportType, setReportType] = useState('school');
   const [overviewStats, setOverviewStats] = useState<{ teachingRatePercent?: number; studentAttendancePercent?: number; recentQARecords?: number; untaughtLectures?: number; scheduledCountLast30?: number; teachingRateVsScheduledPercent?: number } | null>(null);
@@ -91,6 +93,13 @@ export default function Reports() {
   const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
   const [classAttendLoading, setClassAttendLoading] = useState(false);
   const [classAttendExporting, setClassAttendExporting] = useState(false);
+  const [courseWiseReport, setCourseWiseReport] = useState<CourseWiseAttendanceSummaryReport | null>(null);
+  const [courseWiseLoading, setCourseWiseLoading] = useState(false);
+  const [courseWiseExporting, setCourseWiseExporting] = useState(false);
+  const [attendProgramIntakes, setAttendProgramIntakes] = useState<
+    Array<{ id: string; year: number; semester: number; intakeType: string }>
+  >([]);
+  const [attendSelectedProgramIntakeId, setAttendSelectedProgramIntakeId] = useState(ALL_VALUE);
   const [compDateFrom, setCompDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -325,10 +334,29 @@ export default function Reports() {
       .catch(() => setAttendClasses([]));
   }, [attendSelectedCourseId]);
 
+  useEffect(() => {
+    if (attendSelectedProgramId === ALL_VALUE) {
+      setAttendProgramIntakes([]);
+      setAttendSelectedProgramIntakeId(ALL_VALUE);
+      return;
+    }
+    const year = attendSelectedYear !== ALL_VALUE ? Number(attendSelectedYear) : undefined;
+    const semester = attendSelectedSemester !== ALL_VALUE ? Number(attendSelectedSemester) : undefined;
+    academicService
+      .getProgramIntakes({
+        programId: attendSelectedProgramId,
+        year,
+        semester,
+      })
+      .then((list) => setAttendProgramIntakes(Array.isArray(list) ? list : []))
+      .catch(() => setAttendProgramIntakes([]));
+  }, [attendSelectedProgramId, attendSelectedYear, attendSelectedSemester]);
+
   const buildClassAttendReportParams = useCallback(() => {
     const params: Record<string, string | number> = {};
     if (attendSelectedSchool !== ALL_VALUE) params.schoolId = attendSelectedSchool;
     if (attendSelectedProgramId !== ALL_VALUE) params.programId = attendSelectedProgramId;
+    if (attendSelectedProgramIntakeId !== ALL_VALUE) params.programIntakeId = attendSelectedProgramIntakeId;
     if (attendSelectedCourseId !== ALL_VALUE) params.courseId = attendSelectedCourseId;
     if (attendSelectedClassId !== ALL_VALUE) params.classId = attendSelectedClassId;
     if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
@@ -339,6 +367,7 @@ export default function Reports() {
   }, [
     attendSelectedSchool,
     attendSelectedProgramId,
+    attendSelectedProgramIntakeId,
     attendSelectedCourseId,
     attendSelectedClassId,
     attendSelectedYear,
@@ -394,9 +423,55 @@ export default function Reports() {
     }
   };
 
+  const loadCourseWiseAttendanceReport = async () => {
+    if (!canLoadClassAttendReport) {
+      toast.error('Select at least a school, program, or course to generate the report.');
+      return;
+    }
+    setCourseWiseLoading(true);
+    try {
+      const report = await studentService.getCourseWiseAttendanceSummaryReport(buildClassAttendReportParams());
+      if (!report) {
+        toast.warning('No report data returned.');
+        setCourseWiseReport(null);
+        return;
+      }
+      setCourseWiseReport(report);
+      if (report.rows.length === 0) {
+        toast.info('No enrolled course units found for the selected scope.');
+      }
+    } catch (e: any) {
+      setCourseWiseReport(null);
+      toast.error(e?.message || 'Failed to load course-wise attendance report');
+    } finally {
+      setCourseWiseLoading(false);
+    }
+  };
+
+  const handleExportCourseWiseAttendanceReport = () => {
+    if (!courseWiseReport || courseWiseReport.rows.length === 0) {
+      toast.warning('Generate the report first.');
+      return;
+    }
+    setCourseWiseExporting(true);
+    try {
+      const generatedBy = user?.name || user?.email || '—';
+      exportCourseWiseAttendanceSummaryReport(courseWiseReport, {
+        generatedBy,
+        poweredBy: 'KCU ERP System',
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setCourseWiseExporting(false);
+    }
+  };
+
   const resetClassAttendanceFilters = () => {
     setAttendSelectedSchool(ALL_VALUE);
     setAttendSelectedProgramId(ALL_VALUE);
+    setAttendSelectedProgramIntakeId(ALL_VALUE);
     setAttendSelectedCourseId(ALL_VALUE);
     setAttendSelectedClassId(ALL_VALUE);
     setAttendSelectedYear(ALL_VALUE);
@@ -404,7 +479,9 @@ export default function Reports() {
     setAttendDateFrom('');
     setAttendDateTo('');
     setAttendClasses([]);
+    setAttendProgramIntakes([]);
     setClassAttendReport(null);
+    setCourseWiseReport(null);
     setStudentsReport([]);
     setAtRiskMeta(null);
     setStudentAttendDateRange('all');
@@ -587,6 +664,7 @@ export default function Reports() {
             <TabsTrigger value="schools">School Performance</TabsTrigger>
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
+            <TabsTrigger value="course-wise-attendance">Course-wise Attendance</TabsTrigger>
             <TabsTrigger value="students-at-risk">Students at Risk</TabsTrigger>
             <TabsTrigger value="compensation">Compensation Tracking</TabsTrigger>
           </TabsList>
@@ -1145,6 +1223,26 @@ export default function Reports() {
                       </Select>
                     </div>
                     <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Cohort / intake</label>
+                      <Select
+                        value={attendSelectedProgramIntakeId}
+                        onValueChange={setAttendSelectedProgramIntakeId}
+                        disabled={attendSelectedProgramId === ALL_VALUE}
+                      >
+                        <SelectTrigger className="w-[220px]">
+                          <SelectValue placeholder={attendSelectedProgramId === ALL_VALUE ? 'Select program first' : 'Cohort'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_VALUE}>All cohorts</SelectItem>
+                          {attendProgramIntakes.map((intake) => (
+                            <SelectItem key={intake.id} value={intake.id}>
+                              {intake.year} · Sem {intake.semester} · {intake.intakeType}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Date from</label>
                       <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
                     </div>
@@ -1230,6 +1328,182 @@ export default function Reports() {
                   </div>
                 </CardContent>
               </Card>
+          </TabsContent>
+
+          <TabsContent value="course-wise-attendance" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>{courseWiseReport?.title ?? 'Course-wise student attendance summary'}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
+                  <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">School</label>
+                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
+                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Programme</label>
+                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Programme" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All programmes</SelectItem>
+                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Class / year</label>
+                    <Select value={attendSelectedYear} onValueChange={setAttendSelectedYear}>
+                      <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All</SelectItem>
+                        {[1, 2, 3, 4, 5].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Semester / term</label>
+                    <Select value={attendSelectedSemester} onValueChange={setAttendSelectedSemester}>
+                      <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All</SelectItem>
+                        <SelectItem value="1">Semester I</SelectItem>
+                        <SelectItem value="2">Semester II</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Cohort / intake</label>
+                    <Select
+                      value={attendSelectedProgramIntakeId}
+                      onValueChange={setAttendSelectedProgramIntakeId}
+                      disabled={attendSelectedProgramId === ALL_VALUE}
+                    >
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder={attendSelectedProgramId === ALL_VALUE ? 'Select programme first' : 'Cohort'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All cohorts</SelectItem>
+                        {attendProgramIntakes.map((intake) => (
+                          <SelectItem key={intake.id} value={intake.id}>
+                            {intake.year} · Sem {intake.semester} · {intake.intakeType}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Course</label>
+                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
+                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
+                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Class</label>
+                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
+                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
+                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Date from</label>
+                    <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                    <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
+                  </div>
+                  <Button variant="outline" onClick={resetClassAttendanceFilters}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset filters
+                  </Button>
+                  <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadCourseWiseAttendanceReport} disabled={courseWiseLoading || !canLoadClassAttendReport}>
+                    {courseWiseLoading ? 'Loading…' : 'Generate report'}
+                  </Button>
+                  <Button variant="outline" onClick={handleExportCourseWiseAttendanceReport} disabled={courseWiseExporting || !courseWiseReport?.rows.length}>
+                    <Download className="mr-2 h-4 w-4" />
+                    {courseWiseExporting ? 'Exporting…' : 'Export Excel'}
+                  </Button>
+                </div>
+
+                {courseWiseReport && (
+                  <p className="text-sm text-muted-foreground">
+                    {courseWiseReport.totals.studentCount} students · {courseWiseReport.totals.rowCount} course rows ·{' '}
+                    {courseWiseReport.totals.totalPresents} presents · {courseWiseReport.totals.totalAbsents} absents ·{' '}
+                    {courseWiseReport.totals.totalSessions} sessions
+                  </p>
+                )}
+
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">Serial No.</TableHead>
+                        <TableHead>Registration No.</TableHead>
+                        <TableHead>Student Name</TableHead>
+                        <TableHead>Course</TableHead>
+                        <TableHead className="text-right">Total Sessions</TableHead>
+                        <TableHead className="text-right">Total Presents</TableHead>
+                        <TableHead className="text-right">Total Absents</TableHead>
+                        <TableHead className="text-right">Present %</TableHead>
+                        <TableHead className="text-right">Absent %</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {courseWiseLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading report…</TableCell>
+                        </TableRow>
+                      ) : !courseWiseReport ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            Choose filters and click Generate report.
+                          </TableCell>
+                        </TableRow>
+                      ) : courseWiseReport.rows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                            No enrolled course units in this scope.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        courseWiseReport.rows.map((row) => (
+                          <TableRow key={`${row.registrationNumber}-${row.courseId}`}>
+                            <TableCell className="text-muted-foreground">{row.serialNo}</TableCell>
+                            <TableCell>{row.registrationNumber}</TableCell>
+                            <TableCell className="font-medium">{row.studentName}</TableCell>
+                            <TableCell>{row.course}</TableCell>
+                            <TableCell className="text-right">{row.totalSessions}</TableCell>
+                            <TableCell className="text-right">{row.totalPresents}</TableCell>
+                            <TableCell className="text-right">{row.totalAbsents}</TableCell>
+                            <TableCell className="text-right">
+                              <span className={row.presentPercentage < 75 ? 'text-red-600 font-medium' : ''}>
+                                {row.presentPercentage.toFixed(2)}%
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">{row.absentPercentage.toFixed(2)}%</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="students-at-risk" className="space-y-4">
