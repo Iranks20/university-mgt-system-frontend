@@ -178,7 +178,17 @@ export default function Timetable() {
       } else if (role === 'Lecturer') {
         data = await academicService.getTimetable();
       } else if (role === 'QA') {
-        const result = await timetableService.getTimetable({ page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' });
+        const query: {
+          page: number;
+          limit: number;
+          sortBy: 'day';
+          sortOrder: 'asc';
+          day?: string;
+        } = { page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' };
+        if (qaFilters.day !== 'all') {
+          query.day = qaFilters.day.toLowerCase();
+        }
+        const result = await timetableService.getTimetable(query);
         data = result.data || [];
         setQaTotal(result.total || 0);
         const rawMap: Record<string, TimetableClass> = {};
@@ -202,9 +212,10 @@ export default function Timetable() {
         } else {
           dayOfWeek = item.dayOfWeek !== null && item.dayOfWeek !== undefined ? item.dayOfWeek : null;
         }
-        const dayName = fromScheduled
-          ? (dayOfWeek !== null ? dayNamesFull[dayOfWeek] : null)
-          : (item.day || (dayOfWeek !== null ? dayNamesFull[dayOfWeek] : null));
+        const dayName =
+          dayOfWeek !== null && dayOfWeek !== undefined && dayOfWeek >= 0 && dayOfWeek <= 6
+            ? dayNamesFull[dayOfWeek]
+            : null;
         const startDisplay = formatTimeDisplay(item.startTime || '');
         const endDisplay = formatTimeDisplay(item.endTime || '');
         const live = isClassLive(startDisplay, endDisplay, dayOfWeek);
@@ -241,7 +252,7 @@ export default function Timetable() {
 
   useEffect(() => {
     loadTimetable();
-  }, [user, role, qaPage]);
+  }, [user, role, qaPage, qaFilters.day]);
 
   useEffect(() => {
     if (role === 'QA') {
@@ -533,7 +544,6 @@ export default function Timetable() {
     : timetableData;
 
   const qaFilteredTimetable = timetableData.filter((t) => {
-    if (qaFilters.day !== 'all' && t.day !== qaFilters.day) return false;
     if (qaFilters.search.trim()) {
       const q = qaFilters.search.toLowerCase();
       if (
@@ -580,7 +590,11 @@ export default function Timetable() {
               <div>
                 <CardTitle className="text-base">Timetable classes</CardTitle>
                 <CardDescription>
-                  Showing {qaFilteredTimetable.length} class{qaFilteredTimetable.length === 1 ? '' : 'es'} from the imported university timetable.
+                  Showing {qaFilteredTimetable.length} class{qaFilteredTimetable.length === 1 ? '' : 'es'}
+                  {qaFilters.day !== 'all' ? ` on ${qaFilters.day}` : ''}
+                  {qaFilters.search.trim() ? ' (search applied on this page)' : ''}
+                  {' · '}
+                  {qaTotal} total matching{qaFilters.day !== 'all' ? ' this day' : ''}
                 </CardDescription>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
@@ -588,14 +602,17 @@ export default function Timetable() {
                   <Label className="text-sm text-muted-foreground">Day</Label>
                   <Select
                     value={qaFilters.day}
-                    onValueChange={(v) => setQaFilters((f) => ({ ...f, day: v }))}
+                    onValueChange={(v) => {
+                      setQaPage(1);
+                      setQaFilters((f) => ({ ...f, day: v }));
+                    }}
                   >
                     <SelectTrigger className="w-[150px]">
                       <SelectValue placeholder="All days" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All days</SelectItem>
-                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((d) => (
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d) => (
                         <SelectItem key={d} value={d}>{d}</SelectItem>
                       ))}
                     </SelectContent>
