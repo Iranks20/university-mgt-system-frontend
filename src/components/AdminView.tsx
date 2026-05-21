@@ -5844,6 +5844,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 <TableHead>Year</TableHead>
                 <TableHead>Semester</TableHead>
                 <TableHead>Course</TableHead>
+                <TableHead>Code</TableHead>
                 <TableHead>Class</TableHead>
                 <TableHead>Day</TableHead>
                 <TableHead>Time</TableHead>
@@ -5854,9 +5855,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="text-center py-6 text-muted-foreground">Loading...</TableCell></TableRow>
               ) : classes.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                <TableRow><TableCell colSpan={11} className="text-center py-6 text-muted-foreground">
                   {!((filters.programId && filters.programId !== '__all__') || filters.year || filters.semester) ? 'Select program, year and semester to view timetable.' : 'No classes found for this scope.'}
                 </TableCell></TableRow>
               ) : (
@@ -5865,8 +5866,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                     <TableCell>{(cls.course as any).program?.name ?? cls.course.department?.name ?? '—'}</TableCell>
                     <TableCell>{cls.course.level}</TableCell>
                     <TableCell>{cls.course.semester}</TableCell>
-                    <TableCell>{cls.course.code}</TableCell>
-                    <TableCell className="font-medium">{cls.name}</TableCell>
+                    <TableCell className="font-medium">{cls.course?.name?.trim() || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{cls.course?.code || '—'}</TableCell>
+                    <TableCell>{cls.name}</TableCell>
                     <TableCell>{cls.dayOfWeek !== null ? DAY_NAMES[cls.dayOfWeek] : '—'}</TableCell>
                     <TableCell>{cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : '—'}</TableCell>
                     <TableCell>{cls.venue?.name || '—'}</TableCell>
