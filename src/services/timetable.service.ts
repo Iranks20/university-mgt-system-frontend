@@ -194,13 +194,11 @@ export const timetableService = {
   },
 
   deactivateClass: async (id: string): Promise<TimetableClass> => {
-    const res = await api.post<{ data: TimetableClass; message?: string }>(`/timetable/class/${id}/deactivate`, {});
-    return (res as { data?: TimetableClass })?.data ?? (res as TimetableClass);
+    return api.post<TimetableClass>(`/timetable/class/${id}/deactivate`, {});
   },
 
   activateClass: async (id: string): Promise<TimetableClass> => {
-    const res = await api.post<{ data: TimetableClass; message?: string }>(`/timetable/class/${id}/activate`, {});
-    return (res as { data?: TimetableClass })?.data ?? (res as TimetableClass);
+    return api.post<TimetableClass>(`/timetable/class/${id}/activate`, {});
   },
 
   getScheduledSessions: async (params: {

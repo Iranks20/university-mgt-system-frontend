@@ -425,13 +425,11 @@ export const academicService = {
   },
 
   deactivateClass: async (id: string): Promise<Class> => {
-    const res = await api.post<{ data: Class }>(`/academic/classes/${id}/deactivate`, {});
-    return (res as { data?: Class })?.data ?? (res as Class);
+    return api.post<Class>(`/academic/classes/${id}/deactivate`, {});
   },
 
   activateClass: async (id: string): Promise<Class> => {
-    const res = await api.post<{ data: Class }>(`/academic/classes/${id}/activate`, {});
-    return (res as { data?: Class })?.data ?? (res as Class);
+    return api.post<Class>(`/academic/classes/${id}/activate`, {});
   },
 
   // Academic Calendar
