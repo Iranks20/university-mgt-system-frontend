@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Calendar, Loader2, RotateCcw, Save } from 'lucide-react';
+import { ArrowDown, ArrowUp, Calendar, Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,7 +10,7 @@ import {
   AttendanceStatusSelect,
   parseAttendanceStatus,
 } from '@/components/AttendanceStatusSelect';
-import { academicService, studentService } from '@/services';
+import { studentService } from '@/services';
 import type { AttendanceStatus } from '@/lib/attendance-metrics';
 import {
   sortDailyGridStudents,
@@ -19,10 +19,9 @@ import {
 } from '@/lib/attendance-metrics';
 import type { DailyMarkingGrid } from '@/types/student';
 import { toast } from 'sonner';
+import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
+import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 
-const ALL_VALUE = '__all__';
-const YEAR_OPTIONS = [1, 2, 3, 4, 5] as const;
-const SEMESTER_OPTIONS = [1, 2] as const;
 const BULK_STATUSES: AttendanceStatus[] = ['Present', 'Absent', 'Late'];
 
 interface DailyAttendanceGridProps {
@@ -38,15 +37,19 @@ export default function DailyAttendanceGrid({
   programToSchoolMap,
   onSaved,
 }: DailyAttendanceGridProps) {
-  const [selectedSchool, setSelectedSchool] = useState(ALL_VALUE);
-  const [selectedProgramId, setSelectedProgramId] = useState(ALL_VALUE);
-  const [selectedYear, setSelectedYear] = useState(ALL_VALUE);
-  const [selectedSemester, setSelectedSemester] = useState(ALL_VALUE);
-  const [selectedIntakeId, setSelectedIntakeId] = useState(ALL_VALUE);
+  const intakeScope = useProgramIntakeScope({
+    intakeField: 'cohortList',
+    allowAllSchool: true,
+    allowAllProgram: true,
+    allowAllYear: true,
+    allowAllSemester: true,
+    yearOptions: [1, 2, 3, 4, 5],
+    semesterOptions: [1, 2],
+    schools,
+    programs,
+    programToSchoolMap,
+  });
   const [markDate, setMarkDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [intakes, setIntakes] = useState<
-    Array<{ id: string; year: number; semester: number; intakeType: string }>
-  >([]);
   const [grid, setGrid] = useState<DailyMarkingGrid | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,36 +57,17 @@ export default function DailyAttendanceGrid({
   const [studentSortField, setStudentSortField] = useState<StudentSortField>('studentName');
   const [studentSortDirection, setStudentSortDirection] = useState<StudentSortDirection>('asc');
 
-  const filteredPrograms = useMemo(() => {
-    if (selectedSchool === ALL_VALUE) return programs;
-    return programs.filter((p) => programToSchoolMap.get(p.id) === selectedSchool);
-  }, [programs, selectedSchool, programToSchoolMap]);
-
-  useEffect(() => {
-    if (selectedProgramId === ALL_VALUE) {
-      setIntakes([]);
-      setSelectedIntakeId(ALL_VALUE);
-      return;
-    }
-    const year = selectedYear !== ALL_VALUE ? Number(selectedYear) : undefined;
-    const semester = selectedSemester !== ALL_VALUE ? Number(selectedSemester) : undefined;
-    academicService
-      .getProgramIntakes({ programId: selectedProgramId, year, semester })
-      .then((list) => setIntakes(Array.isArray(list) ? list : []))
-      .catch(() => setIntakes([]));
-  }, [selectedProgramId, selectedYear, selectedSemester]);
-
   const cellKey = (studentId: string, classId: string) => `${studentId}|${classId}`;
 
   const loadGrid = useCallback(async () => {
-    if (selectedIntakeId === ALL_VALUE) {
+    if (!intakeScope.isComplete) {
       toast.error('Select a class cohort (program intake) first.');
       return;
     }
     setLoading(true);
     try {
       const data = await studentService.getDailyMarkingGrid({
-        programIntakeId: selectedIntakeId,
+        programIntakeId: intakeScope.programIntakeId,
         date: markDate,
       });
       if (!data) {
@@ -113,7 +97,7 @@ export default function DailyAttendanceGrid({
     } finally {
       setLoading(false);
     }
-  }, [selectedIntakeId, markDate]);
+  }, [intakeScope.programIntakeId, intakeScope.isComplete, markDate]);
 
   const setCell = (studentId: string, classId: string, value: AttendanceStatus) => {
     setCellMap((prev) => ({ ...prev, [cellKey(studentId, classId)]: value }));
@@ -142,7 +126,7 @@ export default function DailyAttendanceGrid({
   };
 
   const handleSave = async () => {
-    if (!grid || selectedIntakeId === ALL_VALUE) return;
+    if (!grid || !intakeScope.isComplete) return;
     const records: Array<{ studentId: string; classId: string; status: string }> = [];
     for (const student of grid.students) {
       for (const slot of grid.slots) {
@@ -161,7 +145,7 @@ export default function DailyAttendanceGrid({
     setSaving(true);
     try {
       const result = await studentService.saveDailyMarkingGrid({
-        programIntakeId: selectedIntakeId,
+        programIntakeId: intakeScope.programIntakeId,
         date: markDate,
         records,
       });
@@ -176,11 +160,6 @@ export default function DailyAttendanceGrid({
   };
 
   const resetFilters = () => {
-    setSelectedSchool(ALL_VALUE);
-    setSelectedProgramId(ALL_VALUE);
-    setSelectedYear(ALL_VALUE);
-    setSelectedSemester(ALL_VALUE);
-    setSelectedIntakeId(ALL_VALUE);
     setMarkDate(new Date().toISOString().slice(0, 10));
     setGrid(null);
     setCellMap({});
@@ -219,111 +198,26 @@ export default function DailyAttendanceGrid({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">School</Label>
-            <Select
-              value={selectedSchool}
-              onValueChange={(v) => {
-                setSelectedSchool(v);
-                setSelectedProgramId(ALL_VALUE);
-                setSelectedIntakeId(ALL_VALUE);
-              }}
-            >
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                {schools.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Programme</Label>
-            <Select
-              value={selectedProgramId}
-              onValueChange={(v) => {
-                setSelectedProgramId(v);
-                setSelectedIntakeId(ALL_VALUE);
-              }}
-            >
-              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Programme" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>Select programme</SelectItem>
-                {filteredPrograms.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Year</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All</SelectItem>
-                {YEAR_OPTIONS.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Semester</Label>
-            <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-              <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All</SelectItem>
-                {SEMESTER_OPTIONS.map((s) => (
-                  <SelectItem key={s} value={String(s)}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Class / cohort</Label>
-            <Select
-              value={selectedIntakeId}
-              onValueChange={setSelectedIntakeId}
-              disabled={selectedProgramId === ALL_VALUE}
-            >
-              <SelectTrigger className="w-[240px]">
-                <SelectValue placeholder={selectedProgramId === ALL_VALUE ? 'Select programme' : 'Cohort'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>Select cohort</SelectItem>
-                {intakes.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.year}.{i.semester} · {i.intakeType}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Date</Label>
-            <Input type="date" className="w-[150px]" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
-          </div>
-          <Button variant="outline" onClick={resetFilters}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Reset
-          </Button>
-          <Button
-            className="bg-[#015F2B] hover:bg-[#014022]"
-            onClick={loadGrid}
-            disabled={loading || selectedIntakeId === ALL_VALUE}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading…
-              </>
-            ) : (
-              'Load grid'
-            )}
-          </Button>
-        </div>
+        <ProgramIntakeScopeFilter
+          scope={intakeScope}
+          intakeField="cohortList"
+          programLabel="Programme"
+          cohortLabel="Class / cohort"
+          showReset
+          onReset={resetFilters}
+          trailing={
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Input type="date" className="w-[150px] h-9" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
+            </div>
+          }
+          actionButton={{
+            label: 'Load grid',
+            onClick: loadGrid,
+            loading,
+            disabled: !intakeScope.isComplete,
+          }}
+        />
 
         {grid && (
           <>

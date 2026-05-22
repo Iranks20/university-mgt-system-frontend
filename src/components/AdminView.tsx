@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Users, BookOpen, Calendar, Settings, Database, 
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
@@ -29,6 +29,16 @@ import { downloadStudentImportTemplateExcel, downloadStaffImportTemplateExcel, d
 import { toast } from 'sonner';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
+import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
+import {
+  buildLecturerComboboxOptions,
+  extractEnrolledStudentIdsFromClassEnrollments,
+  fetchAllLecturers,
+  fetchStudentsForEnrollmentScope,
+  type EnrollCandidateRow,
+  type LecturerOption,
+} from '@/lib/class-admin-utils';
 
 type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
@@ -96,7 +106,8 @@ function StudentsTab({
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1', newPassword: '' });
+  const [editStudentPasswordVisible, setEditStudentPasswordVisible] = useState(false);
   const [programs, setPrograms] = useState<any[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [previewCourses, setPreviewCourses] = useState<any[]>([]);
@@ -724,7 +735,9 @@ function StudentsTab({
                           programId: studentData?.programId ?? '',
                           year: student.year,
                           semester: String(studentData?.semester ?? 1),
+                          newPassword: '',
                         });
+                        setEditStudentPasswordVisible(false);
                         setPreviewCourses([]);
                         setSelectedCourseIds([]);
                         setCurrentEnrollments([]);
@@ -1204,6 +1217,7 @@ function StudentsTab({
           setPreviewCourses([]);
           setSelectedCourseIds([]);
           setCurrentEnrollments([]);
+          setEditStudentPasswordVisible(false);
         }
       }}>
         <DialogContent className="w-[98vw] max-w-[1600px] max-h-[95vh] overflow-y-auto">
@@ -1227,6 +1241,7 @@ function StudentsTab({
                 return;
               }
               
+              const newPw = editForm.newPassword.trim();
               await studentService.updateStudent(editingStudent.id, {
                 firstName,
                 lastName,
@@ -1237,6 +1252,7 @@ function StudentsTab({
                 departmentId: prog.departmentId ?? editForm.departmentId,
                 year,
                 semester,
+                ...(newPw ? { tempPassword: newPw } : {}),
               } as any);
               
               // Handle enrollments
@@ -1296,6 +1312,7 @@ function StudentsTab({
               setPreviewCourses([]);
               setSelectedCourseIds([]);
               setCurrentEnrollments([]);
+              setEditStudentPasswordVisible(false);
 
               if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0) {
                 toast.success(`Student updated. Enrollments: ${enrollmentSuccessCount} added, ${enrollmentSkippedCount} skipped${toRemove.length > 0 ? `, ${toRemove.length} removed` : ''}`);
@@ -1329,6 +1346,33 @@ function StudentsTab({
                     <Label>Registration / Student ID</Label>
                     <Input value={editForm.studentId} onChange={e => setEditForm(f => ({ ...f, studentId: e.target.value }))} required placeholder="e.g. 2100123" className="w-full" />
               </div>
+                  <div className="space-y-2 min-w-0 sm:col-span-2 xl:col-span-3">
+                    <Label>New password (optional)</Label>
+                    <div className="relative max-w-md">
+                      <Input
+                        type={editStudentPasswordVisible ? 'text' : 'password'}
+                        className="pr-10 w-full"
+                        value={editForm.newPassword}
+                        onChange={e => setEditForm(f => ({ ...f, newPassword: e.target.value }))}
+                        placeholder="Leave blank to keep current password"
+                        autoComplete="new-password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setEditStudentPasswordVisible(v => !v)}
+                        aria-label={editStudentPasswordVisible ? 'Hide password' : 'Show password'}
+                      >
+                        {editStudentPasswordVisible ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1597,6 +1641,7 @@ function StudentsTab({
                   setPreviewCourses([]);
                   setSelectedCourseIds([]);
                   setCurrentEnrollments([]);
+                  setEditStudentPasswordVisible(false);
                 }}
                 className="w-full sm:w-auto"
               >
@@ -2058,6 +2103,52 @@ function StaffTab({
 // -----------------------------------------------------------------------------
 // SUB-COMPONENT: Lecturers Management Tab (Teaching staff with class assignment)
 // -----------------------------------------------------------------------------
+const ASSIGN_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+type AssignClassRow = {
+  id: string;
+  name: string;
+  courseName: string;
+  courseCode: string;
+  dayOfWeek: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  venueName: string;
+  lecturerId: string | null;
+  lecturerName: string;
+};
+
+function mapApiClassToAssignRow(c: any): AssignClassRow {
+  const lecturer = c.lecturer;
+  return {
+    id: c.id,
+    name: c.name ?? '',
+    courseName: c.course?.name ?? '',
+    courseCode: c.course?.code ?? '',
+    dayOfWeek: c.dayOfWeek ?? null,
+    startTime: c.startTime ?? null,
+    endTime: c.endTime ?? null,
+    venueName: c.venue?.name ?? '',
+    lecturerId: c.lecturerId ?? null,
+    lecturerName: lecturer ? `${lecturer.firstName || ''} ${lecturer.lastName || ''}`.trim() || '—' : '—',
+  };
+}
+
+async function fetchAllClassesForIntake(programIntakeId: string): Promise<AssignClassRow[]> {
+  const rows: AssignClassRow[] = [];
+  let page = 1;
+  const limit = 50;
+  while (page <= 100) {
+    const res = await academicService.getClasses({ programIntakeId, page, limit });
+    const batch = res.data ?? [];
+    rows.push(...batch.map(mapApiClassToAssignRow));
+    const total = res.total ?? rows.length;
+    if (batch.length === 0 || rows.length >= total) break;
+    page += 1;
+  }
+  return rows;
+}
+
 function LecturersTab({
   staff,
   setStaff,
@@ -2067,6 +2158,7 @@ function LecturersTab({
   staffTotal,
   pageSize,
   loadStaff,
+  loadClasses,
 }: {
   staff: StaffRow[];
   setStaff: React.Dispatch<React.SetStateAction<StaffRow[]>>;
@@ -2076,6 +2168,7 @@ function LecturersTab({
   staffTotal: number;
   pageSize: number;
   loadStaff: (page: number, options?: { role?: string; search?: string }) => Promise<void>;
+  loadClasses: (page: number) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [addOpen, setAddOpen] = useState(false);
@@ -2083,6 +2176,11 @@ function LecturersTab({
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedLecturer, setSelectedLecturer] = useState<StaffRow | null>(null);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [assignClasses, setAssignClasses] = useState<AssignClassRow[]>([]);
+  const [assignClassesLoading, setAssignClassesLoading] = useState(false);
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignClassSearch, setAssignClassSearch] = useState('');
+  const assignScope = useProgramIntakeScope({ enabled: assignOpen, intakeField: 'type', showSchool: true });
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [addForm, setAddForm] = useState({ name: '', email: '', dept: '', tempPassword: '' });
@@ -2157,23 +2255,131 @@ function LecturersTab({
     }
   };
 
+  const clearAssignLoadedData = () => {
+    setAssignClasses([]);
+    setSelectedClassIds([]);
+  };
+
   const openAssign = (lecturer: StaffRow) => {
     setSelectedLecturer(lecturer);
-    setSelectedClassIds(classes.filter(c => c.lecturerId === lecturer.id).map(c => c.id));
+    setSelectedClassIds([]);
+    setAssignClasses([]);
+    setAssignClassSearch('');
+    assignScope.reset();
     setAssignOpen(true);
   };
 
-  const saveAssignments = () => {
+  const loadAssignClassesForScope = async () => {
     if (!selectedLecturer) return;
-    setClasses(prev => prev.map(c => {
-      const shouldAssign = selectedClassIds.includes(c.id);
-      if (shouldAssign) return { ...c, lecturerId: selectedLecturer!.id, lecturerName: selectedLecturer!.name };
-      if (c.lecturerId === selectedLecturer.id) return { ...c, lecturerId: null, lecturerName: '—' };
-      return c;
-    }));
-    setAssignOpen(false);
-    setSelectedLecturer(null);
-    toast.success('Class assignments updated successfully');
+    if (!assignScope.schoolId) {
+      toast.error('Select a school first.');
+      return;
+    }
+    if (!assignScope.programId) {
+      toast.error('Select a program first.');
+      return;
+    }
+    setAssignClassesLoading(true);
+    try {
+      const resolved = await assignScope.resolveProgramIntake();
+      if (!resolved) {
+        setAssignClasses([]);
+        setSelectedClassIds([]);
+        toast.error('No intake found for this scope. Create it in Timetable Builder first.');
+        return;
+      }
+      const loaded = await fetchAllClassesForIntake(resolved.id);
+      setAssignClasses(loaded);
+      setSelectedClassIds(loaded.filter((c) => c.lecturerId === selectedLecturer.id).map((c) => c.id));
+      if (loaded.length === 0) {
+        toast.info('No classes in this intake scope. Add classes in Timetable Builder or Classes tab.');
+      }
+    } catch (error: any) {
+      setAssignClasses([]);
+      setSelectedClassIds([]);
+      toast.error(error?.message || 'Failed to load classes for this scope.');
+    } finally {
+      setAssignClassesLoading(false);
+    }
+  };
+
+  const assignVisibleClasses = assignClasses.filter((c) => {
+    if (!assignClassSearch.trim()) return true;
+    const q = assignClassSearch.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.courseName.toLowerCase().includes(q) ||
+      c.courseCode.toLowerCase().includes(q) ||
+      c.venueName.toLowerCase().includes(q) ||
+      c.lecturerName.toLowerCase().includes(q)
+    );
+  });
+
+  const allVisibleSelected =
+    assignVisibleClasses.length > 0 &&
+    assignVisibleClasses.every((c) => selectedClassIds.includes(c.id));
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+      setSelectedClassIds((prev) => {
+        const next = new Set(prev);
+        assignVisibleClasses.forEach((c) => next.add(c.id));
+        return [...next];
+      });
+    } else {
+      setSelectedClassIds((prev) => prev.filter((id) => !assignVisibleClasses.some((c) => c.id === id)));
+    }
+  };
+
+  const saveAssignments = async () => {
+    if (!selectedLecturer) return;
+    if (assignClasses.length === 0) {
+      toast.error('Load classes for a school, program, year, and semester first.');
+      return;
+    }
+    setAssignSaving(true);
+    try {
+      const lecturerId = selectedLecturer.id;
+      const lecturerName = selectedLecturer.name;
+      let updated = 0;
+      for (const cls of assignClasses) {
+        const shouldAssign = selectedClassIds.includes(cls.id);
+        if (shouldAssign && cls.lecturerId !== lecturerId) {
+          await academicService.updateClass(cls.id, { lecturerId });
+          updated += 1;
+        } else if (!shouldAssign && cls.lecturerId === lecturerId) {
+          await academicService.updateClass(cls.id, { lecturerId: null });
+          updated += 1;
+        }
+      }
+      setClasses((prev) =>
+        prev.map((c) => {
+          const scoped = assignClasses.find((a) => a.id === c.id);
+          if (!scoped) return c;
+          if (selectedClassIds.includes(c.id)) {
+            return { ...c, lecturerId, lecturerName };
+          }
+          if (c.lecturerId === lecturerId) {
+            return { ...c, lecturerId: null, lecturerName: '—' };
+          }
+          return c;
+        })
+      );
+      await loadClasses(1);
+      window.dispatchEvent(new CustomEvent('class-updated'));
+      setAssignOpen(false);
+      setSelectedLecturer(null);
+      setAssignClasses([]);
+      toast.success(
+        updated > 0
+          ? `Class assignments saved (${updated} updated).`
+          : 'No assignment changes were needed.'
+      );
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save class assignments.');
+    } finally {
+      setAssignSaving(false);
+    }
   };
 
   const handleLecturerImport = async () => {
@@ -2526,42 +2732,145 @@ function LecturersTab({
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={(open) => !open && setAssignOpen(false)}>
-        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Assign lecturer to classes</DialogTitle>
-            <DialogDescription>{selectedLecturer ? `${selectedLecturer.name} – select classes to teach.` : 'Select classes.'}</DialogDescription>
+            <DialogTitle>
+              Assign lecturer to classes
+              {selectedLecturer ? ` — ${selectedLecturer.name}` : ''}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Assign classes for {selectedLecturer?.name ?? 'lecturer'}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {classes.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No classes available. Create classes first.</p>
-            ) : (
-              classes.map(cls => (
-                <div key={cls.id} className="flex items-center gap-2">
-                  <Checkbox 
-                    id={`assign-cls-${cls.id}`} 
-                    checked={selectedClassIds.includes(cls.id)} 
-                    onCheckedChange={(c) => {
-                      if (c) {
-                        setSelectedClassIds(prev => [...prev, cls.id]);
-                      } else {
-                        setSelectedClassIds(prev => prev.filter(id => id !== cls.id));
-                      }
-                    }} 
+          <div className="space-y-4">
+            <ProgramIntakeScopeFilter
+              scope={assignScope}
+              intakeField="type"
+              onFieldChange={clearAssignLoadedData}
+              actionButton={{
+                label: 'Load classes',
+                onClick: loadAssignClassesForScope,
+                loading: assignClassesLoading,
+                disabled: !assignScope.schoolId || !assignScope.programId,
+              }}
+            />
+            {assignClasses.length > 0 ? (
+              <>
+                <div className="relative max-w-md">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search loaded classes..."
+                    className="pl-8 h-9"
+                    value={assignClassSearch}
+                    onChange={(e) => setAssignClassSearch(e.target.value)}
                   />
-                  <Label htmlFor={`assign-cls-${cls.id}`} className="font-normal cursor-pointer">
-                    {cls.name} ({cls.course})
-                  </Label>
                 </div>
-              ))
-            )}
+                <div className="rounded-md border max-h-[min(50vh,420px)] overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={allVisibleSelected}
+                            onCheckedChange={(c) => toggleSelectAllVisible(!!c)}
+                            aria-label="Select all visible"
+                          />
+                        </TableHead>
+                        <TableHead>Course</TableHead>
+                        <TableHead>Class</TableHead>
+                        <TableHead>Day</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Venue</TableHead>
+                        <TableHead>Current lecturer</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {assignVisibleClasses.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                            No classes match your search.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        assignVisibleClasses.map((cls) => {
+                          const timeLabel =
+                            cls.startTime || cls.endTime
+                              ? `${cls.startTime ?? ''}${cls.startTime && cls.endTime ? ' – ' : ''}${cls.endTime ?? ''}`
+                              : '—';
+                          const otherLecturer =
+                            cls.lecturerId &&
+                            selectedLecturer &&
+                            cls.lecturerId !== selectedLecturer.id;
+                          return (
+                            <TableRow key={cls.id}>
+                              <TableCell>
+                                <Checkbox
+                                  id={`assign-cls-${cls.id}`}
+                                  checked={selectedClassIds.includes(cls.id)}
+                                  onCheckedChange={(c) => {
+                                    if (c) {
+                                      setSelectedClassIds((prev) => [...prev, cls.id]);
+                                    } else {
+                                      setSelectedClassIds((prev) => prev.filter((id) => id !== cls.id));
+                                    }
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium text-sm">{cls.courseName || '—'}</div>
+                                {cls.courseCode ? (
+                                  <div className="text-xs text-muted-foreground font-mono">{cls.courseCode}</div>
+                                ) : null}
+                              </TableCell>
+                              <TableCell className="text-sm">{cls.name}</TableCell>
+                              <TableCell className="text-sm">
+                                {cls.dayOfWeek !== null && cls.dayOfWeek >= 0 && cls.dayOfWeek <= 6
+                                  ? ASSIGN_DAY_NAMES[cls.dayOfWeek]
+                                  : '—'}
+                              </TableCell>
+                              <TableCell className="text-sm whitespace-nowrap">{timeLabel}</TableCell>
+                              <TableCell className="text-sm">{cls.venueName || '—'}</TableCell>
+                              <TableCell className="text-sm">
+                                {otherLecturer ? (
+                                  <span className="text-amber-700">{cls.lecturerName}</span>
+                                ) : (
+                                  cls.lecturerName
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            ) : assignClassesLoading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setAssignOpen(false);
-              setSelectedLecturer(null);
-              setSelectedClassIds([]);
-            }}>Cancel</Button>
-            <Button onClick={saveAssignments} className="bg-[#015F2B]">Save assignments</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAssignOpen(false);
+                setSelectedLecturer(null);
+                setSelectedClassIds([]);
+                setAssignClasses([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void saveAssignments()}
+              className="bg-[#015F2B]"
+              disabled={assignSaving || assignClasses.length === 0}
+            >
+              {assignSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save assignments
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4868,7 +5177,15 @@ function ClassesTab({
   const [editingClass, setEditingClass] = useState<ClassRow | null>(null);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollClass, setEnrollClass] = useState<ClassRow | null>(null);
+  const [enrollCandidates, setEnrollCandidates] = useState<EnrollCandidateRow[]>([]);
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollSaving, setEnrollSaving] = useState(false);
+  const [enrollSearch, setEnrollSearch] = useState('');
+  const [enrollListFilter, setEnrollListFilter] = useState<'all' | 'enrolled' | 'not_enrolled'>('all');
+  const [enrollScopeLabel, setEnrollScopeLabel] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [allLecturers, setAllLecturers] = useState<LecturerOption[]>([]);
+  const [lecturersLoading, setLecturersLoading] = useState(false);
   const [form, setForm] = useState({ 
     name: '', 
     courseId: '', 
@@ -4881,23 +5198,19 @@ function ClassesTab({
   });
   const [adminCourses, setAdminCourses] = useState<{ id: string; code: string; name: string }[]>([]);
   const [venues, setVenues] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [scopePrograms, setScopePrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
-  const [scopeProgramId, setScopeProgramId] = useState<string>('');
-  const [scopeYear, setScopeYear] = useState<number>(1);
-  const [scopeSemester, setScopeSemester] = useState<number>(1);
-  const [scopeIntakeType, setScopeIntakeType] = useState<'Day' | 'Evening' | 'Weekend'>('Day');
+  const classIntakeScope = useProgramIntakeScope({ showSchool: false, intakeField: 'type' });
   const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
   const [scopeLoading, setScopeLoading] = useState<boolean>(false);
   const openTimetableBuilderForScope = () => {
-    if (!scopeEnabled || !scopeProgramId) {
+    if (!scopeEnabled || !classIntakeScope.programId) {
       toast.error('Enable the intake scope filter and select a program first');
       return;
     }
     const qs = new URLSearchParams({
-      programId: scopeProgramId,
-      year: String(scopeYear),
-      semester: String(scopeSemester),
-      intakeType: scopeIntakeType,
+      programId: classIntakeScope.programId,
+      year: classIntakeScope.year,
+      semester: classIntakeScope.semester,
+      intakeType: classIntakeScope.intakeType,
     });
     navigate(`/timetable-builder?${qs.toString()}`);
   };
@@ -4942,36 +5255,44 @@ function ClassesTab({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    setLecturersLoading(true);
+    fetchAllLecturers()
+      .then((list) => {
+        if (!cancelled) setAllLecturers(list);
+      })
+      .catch(() => {
+        if (!cancelled) setAllLecturers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLecturersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
-      loadClasses(1, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
+      loadClasses(1, { programIntakeId, search: searchTerm.trim() || undefined });
     }, 250);
     return () => clearTimeout(timer);
   }, [searchTerm, programIntakeId, loadClasses]);
 
-  useEffect(() => {
-    academicService.getPrograms()
-      .then((res: any) => {
-        const arr = Array.isArray(res) ? res : res?.data ?? [];
-        setScopePrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code })));
-      })
-      .catch(() => setScopePrograms([]));
-  }, []);
-
   const applyScopeFilter = async () => {
-    if (!scopeProgramId) {
+    if (!classIntakeScope.programId) {
       toast.error('Select a program to filter by intake');
       return;
     }
     setScopeLoading(true);
     try {
-      const list = await academicService.getProgramIntakes({ programId: scopeProgramId, year: scopeYear, semester: scopeSemester, intakeType: scopeIntakeType });
-      const intake = (Array.isArray(list) ? list : [])?.[0];
-      if (!intake?.id) {
+      const resolved = await classIntakeScope.resolveProgramIntake();
+      if (!resolved) {
         toast.error('No intake found for that scope. Create it in Timetable Builder first.');
         return;
       }
-      setProgramIntakeId(intake.id);
-      await loadClasses(1, { programIntakeId: intake.id, search: searchTerm.trim() || undefined });
+      setProgramIntakeId(resolved.id);
+      await loadClasses(1, { programIntakeId: resolved.id, search: searchTerm.trim() || undefined });
       toast.success('Filtered classes by intake scope');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply intake filter');
@@ -4986,7 +5307,6 @@ function ClassesTab({
     toast.success('Showing all classes');
   };
 
-  const lecturers = staff.filter(s => s.role === 'Lecturer');
   const filteredClasses = classes.filter(c => {
     if (lecturerFilter !== 'all' && c.lecturerId !== lecturerFilter) return false;
     if (assignmentFilter === 'assigned' && !c.lecturerId) return false;
@@ -4994,15 +5314,47 @@ function ClassesTab({
     return true;
   });
 
-  const assignLecturerToClass = async (classId: string, lecturerId: string) => {
-    if (!lecturerId) return;
+  const assignLecturerToClass = async (classId: string, lecturerId: string | null) => {
     try {
-      await academicService.updateClass(classId, { lecturerId });
+      await academicService.updateClass(classId, { lecturerId: lecturerId ?? null });
       await refreshClassData();
-      toast.success('Lecturer assigned');
+      toast.success(lecturerId ? 'Lecturer assigned' : 'Lecturer removed');
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
-      toast.error(`Failed to assign: ${error?.message || 'Unknown error'}`);
+      toast.error(`Failed to update lecturer: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const visibleEnrollCandidates = useMemo(() => {
+    const q = enrollSearch.trim().toLowerCase();
+    return enrollCandidates.filter((st) => {
+      const enrolled = selectedStudentIds.includes(st.id);
+      if (enrollListFilter === 'enrolled' && !enrolled) return false;
+      if (enrollListFilter === 'not_enrolled' && enrolled) return false;
+      if (!q) return true;
+      return (
+        st.name.toLowerCase().includes(q) ||
+        st.studentId.toLowerCase().includes(q) ||
+        st.email.toLowerCase().includes(q)
+      );
+    });
+  }, [enrollCandidates, enrollSearch, enrollListFilter, selectedStudentIds]);
+
+  const allVisibleEnrollSelected =
+    visibleEnrollCandidates.length > 0 &&
+    visibleEnrollCandidates.every((st) => selectedStudentIds.includes(st.id));
+
+  const toggleEnrollSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudentIds((prev) => {
+        const next = new Set(prev);
+        visibleEnrollCandidates.forEach((st) => next.add(st.id));
+        return [...next];
+      });
+    } else {
+      setSelectedStudentIds((prev) =>
+        prev.filter((id) => !visibleEnrollCandidates.some((st) => st.id === id))
+      );
     }
   };
 
@@ -5060,7 +5412,7 @@ function ClassesTab({
         return;
       }
       const course = adminCourses.find(co => co.id === form.courseId);
-      const lecturer = lecturers.find(l => l.id === form.lecturerId);
+      const lecturer = allLecturers.find(l => l.id === form.lecturerId);
       const venue = venues.find(v => v.id === form.venueId);
       
       if (editingClass) {
@@ -5099,41 +5451,61 @@ function ClassesTab({
 
   const openEnrollForClass = async (cls: ClassRow) => {
     setEnrollClass(cls);
+    setEnrollOpen(true);
+    setEnrollLoading(true);
+    setEnrollSearch('');
+    setEnrollListFilter('all');
+    setEnrollCandidates([]);
+    setEnrollScopeLabel('');
     try {
-      // Load current enrollments from API
-      const currentEnrollments = await enrollmentService.getClassEnrollments(cls.id);
-      const currentStudentIds = currentEnrollments.map((e: any) => e.studentId || e.student?.id);
-      setSelectedStudentIds(currentStudentIds);
-      // Update local state
-      setEnrollmentsByClassId(prev => ({ ...prev, [cls.id]: currentStudentIds }));
+      const classDetails = (await academicService.getClassById(cls.id)) as {
+        programIntakeId?: string | null;
+      } | null;
+      const programIntakeId = classDetails?.programIntakeId ?? null;
+      setEnrollScopeLabel(programIntakeId ? 'Students in this class intake cohort' : '');
+
+      const enrollmentRows = await enrollmentService.getClassEnrollments(cls.id);
+      const enrolledIds = extractEnrolledStudentIdsFromClassEnrollments(enrollmentRows);
+      setSelectedStudentIds(enrolledIds);
+
+      const candidates = await fetchStudentsForEnrollmentScope({
+        programIntakeId,
+        programId: null,
+      });
+      if (candidates.length === 0 && !programIntakeId) {
+        toast.warning('This class has no intake scope. Link it to a program intake in Timetable Builder first.');
+      }
+      setEnrollCandidates(candidates);
+      setEnrollmentsByClassId((prev) => ({ ...prev, [cls.id]: enrolledIds }));
     } catch (error) {
       console.error('Error loading enrollments:', error);
-      // Fallback to local state if API fails
-      setSelectedStudentIds(enrollmentsByClassId[cls.id] ?? []);
+      setSelectedStudentIds([]);
+      setEnrollCandidates([]);
+      toast.error('Failed to load enrollment data for this class.');
+    } finally {
+      setEnrollLoading(false);
     }
-    setEnrollOpen(true);
   };
 
   const saveEnrollmentsForClass = async () => {
     if (!enrollClass) return;
+    setEnrollSaving(true);
     try {
-      // Get current enrollments for this class
       const currentEnrollments = await enrollmentService.getClassEnrollments(enrollClass.id);
-      const currentStudentIds = currentEnrollments.map((e: any) => e.studentId || e.student?.id);
-      
-      // Find students to add and remove
-      const toAdd = selectedStudentIds.filter(id => !currentStudentIds.includes(id));
-      const toRemove = currentStudentIds.filter((id: string) => !selectedStudentIds.includes(id));
-      
-      // Remove enrollments
+      const currentStudentIds = extractEnrolledStudentIdsFromClassEnrollments(currentEnrollments);
+
+      const toAdd = selectedStudentIds.filter((id) => !currentStudentIds.includes(id));
+      const toRemove = currentStudentIds.filter((id) => !selectedStudentIds.includes(id));
+
       for (const studentId of toRemove) {
-        const enrollment = (currentEnrollments as { id?: string; studentId?: string; student?: { id?: string } }[]).find(e => (e.studentId || e.student?.id) === studentId);
+        const enrollment = (
+          currentEnrollments as Array<{ id?: string; studentId?: string; student?: { id?: string } }>
+        ).find((e) => (e.studentId ?? e.student?.id) === studentId);
         if (enrollment?.id) {
           await enrollmentService.deleteEnrollment(enrollment.id);
         }
       }
-      
-      // Bulk add new enrollments
+
       if (toAdd.length > 0) {
         await enrollmentService.bulkEnroll({
           classId: enrollClass.id,
@@ -5141,15 +5513,27 @@ function ClassesTab({
           status: 'Active',
         });
       }
-      
-      setEnrollmentsByClassId(prev => ({ ...prev, [enrollClass.id]: selectedStudentIds }));
-      setClasses(prev => prev.map(c => c.id === enrollClass.id ? { ...c, students: selectedStudentIds.length } : c));
+
+      const refreshed = await enrollmentService.getClassEnrollments(enrollClass.id);
+      const finalIds = extractEnrolledStudentIdsFromClassEnrollments(refreshed);
+
+      setEnrollmentsByClassId((prev) => ({ ...prev, [enrollClass.id]: finalIds }));
+      setClasses((prev) =>
+        prev.map((c) => (c.id === enrollClass.id ? { ...c, students: finalIds.length } : c))
+      );
+      setSelectedStudentIds(finalIds);
       setEnrollOpen(false);
       setEnrollClass(null);
-      toast.success('Enrollments updated.');
-    } catch (error) {
+      setEnrollCandidates([]);
+      await refreshClassData();
+      toast.success(
+        `Enrollments updated (${finalIds.length} student${finalIds.length !== 1 ? 's' : ''} enrolled).`
+      );
+    } catch (error: any) {
       console.error('Error saving enrollments:', error);
-      toast.error('Failed to save enrollments. Please try again.');
+      toast.error(error?.message || 'Failed to save enrollments. Please try again.');
+    } finally {
+      setEnrollSaving(false);
     }
   };
 
@@ -5172,60 +5556,30 @@ function ClassesTab({
           )}
         </div>
 
-        {scopeEnabled && (
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px]">
-              <Label className="text-xs">Program</Label>
-              <Select value={scopeProgramId} onValueChange={setScopeProgramId}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Select program" /></SelectTrigger>
-                <SelectContent>
-                  {scopePrograms.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.code ? `${p.name} (${p.code})` : p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Year</Label>
-              <Select value={String(scopeYear)} onValueChange={(v) => setScopeYear(parseInt(v, 10) || 1)}>
-                <SelectTrigger className="h-9 w-[110px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[1,2,3,4,5,6].map((y) => (<SelectItem key={y} value={String(y)}>{`Year ${y}`}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Semester</Label>
-              <Select value={String(scopeSemester)} onValueChange={(v) => setScopeSemester(parseInt(v, 10) || 1)}>
-                <SelectTrigger className="h-9 w-[120px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[1,2].map((s) => (<SelectItem key={s} value={String(s)}>{`Sem ${s}`}</SelectItem>))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Intake</Label>
-              <Select value={scopeIntakeType} onValueChange={(v) => setScopeIntakeType(v as any)}>
-                <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Day">Day</SelectItem>
-                  <SelectItem value="Evening">Evening</SelectItem>
-                  <SelectItem value="Weekend">Weekend</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button variant="outline" className="h-9" disabled={scopeLoading} onClick={applyScopeFilter}>
-                {scopeLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Apply
-              </Button>
-              <Button variant="ghost" className="h-9" disabled={scopeLoading || !programIntakeId} onClick={clearScopeFilter}>
-                Clear
-              </Button>
-            </div>
+        {scopeEnabled ? (
+          <div className="mt-3">
+            <ProgramIntakeScopeFilter
+              scope={classIntakeScope}
+              intakeField="type"
+              showSchool={false}
+              bordered={false}
+              className="p-0"
+              actionButton={{
+                label: 'Apply',
+                onClick: applyScopeFilter,
+                loading: scopeLoading,
+                disabled: !classIntakeScope.programId,
+              }}
+              secondaryAction={{
+                label: 'Clear',
+                onClick: clearScopeFilter,
+                loading: scopeLoading,
+                disabled: !programIntakeId,
+                variant: 'ghost',
+              }}
+            />
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -5233,17 +5587,21 @@ function ClassesTab({
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search classes..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
-        <Select value={lecturerFilter} onValueChange={setLecturerFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Lecturer" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All lecturers</SelectItem>
-            {lecturers.map((l) => (
-              <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox
+          options={[
+            { value: 'all', label: 'All lecturers' },
+            ...allLecturers.map((l) => ({ value: l.id, label: l.name })),
+          ]}
+          value={lecturerFilter}
+          onValueChange={(v) => setLecturerFilter(v || 'all')}
+          placeholder="Filter by lecturer"
+          searchPlaceholder="Search lecturers..."
+          emptyText="No lecturer found."
+          initialDisplayCount={15}
+          className="w-[220px]"
+          disabled={lecturersLoading}
+          loading={lecturersLoading}
+        />
         <Select value={assignmentFilter} onValueChange={(v: 'all' | 'assigned' | 'unassigned') => setAssignmentFilter(v)}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Assignment" />
@@ -5257,7 +5615,7 @@ function ClassesTab({
         <Button
           variant="outline"
           onClick={openTimetableBuilderForScope}
-          disabled={!scopeEnabled || !scopeProgramId}
+          disabled={!scopeEnabled || !classIntakeScope.programId}
         >
           <Calendar className="mr-2 h-4 w-4" /> Create in Timetable Builder
         </Button>
@@ -5281,21 +5639,26 @@ function ClassesTab({
                 <TableCell className="font-medium">{cls.name}</TableCell>
                 <TableCell>{cls.course}</TableCell>
                 <TableCell>
-                  <Select
-                    value={cls.lecturerId || ''}
-                    onValueChange={(v) => v && assignLecturerToClass(cls.id, v)}
-                  >
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue placeholder="Select lecturer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {lecturers.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>
-                          {l.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    options={buildLecturerComboboxOptions(allLecturers, {
+                      id: cls.lecturerId,
+                      name: cls.lecturerName,
+                    })}
+                    value={cls.lecturerId || '__none__'}
+                    onValueChange={(v) =>
+                      assignLecturerToClass(cls.id, v === '__none__' ? null : v)
+                    }
+                    placeholder="Select lecturer"
+                    searchPlaceholder="Search all lecturers..."
+                    emptyText="No lecturer found."
+                    initialDisplayCount={15}
+                    className="w-[min(240px,100%)]"
+                    disabled={lecturersLoading}
+                    loading={lecturersLoading}
+                    selectedLabel={
+                      cls.lecturerId && cls.lecturerName !== '—' ? cls.lecturerName : undefined
+                    }
+                  />
                 </TableCell>
                 <TableCell>{cls.students}</TableCell>
                 <TableCell>{cls.room}</TableCell>
@@ -5370,28 +5733,26 @@ function ClassesTab({
               <Combobox
                 options={
                   editingClass
-                    ? [
-                        { value: 'none', label: '— None —' },
-                        ...lecturers.map((l) => ({
-                          value: String(l.id),
-                          label: l.name,
-                        })),
-                      ]
-                    : lecturers.map((l) => ({
+                    ? buildLecturerComboboxOptions(allLecturers, {
+                        id: form.lecturerId || null,
+                        name: editingClass.lecturerName,
+                      })
+                    : allLecturers.map((l) => ({
                         value: String(l.id),
                         label: l.name,
                       }))
                 }
-                value={form.lecturerId || (editingClass ? 'none' : '')}
-                onValueChange={(v) => setForm((f) => ({ ...f, lecturerId: v === 'none' ? '' : v }))}
+                value={form.lecturerId || (editingClass ? '__none__' : '')}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, lecturerId: v === '__none__' ? '' : v }))
+                }
                 placeholder={editingClass ? 'Select lecturer' : 'Select lecturer (required)'}
-                searchPlaceholder="Search lecturers..."
+                searchPlaceholder="Search all lecturers..."
                 emptyText="No lecturer found."
-                initialDisplayCount={10}
+                initialDisplayCount={15}
+                disabled={lecturersLoading}
+                loading={lecturersLoading}
               />
-              {!editingClass && (
-                <p className="text-xs text-muted-foreground">Assign a lecturer to this class</p>
-              )}
             </div>
             <div className="space-y-2">
               <Label>Venue</Label>
@@ -5466,23 +5827,137 @@ function ClassesTab({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={enrollOpen} onOpenChange={(open) => !open && setEnrollOpen(false)}>
-        <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={enrollOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEnrollOpen(false);
+            setEnrollClass(null);
+            setEnrollCandidates([]);
+            setSelectedStudentIds([]);
+            setEnrollSearch('');
+            setEnrollListFilter('all');
+          }
+        }}
+      >
+        <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Manage enrollments</DialogTitle>
-            <DialogDescription>{enrollClass ? `Class: ${enrollClass.name}. Select students to enroll.` : 'Select students.'}</DialogDescription>
+            <DialogDescription>
+              {enrollClass
+                ? `${enrollClass.name} · ${enrollClass.course}${enrollScopeLabel ? ` · ${enrollScopeLabel}` : ''}`
+                : 'Select students for this class.'}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {students.map(st => (
-              <div key={st.id} className="flex items-center gap-2">
-                <Checkbox id={`st-${st.id}`} checked={selectedStudentIds.includes(st.id)} onCheckedChange={(c) => setSelectedStudentIds(prev => c ? [...prev, st.id] : prev.filter(id => id !== st.id))} />
-                <Label htmlFor={`st-${st.id}`} className="font-normal">{st.name} ({st.studentId})</Label>
+          {enrollLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name, reg. no., email..."
+                    className="pl-8 h-9"
+                    value={enrollSearch}
+                    onChange={(e) => setEnrollSearch(e.target.value)}
+                  />
+                </div>
+                <Select
+                  value={enrollListFilter}
+                  onValueChange={(v) => setEnrollListFilter(v as 'all' | 'enrolled' | 'not_enrolled')}
+                >
+                  <SelectTrigger className="h-9 w-[160px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All students</SelectItem>
+                    <SelectItem value="enrolled">Enrolled only</SelectItem>
+                    <SelectItem value="not_enrolled">Not enrolled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ))}
-          </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedStudentIds.length} enrolled · {enrollCandidates.length} in cohort ·{' '}
+                {visibleEnrollCandidates.length} shown
+              </p>
+              <div className="rounded-md border max-h-[min(50vh,420px)] overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allVisibleEnrollSelected}
+                          onCheckedChange={(c) => toggleEnrollSelectAllVisible(!!c)}
+                          aria-label="Select all visible"
+                        />
+                      </TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Reg. no.</TableHead>
+                      <TableHead>Email</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {enrollCandidates.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No students in this class cohort. Assign a program intake to the class or add students to
+                          that intake.
+                        </TableCell>
+                      </TableRow>
+                    ) : visibleEnrollCandidates.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                          No students match your search or filter.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      visibleEnrollCandidates.map((st) => (
+                        <TableRow key={st.id}>
+                          <TableCell>
+                            <Checkbox
+                              id={`enroll-st-${st.id}`}
+                              checked={selectedStudentIds.includes(st.id)}
+                              onCheckedChange={(c) =>
+                                setSelectedStudentIds((prev) =>
+                                  c ? [...prev, st.id] : prev.filter((id) => id !== st.id)
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{st.name}</TableCell>
+                          <TableCell className="font-mono text-sm">{st.studentId || '—'}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{st.email || '—'}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEnrollOpen(false)}>Cancel</Button>
-            <Button onClick={saveEnrollmentsForClass} className="bg-[#015F2B]">Save enrollments</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEnrollOpen(false);
+                setEnrollClass(null);
+                setEnrollCandidates([]);
+              }}
+              disabled={enrollSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void saveEnrollmentsForClass()}
+              className="bg-[#015F2B]"
+              disabled={enrollLoading || enrollSaving || !enrollClass}
+            >
+              {enrollSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save enrollments
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -6855,35 +7330,49 @@ export default function AdminView({
   const [classesPage, setClassesPage] = useState(1);
   const [classesTotal, setClassesTotal] = useState(0);
   const [classesProgramIntakeId, setClassesProgramIntakeId] = useState<string | null>(null);
-  const loadClasses = async (pageNum: number, params?: { programIntakeId?: string | null; search?: string }) => {
-    try {
-      const programIntakeId = params?.programIntakeId ?? classesProgramIntakeId ?? undefined;
-      const search = params?.search;
-      const res = await academicService.getClasses({
-        page: pageNum,
-        limit: LIST_PAGE_SIZE,
-        ...(programIntakeId ? { programIntakeId } : {}),
-        ...(search && search.trim() ? { search: search.trim() } : {}),
-      });
-      const arr = res.data ?? [];
-      setClasses(arr.map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        course: c.course?.name || '',
-        courseId: c.courseId,
-        lecturerId: c.lecturerId,
-        lecturerName: c.lecturer ? `${c.lecturer.firstName} ${c.lecturer.lastName}` : '—',
-        students: c.enrolledCount || 0,
-        room: c.venue?.name || '',
-      })));
-      setClassesTotal(res.total ?? 0);
-      setClassesPage(res.page ?? pageNum);
-      setClassesProgramIntakeId(programIntakeId ?? null);
-    } catch (e) {
-      setClasses([]);
-      setClassesTotal(0);
-    }
-  };
+  const classesProgramIntakeIdRef = useRef<string | null>(null);
+  classesProgramIntakeIdRef.current = classesProgramIntakeId;
+
+  const loadClasses = useCallback(
+    async (pageNum: number, params?: { programIntakeId?: string | null; search?: string }) => {
+      try {
+        const intakeFromParams = params && 'programIntakeId' in params ? params.programIntakeId : undefined;
+        const programIntakeId =
+          intakeFromParams !== undefined
+            ? (intakeFromParams ?? undefined)
+            : (classesProgramIntakeIdRef.current ?? undefined);
+        const search = params?.search;
+        const res = await academicService.getClasses({
+          page: pageNum,
+          limit: LIST_PAGE_SIZE,
+          ...(programIntakeId ? { programIntakeId } : {}),
+          ...(search && search.trim() ? { search: search.trim() } : {}),
+        });
+        const arr = res.data ?? [];
+        setClasses(
+          arr.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            course: c.course?.name || '',
+            courseId: c.courseId,
+            lecturerId: c.lecturerId,
+            lecturerName: c.lecturer ? `${c.lecturer.firstName} ${c.lecturer.lastName}` : '—',
+            students: c.enrolledCount || 0,
+            room: c.venue?.name || '',
+          }))
+        );
+        setClassesTotal(res.total ?? 0);
+        setClassesPage(res.page ?? pageNum);
+        if (intakeFromParams !== undefined) {
+          setClassesProgramIntakeId(intakeFromParams ?? null);
+        }
+      } catch (e) {
+        setClasses([]);
+        setClassesTotal(0);
+      }
+    },
+    []
+  );
 
   const [venuesPage, setVenuesPage] = useState(1);
   const [venuesTotal, setVenuesTotal] = useState(0);
@@ -7009,7 +7498,7 @@ export default function AdminView({
         </TabsContent>
 
         <TabsContent value="lecturers" className="mt-0">
-          <LecturersTab staff={staff} setStaff={setStaff} classes={classes} setClasses={setClasses} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} />
+          <LecturersTab staff={staff} setStaff={setStaff} classes={classes} setClasses={setClasses} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} loadClasses={loadClasses} />
         </TabsContent>
 
         <TabsContent value="courses" className="mt-0">

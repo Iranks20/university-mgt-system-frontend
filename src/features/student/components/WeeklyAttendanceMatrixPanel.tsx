@@ -1,19 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Download, Filter, Loader2, RotateCcw } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
+import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { academicService, studentService } from '@/services';
+import { studentService } from '@/services';
 import { exportWeeklyAttendanceMatrixReport } from '@/utils/excel';
 import type { WeeklyAttendanceMatrixReport } from '@/types/student';
 import { toast } from 'sonner';
-
-const ALL_VALUE = '__all__';
-const YEAR_OPTIONS = [1, 2, 3, 4, 5] as const;
-const SEMESTER_OPTIONS = [1, 2] as const;
 
 const DAY_HEADER_CLASS: Record<number, string> = {
   0: 'bg-gray-100',
@@ -48,14 +45,18 @@ export default function WeeklyAttendanceMatrixPanel({
   programToSchoolMap,
   generatedBy,
 }: WeeklyAttendanceMatrixPanelProps) {
-  const [selectedSchool, setSelectedSchool] = useState(ALL_VALUE);
-  const [selectedProgramId, setSelectedProgramId] = useState(ALL_VALUE);
-  const [selectedYear, setSelectedYear] = useState(ALL_VALUE);
-  const [selectedSemester, setSelectedSemester] = useState(ALL_VALUE);
-  const [selectedIntakeId, setSelectedIntakeId] = useState(ALL_VALUE);
-  const [intakes, setIntakes] = useState<
-    Array<{ id: string; year: number; semester: number; intakeType: string }>
-  >([]);
+  const intakeScope = useProgramIntakeScope({
+    intakeField: 'cohortList',
+    allowAllSchool: true,
+    allowAllProgram: true,
+    allowAllYear: true,
+    allowAllSemester: true,
+    yearOptions: [1, 2, 3, 4, 5],
+    semesterOptions: [1, 2],
+    schools,
+    programs,
+    programToSchoolMap,
+  });
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -66,27 +67,8 @@ export default function WeeklyAttendanceMatrixPanel({
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const filteredPrograms = useMemo(() => {
-    if (selectedSchool === ALL_VALUE) return programs;
-    return programs.filter((p) => programToSchoolMap.get(p.id) === selectedSchool);
-  }, [programs, selectedSchool, programToSchoolMap]);
-
-  useEffect(() => {
-    if (selectedProgramId === ALL_VALUE) {
-      setIntakes([]);
-      setSelectedIntakeId(ALL_VALUE);
-      return;
-    }
-    const year = selectedYear !== ALL_VALUE ? Number(selectedYear) : undefined;
-    const semester = selectedSemester !== ALL_VALUE ? Number(selectedSemester) : undefined;
-    academicService
-      .getProgramIntakes({ programId: selectedProgramId, year, semester })
-      .then((list) => setIntakes(Array.isArray(list) ? list : []))
-      .catch(() => setIntakes([]));
-  }, [selectedProgramId, selectedYear, selectedSemester]);
-
   const loadReport = async () => {
-    if (selectedIntakeId === ALL_VALUE) {
+    if (!intakeScope.isComplete) {
       toast.error('Select a class cohort first.');
       return;
     }
@@ -97,7 +79,7 @@ export default function WeeklyAttendanceMatrixPanel({
     setLoading(true);
     try {
       const data = await studentService.getWeeklyAttendanceMatrixReport({
-        programIntakeId: selectedIntakeId,
+        programIntakeId: intakeScope.programIntakeId,
         startDate: dateFrom,
         endDate: dateTo,
       });
@@ -148,125 +130,36 @@ export default function WeeklyAttendanceMatrixPanel({
         <CardTitle>{report?.title ?? 'Weekly attendance matrix (Excel style)'}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
-          <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">School</Label>
-            <Select
-              value={selectedSchool}
-              onValueChange={(v) => {
-                setSelectedSchool(v);
-                setSelectedProgramId(ALL_VALUE);
-                setSelectedIntakeId(ALL_VALUE);
-              }}
-            >
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                {schools.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Programme</Label>
-            <Select
-              value={selectedProgramId}
-              onValueChange={(v) => {
-                setSelectedProgramId(v);
-                setSelectedIntakeId(ALL_VALUE);
-              }}
-            >
-              <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>Select programme</SelectItem>
-                {filteredPrograms.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Year</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All</SelectItem>
-                {YEAR_OPTIONS.map((y) => (
-                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Semester</Label>
-            <Select value={selectedSemester} onValueChange={setSelectedSemester}>
-              <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>All</SelectItem>
-                {SEMESTER_OPTIONS.map((s) => (
-                  <SelectItem key={s} value={String(s)}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Cohort</Label>
-            <Select
-              value={selectedIntakeId}
-              onValueChange={setSelectedIntakeId}
-              disabled={selectedProgramId === ALL_VALUE}
-            >
-              <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_VALUE}>Select cohort</SelectItem>
-                {intakes.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.year}.{i.semester} · {i.intakeType}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Week from</Label>
-            <Input type="date" className="w-[150px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Week to</Label>
-            <Input type="date" className="w-[150px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-          <Button variant="outline" onClick={() => {
-            setSelectedSchool(ALL_VALUE);
-            setSelectedProgramId(ALL_VALUE);
-            setSelectedYear(ALL_VALUE);
-            setSelectedSemester(ALL_VALUE);
-            setSelectedIntakeId(ALL_VALUE);
-            setReport(null);
-          }}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Reset
-          </Button>
-          <Button
-            className="bg-[#015F2B] hover:bg-[#014022]"
-            onClick={loadReport}
-            disabled={loading || selectedIntakeId === ALL_VALUE}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading…
-              </>
-            ) : (
-              'Generate report'
-            )}
-          </Button>
-          <Button variant="outline" onClick={handleExport} disabled={exporting || !report?.students.length}>
-            <Download className="mr-2 h-4 w-4" />
-            {exporting ? 'Exporting…' : 'Export Excel'}
-          </Button>
-        </div>
+        <ProgramIntakeScopeFilter
+          scope={intakeScope}
+          intakeField="cohortList"
+          programLabel="Programme"
+          showFilterIcon
+          showReset
+          onReset={() => setReport(null)}
+          trailing={
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Week from</Label>
+                <Input type="date" className="w-[150px] h-9" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Week to</Label>
+                <Input type="date" className="w-[150px] h-9" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <Button variant="outline" className="h-9" onClick={handleExport} disabled={exporting || !report?.students.length}>
+                <Download className="mr-2 h-4 w-4" />
+                {exporting ? 'Exporting…' : 'Export Excel'}
+              </Button>
+            </>
+          }
+          actionButton={{
+            label: 'Generate report',
+            onClick: loadReport,
+            loading,
+            disabled: !intakeScope.isComplete,
+          }}
+        />
 
         {report && (
           <p className="text-sm text-muted-foreground">

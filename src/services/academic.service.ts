@@ -395,7 +395,10 @@ export const academicService = {
     }
   },
 
-  updateClass: async (id: string, classData: Partial<Class>): Promise<Class> => {
+  updateClass: async (
+    id: string,
+    classData: Partial<Omit<Class, 'lecturerId'>> & { lecturerId?: string | null }
+  ): Promise<Class> => {
     try {
       return await api.put<Class>(`/academic/classes/${id}`, classData);
     } catch (error) {
