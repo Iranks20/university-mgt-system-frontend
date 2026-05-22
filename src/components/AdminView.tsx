@@ -42,7 +42,17 @@ import {
 
 type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
-type ClassRow = { id: string; name: string; course: string; courseId: string; lecturerId: string | null; lecturerName: string; students: number; room: string };
+type ClassRow = {
+  id: string;
+  name: string;
+  course: string;
+  courseId: string;
+  lecturerId: string | null;
+  lecturerName: string;
+  students: number;
+  room: string;
+  isActive?: boolean;
+};
 type CourseRow = { id: string; code: string; name: string; dept: string; credits?: number };
 type SchoolRow = { id: string; name: string; dean: string | null; depts: number; students: number; staff: number };
 type VenueRow = { id: string; name: string; code: string; type: string; capacity: number; building: string; floor: number | null; facilities: string | null };
@@ -5175,6 +5185,9 @@ function ClassesTab({
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [addEditOpen, setAddEditOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassRow | null>(null);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivatingClassRow, setDeactivatingClassRow] = useState<ClassRow | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollClass, setEnrollClass] = useState<ClassRow | null>(null);
   const [enrollCandidates, setEnrollCandidates] = useState<EnrollCandidateRow[]>([]);
@@ -5666,8 +5679,21 @@ function ClassesTab({
                   <div className="flex justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEnrollForClass(cls)}><Users className="h-4 w-4 mr-1" /> Enrollments</Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}><Edit className="h-4 w-4" /></Button>
+                    {cls.isActive !== false && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Deactivate class"
+                        onClick={() => {
+                          setDeactivatingClassRow(cls);
+                          setDeactivateOpen(true);
+                        }}
+                      >
+                        <EyeOff className="h-4 w-4 text-amber-700" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={async () => {
-                      if (confirm(`Delete class "${cls.name}"?`)) {
+                      if (confirm(`Delete class "${cls.name}" permanently?`)) {
                         try {
                           await academicService.deleteClass(cls.id);
                           await refreshClassData();
@@ -5678,9 +5704,15 @@ function ClassesTab({
                           });
                           window.dispatchEvent(new CustomEvent('class-updated'));
                         } catch (error: any) {
-                          console.error('Error deleting class:', error);
+                          const code = error?.response?.data?.code;
                           const errorMsg = error?.response?.data?.message || error?.message || 'Failed to delete class';
-                          toast.error(`Failed to delete class: ${errorMsg}. It may have active enrollments.`);
+                          if (code === 'CLASS_HAS_ENROLLMENTS') {
+                            setDeactivatingClassRow(cls);
+                            setDeactivateOpen(true);
+                            toast.error(errorMsg);
+                          } else {
+                            toast.error(`Failed to delete class: ${errorMsg}`);
+                          }
                         }
                       }
                     }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
@@ -5701,6 +5733,45 @@ function ClassesTab({
           </div>
         )}
       </div>
+
+      <Dialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deactivate Class</DialogTitle>
+            <DialogDescription>
+              Deactivate &quot;{deactivatingClassRow?.name}&quot;? It will be hidden from schedules and class lists but kept for records.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeactivateOpen(false)} disabled={deactivating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-700 hover:bg-amber-800 text-white"
+              disabled={deactivating}
+              onClick={async () => {
+                if (!deactivatingClassRow) return;
+                setDeactivating(true);
+                try {
+                  await academicService.deactivateClass(deactivatingClassRow.id);
+                  toast.success('Class deactivated');
+                  setDeactivateOpen(false);
+                  setDeactivatingClassRow(null);
+                  await refreshClassData();
+                  window.dispatchEvent(new CustomEvent('class-updated'));
+                } catch (error: any) {
+                  toast.error(error?.response?.data?.message || error?.message || 'Failed to deactivate');
+                } finally {
+                  setDeactivating(false);
+                }
+              }}
+            >
+              {deactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addEditOpen} onOpenChange={setAddEditOpen}>
         <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -5994,9 +6065,21 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingClass, setDeletingClass] = useState<TimetableClass | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivatingClass, setDeactivatingClass] = useState<TimetableClass | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
   const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
-  const [filters, setFilters] = useState({ programId: '', program: '', year: '', semester: '', intakeType: 'Day', day: '', courseCode: '' });
+  const [filters, setFilters] = useState({
+    programId: '',
+    program: '',
+    year: '',
+    semester: '',
+    intakeType: 'Day',
+    day: '',
+    courseCode: '',
+    classStatus: 'active' as 'active' | 'inactive' | 'all',
+  });
   const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -6053,6 +6136,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       if (filters.intakeType) query.intakeType = filters.intakeType;
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
+      if (filters.classStatus) query.classStatus = filters.classStatus;
       const result = await timetableService.getTimetable(query);
       setClasses(result.data);
       setTotal(result.total);
@@ -6219,10 +6303,55 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       setDeleteOpen(false);
       setDeletingClass(null);
       await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
-      toast.error(`Failed to delete: ${error?.message || 'Unknown error'}`);
+      const code = error?.response?.data?.code;
+      const msg = error?.response?.data?.message || error?.message || 'Unknown error';
+      if (code === 'CLASS_HAS_ENROLLMENTS') {
+        setDeleteOpen(false);
+        setDeactivatingClass(deletingClass);
+        setDeactivateOpen(true);
+        toast.error(msg);
+      } else {
+        toast.error(`Failed to delete: ${msg}`);
+      }
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const openDeactivateModal = (cls: TimetableClass) => {
+    setDeactivatingClass(cls);
+    setDeactivateOpen(true);
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!deactivatingClass) return;
+    setDeactivating(true);
+    try {
+      await timetableService.deactivateClass(deactivatingClass.id);
+      toast.success('Class deactivated');
+      setDeactivateOpen(false);
+      setDeactivatingClass(null);
+      setDeleteOpen(false);
+      setDeletingClass(null);
+      await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to deactivate class');
+    } finally {
+      setDeactivating(false);
+    }
+  };
+
+  const handleActivateClass = async (cls: TimetableClass) => {
+    try {
+      await timetableService.activateClass(cls.id);
+      toast.success('Class activated');
+      await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to activate class');
     }
   };
 
@@ -6289,6 +6418,19 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               ))}
             </SelectContent>
           </Select>
+          <Select
+            value={filters.classStatus}
+            onValueChange={(v) => setFilters({ ...filters, classStatus: v as 'active' | 'inactive' | 'all' })}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active classes</SelectItem>
+              <SelectItem value="inactive">Inactive classes</SelectItem>
+              <SelectItem value="all">All classes</SelectItem>
+            </SelectContent>
+          </Select>
               <Input
             placeholder="Course Code"
             value={filters.courseCode}
@@ -6309,7 +6451,10 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       <Card>
         <CardHeader>
           <CardTitle>University Timetable</CardTitle>
-          <CardDescription>View and manage all class schedules. Total: {total} classes</CardDescription>
+          <CardDescription>
+            View and manage class schedules. Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
+            Deactivate instead of delete when students are still enrolled.
+          </CardDescription>
         </CardHeader>
         <CardContent>
             <Table>
@@ -6337,13 +6482,20 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 </TableCell></TableRow>
               ) : (
                 classes.map((cls) => (
-                  <TableRow key={cls.id}>
+                  <TableRow key={cls.id} className={cls.isActive === false ? 'opacity-70 bg-muted/30' : undefined}>
                     <TableCell>{(cls.course as any).program?.name ?? cls.course.department?.name ?? '—'}</TableCell>
                     <TableCell>{cls.course.level}</TableCell>
                     <TableCell>{cls.course.semester}</TableCell>
                     <TableCell className="font-medium">{cls.course?.name?.trim() || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{cls.course?.code || '—'}</TableCell>
-                    <TableCell>{cls.name}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        {cls.name}
+                        {cls.isActive === false && (
+                          <Badge variant="secondary" className="text-xs font-normal">Inactive</Badge>
+                        )}
+                      </span>
+                    </TableCell>
                     <TableCell>{cls.dayOfWeek !== null ? DAY_NAMES[cls.dayOfWeek] : '—'}</TableCell>
                     <TableCell>{cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : '—'}</TableCell>
                     <TableCell>{cls.venue?.name || '—'}</TableCell>
@@ -6353,7 +6505,16 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(cls)}>
                           <Edit className="h-4 w-4" />
                             </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(cls)} className="text-red-600 hover:text-red-700">
+                        {cls.isActive === false ? (
+                          <Button variant="ghost" size="sm" onClick={() => handleActivateClass(cls)} className="text-[#015F2B]">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => openDeactivateModal(cls)} title="Deactivate class">
+                            <EyeOff className="h-4 w-4 text-amber-700" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(cls)} className="text-red-600 hover:text-red-700" title="Delete permanently (no active enrollments)">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -6541,6 +6702,30 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
               {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deactivate Class</DialogTitle>
+            <DialogDescription>
+              Deactivate &quot;{deactivatingClass?.name}&quot;? It will be hidden from schedules and class lists but kept for records.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeactivateOpen(false)} disabled={deactivating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-700 hover:bg-amber-800 text-white"
+              onClick={handleConfirmDeactivate}
+              disabled={deactivating}
+            >
+              {deactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Deactivate
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7359,6 +7544,7 @@ export default function AdminView({
             lecturerName: c.lecturer ? `${c.lecturer.firstName} ${c.lecturer.lastName}` : '—',
             students: c.enrolledCount || 0,
             room: c.venue?.name || '',
+            isActive: c.isActive !== false,
           }))
         );
         setClassesTotal(res.total ?? 0);

@@ -11,6 +11,7 @@ export interface TimetableClass {
   endTime: string | null;
   capacity: number;
   enrolledCount: number;
+  isActive?: boolean;
   course: {
     id: string;
     code: string;
@@ -78,6 +79,7 @@ export interface TimetableQuery {
   limit?: number;
   sortBy?: 'program' | 'day' | 'time' | 'course';
   sortOrder?: 'asc' | 'desc';
+  classStatus?: 'active' | 'inactive' | 'all';
 }
 
 export interface UpdateClassDto {
@@ -89,6 +91,7 @@ export interface UpdateClassDto {
   endTime?: string;
   capacity?: number;
   courseId?: string;
+  isActive?: boolean;
 }
 
 export const timetableService = {
@@ -136,6 +139,7 @@ export const timetableService = {
     if (query?.limit) params.append('limit', String(query.limit));
     if (query?.sortBy) params.append('sortBy', query.sortBy);
     if (query?.sortOrder) params.append('sortOrder', query.sortOrder);
+    if (query?.classStatus) params.append('classStatus', query.classStatus);
 
     const res = await api.get<{ data: TimetableClass[]; total: number; page: number; pageSize: number }>(`/timetable?${params.toString()}`);
     if (res && typeof res === 'object' && 'data' in res) {
@@ -187,6 +191,16 @@ export const timetableService = {
 
   deleteClass: async (id: string): Promise<{ success: boolean; message: string }> => {
     return api.delete<{ success: boolean; message: string }>(`/timetable/class/${id}`);
+  },
+
+  deactivateClass: async (id: string): Promise<TimetableClass> => {
+    const res = await api.post<{ data: TimetableClass; message?: string }>(`/timetable/class/${id}/deactivate`, {});
+    return (res as { data?: TimetableClass })?.data ?? (res as TimetableClass);
+  },
+
+  activateClass: async (id: string): Promise<TimetableClass> => {
+    const res = await api.post<{ data: TimetableClass; message?: string }>(`/timetable/class/${id}/activate`, {});
+    return (res as { data?: TimetableClass })?.data ?? (res as TimetableClass);
   },
 
   getScheduledSessions: async (params: {

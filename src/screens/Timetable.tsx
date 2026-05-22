@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, Clock, MapPin, 
   ChevronLeft, ChevronRight, BookOpen, User, LogIn, LogOut,
-  Edit, Trash2, Loader2,
+  Edit, Trash2, Loader2, EyeOff, Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -96,7 +96,11 @@ export default function Timetable() {
   const [activeCheckIns, setActiveCheckIns] = useState<Record<string, { checkIn: string; checkOut?: string }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
-  const [qaFilters, setQaFilters] = useState({ day: 'all', search: '' });
+  const [qaFilters, setQaFilters] = useState({
+    day: 'all',
+    search: '',
+    classStatus: 'active' as 'active' | 'inactive' | 'all',
+  });
   const [qaRawClasses, setQaRawClasses] = useState<Record<string, TimetableClass>>({});
   const [qaEditOpen, setQaEditOpen] = useState(false);
   const [qaEditingClass, setQaEditingClass] = useState<TimetableClass | null>(null);
@@ -111,6 +115,9 @@ export default function Timetable() {
   const [qaDeleteOpen, setQaDeleteOpen] = useState(false);
   const [qaDeletingClass, setQaDeletingClass] = useState<TimetableClass | null>(null);
   const [qaDeleting, setQaDeleting] = useState(false);
+  const [qaDeactivateOpen, setQaDeactivateOpen] = useState(false);
+  const [qaDeactivatingClass, setQaDeactivatingClass] = useState<TimetableClass | null>(null);
+  const [qaDeactivating, setQaDeactivating] = useState(false);
   const [qaVenues, setQaVenues] = useState<{ id: string; name: string }[]>([]);
   const [qaLecturers, setQaLecturers] = useState<{ id: string; name: string }[]>([]);
 
@@ -184,7 +191,8 @@ export default function Timetable() {
           sortBy: 'day';
           sortOrder: 'asc';
           day?: string;
-        } = { page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc' };
+          classStatus?: 'active' | 'inactive' | 'all';
+        } = { page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc', classStatus: qaFilters.classStatus };
         if (qaFilters.day !== 'all') {
           query.day = qaFilters.day.toLowerCase();
         }
@@ -252,7 +260,7 @@ export default function Timetable() {
 
   useEffect(() => {
     loadTimetable();
-  }, [user, role, qaPage, qaFilters.day]);
+  }, [user, role, qaPage, qaFilters.day, qaFilters.classStatus]);
 
   useEffect(() => {
     if (role === 'QA') {
@@ -408,10 +416,55 @@ export default function Timetable() {
       setQaDeleteOpen(false);
       setQaDeletingClass(null);
       await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete session');
+      const code = error?.response?.data?.code;
+      const msg = error?.response?.data?.message || error?.message || 'Failed to delete session';
+      if (code === 'CLASS_HAS_ENROLLMENTS' && qaDeletingClass) {
+        setQaDeleteOpen(false);
+        setQaDeactivatingClass(qaDeletingClass);
+        setQaDeactivateOpen(true);
+        toast.error(msg);
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setQaDeleting(false);
+    }
+  };
+
+  const openQaDeactivate = (cls: TimetableClass) => {
+    setQaDeactivatingClass(cls);
+    setQaDeactivateOpen(true);
+  };
+
+  const handleQaConfirmDeactivate = async () => {
+    if (!qaDeactivatingClass) return;
+    setQaDeactivating(true);
+    try {
+      await timetableService.deactivateClass(qaDeactivatingClass.id);
+      toast.success('Class deactivated');
+      setQaDeactivateOpen(false);
+      setQaDeactivatingClass(null);
+      setQaDeleteOpen(false);
+      setQaDeletingClass(null);
+      await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to deactivate');
+    } finally {
+      setQaDeactivating(false);
+    }
+  };
+
+  const handleQaActivate = async (cls: TimetableClass) => {
+    try {
+      await timetableService.activateClass(cls.id);
+      toast.success('Class activated');
+      await loadTimetable();
+      window.dispatchEvent(new CustomEvent('class-updated'));
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to activate');
     }
   };
 
@@ -617,6 +670,22 @@ export default function Timetable() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select
+                    value={qaFilters.classStatus}
+                    onValueChange={(v) => {
+                      setQaPage(1);
+                      setQaFilters((f) => ({ ...f, classStatus: v as 'active' | 'inactive' | 'all' }));
+                    }}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex-1">
                   <Input
@@ -669,6 +738,28 @@ export default function Timetable() {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
+                            {qaRawClasses[t.id]?.isActive === false ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-[#015F2B]"
+                                onClick={() => qaRawClasses[t.id] && handleQaActivate(qaRawClasses[t.id])}
+                                aria-label={`Activate ${t.course}`}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => qaRawClasses[t.id] && openQaDeactivate(qaRawClasses[t.id])}
+                                aria-label={`Deactivate ${t.course}`}
+                              >
+                                <EyeOff className="h-4 w-4 text-amber-700" />
+                              </Button>
+                            )}
                             <Button
                               type="button"
                               variant="ghost"
@@ -730,6 +821,30 @@ export default function Timetable() {
               <Button variant="destructive" onClick={handleQaConfirmDelete} disabled={qaDeleting}>
                 {qaDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={qaDeactivateOpen} onOpenChange={setQaDeactivateOpen}>
+          <DialogContent className="w-[95vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Deactivate Class</DialogTitle>
+              <DialogDescription>
+                Deactivate &quot;{qaDeactivatingClass?.name || qaDeactivatingClass?.course?.name}&quot;? It will be hidden from schedules and class lists but kept for records.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setQaDeactivateOpen(false)} disabled={qaDeactivating}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-amber-700 hover:bg-amber-800 text-white"
+                onClick={handleQaConfirmDeactivate}
+                disabled={qaDeactivating}
+              >
+                {qaDeactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Deactivate
               </Button>
             </DialogFooter>
           </DialogContent>

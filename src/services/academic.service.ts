@@ -266,7 +266,14 @@ export const academicService = {
     }
   },
 
-  getClasses: async (params?: { courseId?: string; schoolId?: string; programIntakeId?: string; page?: number; limit?: number }): Promise<{ data: Class[]; total: number; page: number; pageSize: number }> => {
+  getClasses: async (params?: {
+    courseId?: string;
+    schoolId?: string;
+    programIntakeId?: string;
+    page?: number;
+    limit?: number;
+    classStatus?: 'active' | 'inactive' | 'all';
+  }): Promise<{ data: Class[]; total: number; page: number; pageSize: number }> => {
     try {
       const query = new URLSearchParams();
       if (params?.courseId) query.set('courseId', params.courseId);
@@ -274,6 +281,7 @@ export const academicService = {
       if (params?.programIntakeId) query.set('programIntakeId', params.programIntakeId);
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
+      if (params?.classStatus) query.set('classStatus', params.classStatus);
       const res = await api.get<{ data: Class[]; total: number; page: number; pageSize: number }>('/academic/classes' + (query.toString() ? '?' + query.toString() : ''));
       return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 20 };
     } catch (error) {
@@ -414,6 +422,16 @@ export const academicService = {
       console.error('Error deleting class:', error);
       throw error;
     }
+  },
+
+  deactivateClass: async (id: string): Promise<Class> => {
+    const res = await api.post<{ data: Class }>(`/academic/classes/${id}/deactivate`, {});
+    return (res as { data?: Class })?.data ?? (res as Class);
+  },
+
+  activateClass: async (id: string): Promise<Class> => {
+    const res = await api.post<{ data: Class }>(`/academic/classes/${id}/activate`, {});
+    return (res as { data?: Class })?.data ?? (res as Class);
   },
 
   // Academic Calendar
