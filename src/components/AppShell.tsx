@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, CheckCircle,
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound,
   ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { useRole, UserRole } from './RoleProvider';
+import { useRole } from './RoleProvider';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationService, type Notification } from '@/services/notification.service';
 import {
@@ -133,23 +133,89 @@ const ADMIN_CLINICAL_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Clinical Reports', icon: FileText, path: '/clinical/reports' },
 ];
 
-function adminClinicalNavFolder(): SidebarItem {
-  return {
-    type: 'folder',
-    id: 'clinicals',
-    label: 'Clinicals',
-    icon: Briefcase,
-    children: ADMIN_CLINICAL_NAV_CHILDREN,
-  };
+const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
+  { label: 'Students', icon: Users, path: '/admin-students' },
+  { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
+  { label: 'System accounts', icon: UserCog, path: '/admin-users' },
+  { label: 'Roles & Permissions', icon: KeyRound, path: '/admin-roles' },
+];
+
+const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon }> = [
+  { label: 'Timetable', path: '/timetable', icon: Calendar },
+  { label: 'Timetable Builder', path: '/timetable-builder', icon: Calendar },
+  { label: 'Lecture Records', path: '/lecture-records', icon: BookOpen },
+  { label: 'Cancellations', path: '/cancellations', icon: CalendarX },
+  { label: 'Student Records', path: '/student-records', icon: Users },
+  { label: 'Curriculum', path: '/curriculum-management', icon: ClipboardList },
+  { label: 'Mark Presence', path: '/presence', icon: MapPin },
+  { label: 'Course Attendance', path: '/lecturer-course-attendance', icon: UserCheck },
+  { label: 'Performance', path: '/lecturer-performance', icon: BarChart },
+  { label: 'My Classes', path: '/student-classes', icon: BookOpen },
+  { label: 'Attendance History', path: '/student-history', icon: Clock },
+  { label: 'University Overview', path: '/management-overview', icon: BarChart },
+  { label: 'Department Stats', path: '/management-departments', icon: School },
+  { label: 'Staff Performance', path: '/management-staff-performance', icon: Users },
+  { label: 'Lecturer Performance', path: '/management-lecturer-performance', icon: UserCheck },
+  { label: 'Student Performance', path: '/management-student-performance', icon: GraduationCap },
+  { label: 'Reports', path: '/reports', icon: FileText },
+  { label: 'Courses', path: '/admin-courses', icon: BookOpen },
+  { label: 'Classes', path: '/admin-classes', icon: School },
+  { label: 'Timetables', path: '/admin-timetables', icon: Calendar },
+  { label: 'Schools', path: '/admin-schools', icon: Building },
+  { label: 'Venues', path: '/admin-venues', icon: MapPin },
+  { label: 'Calendar', path: '/admin-calendar', icon: Calendar },
+  { label: 'Strategic Goals', path: '/admin-strategic-goals', icon: TrendingUp },
+  { label: 'Settings', path: '/admin-settings', icon: Settings },
+];
+
+function navAllowed(userPermissions: string[], path: string): boolean {
+  const basePath = path.split('?')[0];
+  const required = NAV_PERMISSION[path] ?? NAV_PERMISSION[basePath];
+  if (!required) return false;
+  return hasAnyPermission(userPermissions, required);
 }
 
-function adminClinicalNavItems(): SidebarItem[] {
-  return ADMIN_CLINICAL_NAV_CHILDREN.map(child => ({
-    type: 'single' as const,
-    label: child.label,
-    icon: child.icon,
-    path: child.path,
-  }));
+function buildNavFromPermissions(userPermissions: string[]): SidebarItem[] {
+  const allow = (path: string) => navAllowed(userPermissions, path);
+  const items: SidebarItem[] = [
+    { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+  ];
+
+  const clinicalChildren = ADMIN_CLINICAL_NAV_CHILDREN.filter((c) => allow(c.path));
+  if (clinicalChildren.length === 1) {
+    const only = clinicalChildren[0];
+    items.push({ type: 'single', label: only.label, icon: only.icon, path: only.path });
+  } else if (clinicalChildren.length > 1) {
+    items.push({
+      type: 'folder',
+      id: 'clinicals',
+      label: 'Clinicals',
+      icon: Briefcase,
+      children: clinicalChildren,
+    });
+  }
+
+  for (const entry of FLAT_NAV_CANDIDATES) {
+    if (allow(entry.path)) {
+      items.push({ type: 'single', label: entry.label, path: entry.path, icon: entry.icon });
+    }
+  }
+
+  const adminUserChildren = ADMIN_USERS_NAV_CHILDREN.filter((c) => allow(c.path));
+  if (adminUserChildren.length === 1) {
+    const only = adminUserChildren[0];
+    items.push({ type: 'single', label: only.label, icon: only.icon, path: only.path });
+  } else if (adminUserChildren.length > 1) {
+    items.push({
+      type: 'folder',
+      id: 'users',
+      label: 'Users',
+      icon: Users,
+      children: adminUserChildren,
+    });
+  }
+
+  return items;
 }
 
 function navItemMatches(path: string, pathname: string, search: string): boolean {
@@ -203,14 +269,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   useEffect(() => {
-    if (role !== 'Admin') return;
     if (isPathUnderAdminUsersSection(location.pathname)) {
       setNavFolderOpen('users', true);
     }
     if (isPathUnderAdminClinicalSection(location.pathname)) {
       setNavFolderOpen('clinicals', true);
     }
-  }, [role, location.pathname]);
+  }, [location.pathname]);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -292,144 +357,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const getNavItems = (currentRole: UserRole): SidebarItem[] => {
-    if (
-      !currentRole ||
-      !['QA', 'QAClinicals', 'ClinicalCoordinator', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(
-        currentRole
-      )
-    ) {
-      console.warn('Invalid role detected:', currentRole);
-      return [
-        { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-        { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
-        { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
-      ];
-    }
-
-    switch (currentRole) {
-      case 'QAClinicals':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Instructors', icon: UsersRound, path: '/clinical/instructors' },
-          { type: 'single', label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
-          { type: 'single', label: 'Sessions', icon: BookOpen, path: '/clinical/sessions' },
-          { type: 'single', label: 'Attendance', icon: UserCheck, path: '/clinical/attendance' },
-          { type: 'single', label: 'Reports', icon: FileText, path: '/clinical/reports' },
-        ];
-      case 'ClinicalCoordinator':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Clinical Sites', icon: MapPin, path: '/clinical/sites' },
-          { type: 'single', label: 'Site Team', icon: UsersRound, path: '/clinical/site-team' },
-          { type: 'single', label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
-          { type: 'single', label: 'Eligibility Policies', icon: UserCheck, path: '/clinical/policies' },
-          { type: 'single', label: 'Verify Sessions', icon: CheckCircle, path: '/clinical/sessions' },
-          { type: 'single', label: 'Reports', icon: FileText, path: '/clinical/reports' },
-        ];
-      case 'QA':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Timetable', icon: Calendar, path: '/timetable' },
-          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          { type: 'single', label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
-          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { type: 'single', label: 'Student Records', icon: Users, path: '/student-records' },
-          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
-        ];
-      case 'Lecturer':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'My Timetable', icon: Calendar, path: '/timetable' },
-          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { type: 'single', label: 'Course Attendance', icon: UserCheck, path: '/lecturer-course-attendance' },
-          { type: 'single', label: 'Performance', icon: BarChart, path: '/lecturer-performance' },
-        ];
-      case 'Student':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'My Classes', icon: BookOpen, path: '/student-classes' },
-          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { type: 'single', label: 'Attendance History', icon: Clock, path: '/student-history' },
-        ];
-      case 'Staff':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { type: 'single', label: 'Attendance History', icon: Clock, path: '/student-history' },
-        ];
-      case 'Management':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'University Overview', icon: BarChart, path: '/management-overview' },
-          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          ...adminClinicalNavItems(),
-          { type: 'single', label: 'Department Stats', icon: School, path: '/management-departments' },
-          { type: 'single', label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
-          { type: 'single', label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
-          { type: 'single', label: 'Student Performance', icon: GraduationCap, path: '/management-student-performance' },
-          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
-        ];
-      case 'Admin':
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
-          { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          adminClinicalNavFolder(),
-          {
-            type: 'folder',
-            id: 'users',
-            label: 'Users',
-            icon: Users,
-            children: [
-              { label: 'Students', path: '/admin-students', icon: Users },
-              { label: 'Lecturers', path: '/admin-lecturers', icon: GraduationCap },
-              { label: 'System accounts', path: '/admin-users', icon: UserCog },
-              { label: 'Roles & Permissions', path: '/admin-roles', icon: KeyRound },
-            ],
-          },
-          { type: 'single', label: 'Courses', icon: BookOpen, path: '/admin-courses' },
-          { type: 'single', label: 'Classes', icon: School, path: '/admin-classes' },
-          { type: 'single', label: 'Timetables', icon: Calendar, path: '/admin-timetables' },
-          { type: 'single', label: 'Schools', icon: Building, path: '/admin-schools' },
-          { type: 'single', label: 'Venues', icon: MapPin, path: '/admin-venues' },
-          { type: 'single', label: 'Calendar', icon: Calendar, path: '/admin-calendar' },
-          { type: 'single', label: 'Strategic Goals', icon: TrendingUp, path: '/admin-strategic-goals' },
-          { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
-          { type: 'single', label: 'Settings', icon: Settings, path: '/admin-settings' },
-        ];
-      default:
-        return [
-          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-          { type: 'single', label: 'Mark Presence', icon: MapPin, path: '/presence' },
-          { type: 'single', label: 'Reports', icon: FileText, path: '/reports' },
-        ];
-    }
-  };
-
-  const navItems = getNavItems(role);
-  const enforcePermissions = String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true';
   const userPermissions = user?.permissions || [];
-  const allowedByPermission = (path: string) => {
-    if (!enforcePermissions) return true;
-    const basePath = path.split('?')[0];
-    return hasAnyPermission(userPermissions, NAV_PERMISSION[path] ?? NAV_PERMISSION[basePath]);
-  };
-  const filteredNavItems = enforcePermissions
-    ? navItems
-        .map((item) => {
-          if (item.type === 'single') {
-            return allowedByPermission(item.path) ? item : null;
-          }
-          const children = item.children.filter((c) => allowedByPermission(c.path));
-          return children.length ? { ...item, children } : null;
-        })
-        .filter(Boolean) as SidebarItem[]
-    : navItems;
+  const filteredNavItems = buildNavFromPermissions(userPermissions);
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
   const headerPageTitle = getHeaderTitle(location.pathname, location.search, filteredNavItems);

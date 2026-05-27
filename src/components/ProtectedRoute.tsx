@@ -17,7 +17,9 @@ function ProtectedRouteContent({ children, allowedRoles, requiredPermissions, re
   
   const currentRole = role || userRole;
   const permissions = user?.permissions || [];
-  const enforcePermissions = String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true';
+  const enforcePermissions =
+    String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true' ||
+    !!(requiredPermissionSets?.length || requiredPermissions?.length);
 
   if (enforcePermissions) {
     const have = new Set(permissions);
@@ -28,10 +30,8 @@ function ProtectedRouteContent({ children, allowedRoles, requiredPermissions, re
       const ok = requiredPermissions.some((p) => have.has(p));
       if (!ok) return <Navigate to="/dashboard" replace />;
     }
-  } else {
-    if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
-      return <Navigate to="/dashboard" replace />;
-    }
+  } else if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

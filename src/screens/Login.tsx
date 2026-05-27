@@ -24,13 +24,13 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { login, isAuthenticated, userRole } = useAuth();
+  const { login, isAuthenticated, userRole, user } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(homePathForRole(userRole), { replace: true });
+      navigate(homePathForRole(userRole, user?.permissions), { replace: true });
     }
-  }, [isAuthenticated, navigate, userRole]);
+  }, [isAuthenticated, navigate, userRole, user?.permissions]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +51,16 @@ function LoginContent() {
       }
       toast.success('Login successful! Welcome back.');
       const savedRole = typeof window !== 'undefined' ? localStorage.getItem('kcu-role') : null;
-      navigate(homePathForRole(savedRole));
+      let savedPermissions: string[] | undefined;
+      if (typeof window !== 'undefined') {
+        try {
+          const savedUser = JSON.parse(localStorage.getItem('kcu-user') || 'null');
+          savedPermissions = savedUser?.permissions;
+        } catch {
+          savedPermissions = undefined;
+        }
+      }
+      navigate(homePathForRole(savedRole, savedPermissions));
     } catch (err: any) {
       const errorMessage = err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.';
       setError(errorMessage);

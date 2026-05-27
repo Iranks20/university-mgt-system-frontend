@@ -53,7 +53,17 @@ export function defaultClinicalTab(access: ClinicalAccess): string {
   return 'sites';
 }
 
-export function homePathForRole(role: string | null): string {
+export function homePathForPermissions(permissions: string[] | undefined): string {
+  const access = buildClinicalAccess(permissions);
+  if (access.canRecordSessions) return CLINICAL_ROUTES.sessions;
+  if (access.canManageSites || access.canVerifySessions) return CLINICAL_ROUTES.sites;
+  if (access.canViewRotations) return CLINICAL_ROUTES.rotations;
+  if (access.canViewReports) return CLINICAL_ROUTES.reports;
+  return '/dashboard';
+}
+
+export function homePathForRole(role: string | null, permissions?: string[]): string {
+  if (permissions?.length) return homePathForPermissions(permissions);
   if (role === 'QAClinicals') return CLINICAL_ROUTES.sessions;
   if (role === 'ClinicalCoordinator') return CLINICAL_ROUTES.sites;
   return '/dashboard';

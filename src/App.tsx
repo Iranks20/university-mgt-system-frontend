@@ -62,10 +62,10 @@ const CLINICAL_ROUTE_GUARD = {
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
-	const { isAuthenticated, userRole } = useAuth()
+	const { isAuthenticated, userRole, user } = useAuth()
 	
 	if (isAuthenticated) {
-		return <Navigate to={homePathForRole(userRole)} replace />
+		return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
 	}
 	
 	return <>{children}</>

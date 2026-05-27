@@ -13,6 +13,7 @@ on:
 
 env:
   VITE_API_BASE_URL: /api/v1
+  VITE_RBAC_UI_ENFORCE_PERMISSIONS: "true"
 
 jobs:
   build-and-test:
