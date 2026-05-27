@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound,
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, CheckCircle,
   ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -27,6 +27,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
+  if (r === 'QAClinicals') return 'QA Clinicals';
+  if (r === 'ClinicalCoordinator') return 'Clinical Coordinator';
   if (r === 'Staff') return 'Non-Teaching Staff';
   return r;
 }
@@ -38,8 +40,23 @@ const ADMIN_USERS_CHILD_PATHS = [
   '/admin-roles',
 ] as const;
 
+const ADMIN_CLINICAL_CHILD_PATHS = [
+  '/clinical/sites',
+  '/clinical/site-team',
+  '/clinical/instructors',
+  '/clinical/rotations',
+  '/clinical/policies',
+  '/clinical/sessions',
+  '/clinical/attendance',
+  '/clinical/reports',
+] as const;
+
 function isPathUnderAdminUsersSection(pathname: string): boolean {
   return ADMIN_USERS_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isPathUnderAdminClinicalSection(pathname: string): boolean {
+  return ADMIN_CLINICAL_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 type SidebarChild = { label: string; path: string; icon: LucideIcon };
@@ -63,7 +80,15 @@ const NAV_PERMISSION: Record<string, string[] | string[][]> = {
   '/admin-settings': ['settings.read'],
   '/timetable': [['timetable.student_me'], ['academic.personal_schedule', 'qa.lecturer_portal'], ['timetable.ops']],
   '/timetable-builder': [['academic.read', 'academic.venues', 'academic.program_intakes', 'academic.write', 'staff.read']],
-  '/clinical-rotations': [['clinical.sessions.record'], ['clinical.reports.view'], ['clinical.sites.manage']],
+  '/clinical-rotations': [['clinical.sessions.record'], ['clinical.reports.view'], ['clinical.sites.manage'], ['clinical.sessions.verify'], ['clinical.assignments.manage'], ['clinical.instructors.manage'], ['clinical.rotations.manage']],
+  '/clinical/sites': [['clinical.sites.manage'], ['clinical.reports.view']],
+  '/clinical/site-team': [['clinical.assignments.manage']],
+  '/clinical/instructors': [['clinical.instructors.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']],
+  '/clinical/rotations': [['clinical.rotations.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']],
+  '/clinical/policies': [['clinical.policies.manage'], ['clinical.sites.manage'], ['clinical.rotations.manage']],
+  '/clinical/sessions': [['clinical.sessions.record'], ['clinical.sessions.verify']],
+  '/clinical/attendance': [['clinical.sessions.record']],
+  '/clinical/reports': [['clinical.reports.view']],
   '/lecture-records': [['qa.review', 'qa.write', 'qa.import', 'staff.read', 'enrollment.class_read', 'students.attendance_staff']],
   '/student-records': [['students.read', 'students.attendance_staff', 'academic.read']],
   '/reports': [['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops']],
@@ -92,10 +117,52 @@ function hasAnyPermission(userPermissions: string[] | undefined, required: strin
   return list.some((p) => have.has(p));
 }
 
-function getHeaderTitle(pathname: string, items: SidebarItem[]): string {
+function navTarget(path: string): { pathname: string; search: string } {
+  const [pathname, query = ''] = path.split('?');
+  return { pathname, search: query ? `?${query}` : '' };
+}
+
+const ADMIN_CLINICAL_NAV_CHILDREN: SidebarChild[] = [
+  { label: 'Clinical Sites', icon: MapPin, path: '/clinical/sites' },
+  { label: 'Site Team', icon: UsersRound, path: '/clinical/site-team' },
+  { label: 'Instructors', icon: UsersRound, path: '/clinical/instructors' },
+  { label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
+  { label: 'Eligibility Policies', icon: UserCheck, path: '/clinical/policies' },
+  { label: 'Sessions', icon: BookOpen, path: '/clinical/sessions' },
+  { label: 'Attendance', icon: UserCheck, path: '/clinical/attendance' },
+  { label: 'Clinical Reports', icon: FileText, path: '/clinical/reports' },
+];
+
+function adminClinicalNavFolder(): SidebarItem {
+  return {
+    type: 'folder',
+    id: 'clinicals',
+    label: 'Clinicals',
+    icon: Briefcase,
+    children: ADMIN_CLINICAL_NAV_CHILDREN,
+  };
+}
+
+function adminClinicalNavItems(): SidebarItem[] {
+  return ADMIN_CLINICAL_NAV_CHILDREN.map(child => ({
+    type: 'single' as const,
+    label: child.label,
+    icon: child.icon,
+    path: child.path,
+  }));
+}
+
+function navItemMatches(path: string, pathname: string, search: string): boolean {
+  const target = navTarget(path);
+  if (pathname !== target.pathname && !pathname.startsWith(`${target.pathname}/`)) return false;
+  if (!target.search) return true;
+  return search === target.search;
+}
+
+function getHeaderTitle(pathname: string, search: string, items: SidebarItem[]): string {
   for (const item of items) {
     if (item.type === 'single') {
-      if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
+      if (navItemMatches(item.path, pathname, search)) {
         return item.label;
       }
     } else {
@@ -124,13 +191,24 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [usersNavOpen, setUsersNavOpen] = useState(() => isPathUnderAdminUsersSection(location.pathname));
+  const [openNavFolders, setOpenNavFolders] = useState<Record<string, boolean>>(() => ({
+    users: isPathUnderAdminUsersSection(location.pathname),
+    clinicals: isPathUnderAdminClinicalSection(location.pathname),
+  }));
+
+  const setNavFolderOpen = (id: string, open: boolean) => {
+    setOpenNavFolders(prev => ({ ...prev, [id]: open }));
+  };
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   useEffect(() => {
-    if (role === 'Admin' && isPathUnderAdminUsersSection(location.pathname)) {
-      setUsersNavOpen(true);
+    if (role !== 'Admin') return;
+    if (isPathUnderAdminUsersSection(location.pathname)) {
+      setNavFolderOpen('users', true);
+    }
+    if (isPathUnderAdminClinicalSection(location.pathname)) {
+      setNavFolderOpen('clinicals', true);
     }
   }, [role, location.pathname]);
 
@@ -215,7 +293,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   const getNavItems = (currentRole: UserRole): SidebarItem[] => {
-    if (!currentRole || !['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(currentRole)) {
+    if (
+      !currentRole ||
+      !['QA', 'QAClinicals', 'ClinicalCoordinator', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(
+        currentRole
+      )
+    ) {
       console.warn('Invalid role detected:', currentRole);
       return [
         { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
@@ -225,12 +308,30 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
 
     switch (currentRole) {
+      case 'QAClinicals':
+        return [
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Instructors', icon: UsersRound, path: '/clinical/instructors' },
+          { type: 'single', label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
+          { type: 'single', label: 'Sessions', icon: BookOpen, path: '/clinical/sessions' },
+          { type: 'single', label: 'Attendance', icon: UserCheck, path: '/clinical/attendance' },
+          { type: 'single', label: 'Reports', icon: FileText, path: '/clinical/reports' },
+        ];
+      case 'ClinicalCoordinator':
+        return [
+          { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+          { type: 'single', label: 'Clinical Sites', icon: MapPin, path: '/clinical/sites' },
+          { type: 'single', label: 'Site Team', icon: UsersRound, path: '/clinical/site-team' },
+          { type: 'single', label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
+          { type: 'single', label: 'Eligibility Policies', icon: UserCheck, path: '/clinical/policies' },
+          { type: 'single', label: 'Verify Sessions', icon: CheckCircle, path: '/clinical/sessions' },
+          { type: 'single', label: 'Reports', icon: FileText, path: '/clinical/reports' },
+        ];
       case 'QA':
         return [
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Timetable', icon: Calendar, path: '/timetable' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
           { type: 'single', label: 'Lecture Records', icon: BookOpen, path: '/lecture-records' },
           { type: 'single', label: 'Cancellations', icon: CalendarX, path: '/cancellations' },
           { type: 'single', label: 'Student Records', icon: Users, path: '/student-records' },
@@ -265,7 +366,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'University Overview', icon: BarChart, path: '/management-overview' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
+          ...adminClinicalNavItems(),
           { type: 'single', label: 'Department Stats', icon: School, path: '/management-departments' },
           { type: 'single', label: 'Staff Performance', icon: Users, path: '/management-staff-performance' },
           { type: 'single', label: 'Lecturer Performance', icon: UserCheck, path: '/management-lecturer-performance' },
@@ -278,7 +379,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
           { type: 'single', label: 'Curriculum', icon: ClipboardList, path: '/curriculum-management' },
           { type: 'single', label: 'Timetable Builder', icon: Calendar, path: '/timetable-builder' },
-          { type: 'single', label: 'Clinical Rotations', icon: Briefcase, path: '/clinical-rotations' },
+          adminClinicalNavFolder(),
           {
             type: 'folder',
             id: 'users',
@@ -315,7 +416,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const userPermissions = user?.permissions || [];
   const allowedByPermission = (path: string) => {
     if (!enforcePermissions) return true;
-    return hasAnyPermission(userPermissions, NAV_PERMISSION[path]);
+    const basePath = path.split('?')[0];
+    return hasAnyPermission(userPermissions, NAV_PERMISSION[path] ?? NAV_PERMISSION[basePath]);
   };
   const filteredNavItems = enforcePermissions
     ? navItems
@@ -330,13 +432,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     : navItems;
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
-  const headerPageTitle = getHeaderTitle(location.pathname, filteredNavItems);
+  const headerPageTitle = getHeaderTitle(location.pathname, location.search, filteredNavItems);
 
   const renderNavLinks = (onNavigate?: () => void) =>
     filteredNavItems.map(item => {
       if (item.type === 'single') {
-        const isActive =
-          location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+        const isActive = navItemMatches(item.path, location.pathname, location.search);
         return (
           <li key={item.path}>
             <Link
@@ -357,9 +458,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       const folderActive = item.children.some(
         c => location.pathname === c.path || location.pathname.startsWith(`${c.path}/`)
       );
+      const folderOpen = openNavFolders[item.id] ?? false;
       return (
         <li key={item.id}>
-          <Collapsible open={usersNavOpen} onOpenChange={setUsersNavOpen}>
+          <Collapsible open={folderOpen} onOpenChange={open => setNavFolderOpen(item.id, open)}>
             <CollapsibleTrigger
               className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-gray-50 ${
                 folderActive ? 'text-primary font-medium' : 'text-gray-600'
@@ -370,7 +472,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 {item.label}
               </span>
               <ChevronDown
-                className={`h-4 w-4 shrink-0 transition-transform ${usersNavOpen ? 'rotate-180' : ''}`}
+                className={`h-4 w-4 shrink-0 transition-transform ${folderOpen ? 'rotate-180' : ''}`}
               />
             </CollapsibleTrigger>
             <CollapsibleContent>

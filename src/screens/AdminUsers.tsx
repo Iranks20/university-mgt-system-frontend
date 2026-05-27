@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { formatRoleLabel, SYSTEM_ACCOUNT_ROLES } from '@/lib/role-labels';
 
 type UserRow = {
   id: string;
@@ -23,7 +24,7 @@ type UserRow = {
   customRoles?: { id: string; code: string; name: string; isActive: boolean }[];
 };
 
-const ROLE_FILTER_OPTIONS = ['QA', 'Staff', 'Management', 'Admin'];
+const ROLE_FILTER_OPTIONS = [...SYSTEM_ACCOUNT_ROLES];
 
 const PAGE_SIZE = 20;
 
@@ -47,19 +48,7 @@ export default function AdminUsers() {
   const [customRoles, setCustomRoles] = useState<{ id: string; code: string; name: string; isActive: boolean }[]>([]);
   const [selectedCustomRoleIds, setSelectedCustomRoleIds] = useState<Set<string>>(new Set());
   const [roleSearch, setRoleSearch] = useState('');
-  const [systemRoles, setSystemRoles] = useState<string[]>([]);
-
-  useEffect(() => {
-    adminService
-      .getRolePermissions()
-      .then((snap) => setSystemRoles((snap.roles as unknown as string[]) || []))
-      .catch(() => setSystemRoles([]));
-  }, []);
-
-  const systemAccountRoles = useMemo(() => {
-    const fromApi = systemRoles.length ? systemRoles : ['QA', 'Management', 'Admin'];
-    return fromApi.filter((r) => ['QA', 'Management', 'Admin', 'Staff'].includes(r));
-  }, [systemRoles]);
+  const systemAccountRoles = useMemo(() => [...SYSTEM_ACCOUNT_ROLES], []);
 
   const loadUsers = async (pageNum: number = page) => {
     setLoading(true);
@@ -227,7 +216,10 @@ export default function AdminUsers() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-        <p className="text-gray-500">Manage QA, Management and Admin accounts. Staff with the Staff role are created under Users → Staff.</p>
+        <p className="text-gray-500">
+          Manage system accounts: university QA, clinical QA, clinical coordinator, management, admin, and staff.
+          Lecturers and students are created under their respective modules.
+        </p>
       </div>
 
       <Card>
@@ -235,7 +227,9 @@ export default function AdminUsers() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <CardTitle>All users</CardTitle>
-              <CardDescription>Create, edit and reset passwords for QA, Management and Admin users.</CardDescription>
+              <CardDescription>
+                Create, edit and reset passwords for QA, QA Clinicals, Clinical Coordinator, Management, Admin, and Staff users.
+              </CardDescription>
             </div>
             <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={() => setAddOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Add user
@@ -253,7 +247,7 @@ export default function AdminUsers() {
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
                 {ROLE_FILTER_OPTIONS.map(r => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                  <SelectItem key={r} value={r}>{formatRoleLabel(r)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -283,7 +277,7 @@ export default function AdminUsers() {
                       <TableRow key={u.id}>
                         <TableCell className="font-medium">{u.name}</TableCell>
                         <TableCell>{u.email}</TableCell>
-                        <TableCell><Badge variant="secondary">{u.role}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{formatRoleLabel(u.role)}</Badge></TableCell>
                         <TableCell>{u.isActive ? <Badge className="bg-green-100 text-green-800">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
                         <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
                         <TableCell className="text-right">
@@ -319,7 +313,10 @@ export default function AdminUsers() {
         <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
-            <DialogDescription>Create a new system user (QA, Management or Admin). They can log in with email and the password you set.</DialogDescription>
+            <DialogDescription>
+              Create a new system user. Choose QA (university), QA Clinicals, Clinical Coordinator, Management, Admin, or Staff.
+              They can log in with email and the password you set.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
@@ -340,7 +337,7 @@ export default function AdminUsers() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {systemAccountRoles.map(r => (
-                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                    <SelectItem key={r} value={r}>{formatRoleLabel(r)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -374,7 +371,7 @@ export default function AdminUsers() {
                     ? ['Staff', ...systemAccountRoles]
                     : systemAccountRoles
                   ).map(r => (
-                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                    <SelectItem key={r} value={r}>{formatRoleLabel(r)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

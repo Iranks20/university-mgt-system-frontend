@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Label } from '@/components/ui/label';
 import { Link } from '@/lib';
 import { useAuth } from '../contexts/AuthContext';
+import { homePathForRole } from '@/lib/clinical-access';
 import { toast } from 'sonner';
 
 function LoginContent() {
@@ -23,13 +24,13 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, userRole } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate(homePathForRole(userRole), { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, userRole]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +50,8 @@ function LoginContent() {
         await login('', password, value);
       }
       toast.success('Login successful! Welcome back.');
-      navigate('/dashboard');
+      const savedRole = typeof window !== 'undefined' ? localStorage.getItem('kcu-role') : null;
+      navigate(homePathForRole(savedRole));
     } catch (err: any) {
       const errorMessage = err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.';
       setError(errorMessage);

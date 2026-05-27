@@ -6,7 +6,15 @@ export interface SystemSettings {
   };
 }
 
-export type AdminRole = 'QA' | 'Lecturer' | 'Student' | 'Staff' | 'Management' | 'Admin';
+export type AdminRole =
+  | 'QA'
+  | 'QAClinicals'
+  | 'ClinicalCoordinator'
+  | 'Lecturer'
+  | 'Student'
+  | 'Staff'
+  | 'Management'
+  | 'Admin';
 
 export interface RolePermissionsSnapshot {
   roles: AdminRole[];

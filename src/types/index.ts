@@ -4,7 +4,15 @@
  */
 
 // ==================== AUTHENTICATION & AUTHORIZATION ====================
-export type UserRole = 'QA' | 'Lecturer' | 'Student' | 'Staff' | 'Management' | 'Admin';
+export type UserRole =
+  | 'QA'
+  | 'QAClinicals'
+  | 'ClinicalCoordinator'
+  | 'Lecturer'
+  | 'Student'
+  | 'Staff'
+  | 'Management'
+  | 'Admin';
 
 export interface User {
   id: string;

@@ -81,11 +81,20 @@ class ApiClient {
     return data.data !== undefined ? data.data : data;
   }
 
+  private buildQueryString(params?: Record<string, unknown>): string {
+    if (!params) return '';
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === '') continue;
+      if (typeof value === 'string' && value === 'undefined') continue;
+      search.set(key, String(value));
+    }
+    const qs = search.toString();
+    return qs ? `?${qs}` : '';
+  }
+
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    const queryString = params
-      ? '?' + new URLSearchParams(params as any).toString()
-      : '';
-    return this.request<T>(endpoint + queryString, { method: 'GET' });
+    return this.request<T>(endpoint + this.buildQueryString(params), { method: 'GET' });
   }
 
   async post<T>(endpoint: string, body?: any, options?: RequestInit): Promise<T> {
@@ -100,6 +109,13 @@ class ApiClient {
   async put<T>(endpoint: string, body?: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  async patch<T>(endpoint: string, body?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     });
   }

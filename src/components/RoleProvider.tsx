@@ -1,7 +1,30 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-export type UserRole = 'QA' | 'Lecturer' | 'Student' | 'Staff' | 'Management' | 'Admin';
+export type UserRole =
+  | 'QA'
+  | 'QAClinicals'
+  | 'ClinicalCoordinator'
+  | 'Lecturer'
+  | 'Student'
+  | 'Staff'
+  | 'Management'
+  | 'Admin';
+
+const VALID_ROLES: UserRole[] = [
+  'QA',
+  'QAClinicals',
+  'ClinicalCoordinator',
+  'Lecturer',
+  'Student',
+  'Staff',
+  'Management',
+  'Admin',
+];
+
+function isValidRole(value: string | null | undefined): value is UserRole {
+  return !!value && VALID_ROLES.includes(value as UserRole);
+}
 
 type RoleContextType = {
   role: UserRole;
@@ -16,35 +39,30 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // Get initial role - prioritize userRole from AuthContext, then localStorage
   const getInitialRole = (): UserRole => {
     // First check AuthContext userRole
-    if (userRole && ['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(userRole)) {
-      return userRole as UserRole;
+    if (isValidRole(userRole)) {
+      return userRole;
     }
-    // Fallback to localStorage
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('kcu-role');
-      if (saved && ['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(saved)) {
-        return saved as UserRole;
+      if (isValidRole(saved)) {
+        return saved;
       }
     }
-    return 'QA'; // Default fallback
+    return 'QA';
   };
 
   const [role, setRoleState] = useState<UserRole>(() => getInitialRole());
 
   // Sync with AuthContext userRole whenever it changes
   useEffect(() => {
-    if (userRole && ['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(userRole)) {
-      // Only update if different to avoid unnecessary re-renders
+    if (isValidRole(userRole)) {
       if (userRole !== role) {
-        setRoleState(userRole as UserRole);
+        setRoleState(userRole);
       }
     } else if (!userRole && typeof window !== 'undefined') {
-      // If userRole is null, check localStorage as fallback
       const saved = localStorage.getItem('kcu-role');
-      if (saved && ['QA', 'Lecturer', 'Student', 'Staff', 'Management', 'Admin'].includes(saved)) {
-        if (saved !== role) {
-          setRoleState(saved as UserRole);
-        }
+      if (isValidRole(saved) && saved !== role) {
+        setRoleState(saved);
       }
     }
   }, [userRole, role]);

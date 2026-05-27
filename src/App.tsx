@@ -35,14 +35,37 @@ import LectureRecords from './screens/LectureRecords'
 import Cancellations from './screens/Cancellations'
 import CurriculumManagement from './screens/CurriculumManagement'
 import TimetableBuilder from './screens/TimetableBuilder'
-import ClinicalRotations from './screens/ClinicalRotations'
+import ClinicalLegacyRedirect from './screens/clinical/ClinicalLegacyRedirect'
+import ClinicalSitesPage from './screens/clinical/pages/ClinicalSitesPage'
+import ClinicalSiteTeamPage from './screens/clinical/pages/ClinicalSiteTeamPage'
+import ClinicalInstructorsPage from './screens/clinical/pages/ClinicalInstructorsPage'
+import ClinicalRotationsListPage from './screens/clinical/pages/ClinicalRotationsListPage'
+import ClinicalSessionsPage from './screens/clinical/pages/ClinicalSessionsPage'
+import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendancePage'
+import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
+import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
+import { homePathForRole } from './lib/clinical-access'
+
+const CLINICAL_ROLES = ['Admin', 'Management', 'QAClinicals', 'ClinicalCoordinator'] as const
+const CLINICAL_ROUTE_GUARD = {
+	allowedRoles: [...CLINICAL_ROLES],
+	requiredPermissionSets: [
+		['clinical.sessions.record'],
+		['clinical.reports.view'],
+		['clinical.sites.manage'],
+		['clinical.sessions.verify'],
+		['clinical.assignments.manage'],
+		['clinical.instructors.manage'],
+		['clinical.rotations.manage'],
+	],
+}
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
-	const { isAuthenticated } = useAuth()
+	const { isAuthenticated, userRole } = useAuth()
 	
 	if (isAuthenticated) {
-		return <Navigate to="/dashboard" replace />
+		return <Navigate to={homePathForRole(userRole)} replace />
 	}
 	
 	return <>{children}</>
@@ -67,17 +90,16 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute
 						requiredPermissionSets={[
-							// QA dashboard widgets
 							['analytics.core_dashboard', 'analytics.ops', 'qa.review'],
-							// Management/Admin dashboard widgets
 							['analytics.core_dashboard', 'analytics.ops', 'analytics.mgmt_overview', 'reports.access'],
-							// Lecturer dashboard widgets
 							['academic.personal_schedule', 'qa.lecturer_portal', 'staff.lecturer_me'],
 							['academic.personal_schedule', 'qa.lecturer_portal', 'staff.timeclock'],
-							// Student dashboard widgets
 							['students.self', 'settings.read', 'timetable.student_me', 'enrollment.self', 'students.attendance_self'],
-							// Staff dashboard widgets
 							['staff.timeclock'],
+							['clinical.sessions.record'],
+							['clinical.sessions.verify'],
+							['clinical.reports.view'],
+							['clinical.sites.manage'],
 						]}
 					>
 						<Dashboard />
@@ -315,21 +337,15 @@ function AppRoutes() {
 					</ProtectedRoute>
 				} 
 			/>
-			<Route
-				path="/clinical-rotations"
-				element={
-					<ProtectedRoute
-						allowedRoles={['Admin', 'Management', 'QA']}
-						requiredPermissionSets={[
-							['clinical.sessions.record'],
-							['clinical.reports.view'],
-							['clinical.sites.manage'],
-						]}
-					>
-						<ClinicalRotations />
-					</ProtectedRoute>
-				}
-			/>
+			<Route path="/clinical-rotations" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD}><ClinicalLegacyRedirect /></ProtectedRoute>} />
+			<Route path="/clinical/sites" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sites.manage'], ['clinical.reports.view']]}><ClinicalSitesPage /></ProtectedRoute>} />
+			<Route path="/clinical/site-team" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.assignments.manage']]}><ClinicalSiteTeamPage /></ProtectedRoute>} />
+			<Route path="/clinical/instructors" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.instructors.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalInstructorsPage /></ProtectedRoute>} />
+			<Route path="/clinical/rotations" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.rotations.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalRotationsListPage /></ProtectedRoute>} />
+			<Route path="/clinical/sessions" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalSessionsPage /></ProtectedRoute>} />
+			<Route path="/clinical/attendance" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sessions.record']]}><ClinicalAttendancePage /></ProtectedRoute>} />
+			<Route path="/clinical/reports" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.reports.view']]}><ClinicalReportsPage /></ProtectedRoute>} />
+			<Route path="/clinical/policies" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.policies.manage'], ['clinical.sites.manage'], ['clinical.rotations.manage']]}><ClinicalProgramPoliciesPage /></ProtectedRoute>} />
 			
 			{/* Admin Routes */}
 			<Route 

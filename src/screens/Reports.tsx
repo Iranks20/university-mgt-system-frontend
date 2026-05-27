@@ -227,7 +227,7 @@ export default function Reports() {
     const load = async () => {
       try {
         const list = await qaService.getSchoolSummaryReport(params);
-        const arr = Array.isArray(list) ? list : [];
+      const arr = Array.isArray(list) ? list : [];
         let scheduledBySchool: { schoolName: string; scheduledCount: number }[] = [];
         if (params?.dateFrom && params?.dateTo) {
           try {
@@ -237,23 +237,23 @@ export default function Reports() {
           }
         }
         const scheduledMap = new Map(scheduledBySchool.map((x) => [x.schoolName, x.scheduledCount]));
-        setSchoolPerformance(arr.map((s: any) => {
-          const taught = s.totalNoTaught ?? 0;
-          const untaught = s.noUntaught ?? 0;
-          const total = taught + untaught;
+      setSchoolPerformance(arr.map((s: any) => {
+        const taught = s.totalNoTaught ?? 0;
+        const untaught = s.noUntaught ?? 0;
+        const total = taught + untaught;
           const scheduled = scheduledMap.get(s.school ?? '') ?? undefined;
           const rateVsScheduled = scheduled != null && scheduled > 0 ? Math.round((taught / scheduled) * 1000) / 10 : undefined;
-          return {
-            name: s.school ?? '—',
-            taught,
-            untaught,
-            rate: total > 0 ? Math.round((taught / total) * 1000) / 10 : 0,
+        return {
+          name: s.school ?? '—',
+          taught,
+          untaught,
+          rate: total > 0 ? Math.round((taught / total) * 1000) / 10 : 0,
             scheduled,
             rateVsScheduled,
-          };
-        }));
+        };
+      }));
       } finally {
-        setSchoolsLoading(false);
+      setSchoolsLoading(false);
       }
     };
     load();
@@ -557,7 +557,7 @@ export default function Reports() {
           name: s.studentName ?? s.name ?? '—',
           registrationNumber: s.registrationNumber ?? s.studentNumber ?? '—',
           program: s.programCode ?? s.program ?? '—',
-          attendanceRate: s.attendanceRate ?? s.attendancePercent,
+        attendanceRate: s.attendanceRate ?? s.attendancePercent,
           missed: s.missedCount ?? s.missed ?? 0,
           expectedSessions: s.expectedSessions,
           attendedSessions: s.attendedSessions,
@@ -960,16 +960,16 @@ export default function Reports() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <Button variant="ghost" size="sm" className="h-8 px-2 gap-1" title="Download CSV" onClick={async () => {
-                                try {
+                              try {
                                   await reportService.downloadReport(report.id, 'csv');
                                   toast.success('CSV downloaded');
-                                } catch (error: any) {
-                                  console.error('Error downloading report:', error);
-                                  toast.error(`Failed to download: ${error?.message || 'Unknown error'}`);
-                                }
-                              }}>
+                              } catch (error: any) {
+                                console.error('Error downloading report:', error);
+                                toast.error(`Failed to download: ${error?.message || 'Unknown error'}`);
+                              }
+                            }}>
                                 <Download size={14} /> CSV
-                              </Button>
+                            </Button>
                               <Button variant="ghost" size="sm" className="h-8 px-2" title="Download Excel" onClick={async () => {
                                 try {
                                   await reportService.downloadReport(report.id, 'xlsx');
@@ -1835,8 +1835,8 @@ export default function Reports() {
                     )}
                   </>
                 )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
           </TabsContent>
         </Tabs>
 

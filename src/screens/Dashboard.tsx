@@ -29,6 +29,7 @@ import { QAAttendanceForm } from '@/features/qa/components/QAAttendanceForm';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { ClinicalRoleDashboard } from './ClinicalRoleDashboard';
 
 
 const COLORS = {
@@ -57,6 +58,10 @@ function DashboardContent() {
   switch (role) {
     case 'QA':
       content = <QADashboard />;
+      break;
+    case 'QAClinicals':
+    case 'ClinicalCoordinator':
+      content = <ClinicalRoleDashboard />;
       break;
     case 'Lecturer':
       content = <LecturerDashboard />;
