@@ -69,11 +69,7 @@
     "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
-  "overrides": {
-    "rollup": "4.57.1"
-  },
   "devDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.60.4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -87,9 +83,5 @@
     "tw-animate-css": "^1.3.5",
     "typescript": "~5.7.2",
     "vitest": "^2.1.9"
-  },
-  "optionalDependencies": {
-    "@esbuild/win32-arm64": "0.25.12",
-    "@rollup/rollup-win32-arm64-msvc": "4.57.1"
   }
 }
