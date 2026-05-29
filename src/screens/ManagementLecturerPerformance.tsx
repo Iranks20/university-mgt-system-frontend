@@ -199,14 +199,15 @@ export default function ManagementLecturerPerformance() {
     return <Badge {...config}>{status}</Badge>;
   };
 
-  const uniqueDepartments = Array.from(
-    lecturerPerformance.reduce((map, l) => {
-      if (l.departmentId) {
-        map.set(l.departmentId, l.department);
-      }
-      return map;
-    }, new Map<string, string>())
-  ).sort((a, b) => a[1].localeCompare(b[1]));
+  const departmentMap = lecturerPerformance.reduce<Map<string, string>>((map, l) => {
+    if (l.departmentId) {
+      map.set(l.departmentId, l.department);
+    }
+    return map;
+  }, new Map());
+  const uniqueDepartments = [...departmentMap.entries()].sort((a, b) =>
+    a[1].localeCompare(b[1])
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">

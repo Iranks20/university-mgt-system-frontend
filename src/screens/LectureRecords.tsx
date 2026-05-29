@@ -185,7 +185,7 @@ export default function LectureRecords() {
       )
         .then((results) => {
           const rosterMap = new Map<string, any>();
-          const map: Record<string, string> = {};
+      const map: Record<string, string> = {};
           results.forEach(([list, existing]) => {
             ((list as any[]) || []).forEach((enr: any) => {
               if (enr?.studentId && !rosterMap.has(enr.studentId)) {
@@ -655,7 +655,7 @@ export default function LectureRecords() {
       toast.error('Substitute lecturer cannot be the same as the scheduled lecturer.');
       return;
     }
-
+    
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
       lecturerName: selectedLecturerName.trim(),
@@ -846,7 +846,7 @@ export default function LectureRecords() {
       setSelectedSchool('');
       setClasses([]);
     }
-
+    
     setIsDialogOpen(true);
   };
 
@@ -1251,9 +1251,9 @@ export default function LectureRecords() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <Badge variant={getCommentBadgeVariant(record.comment)}>
+                        <Badge variant={getCommentBadgeVariant(record.comment)}>
                             {COMMENT_FILTER_LABELS[(record.comment || '').toUpperCase()] ?? record.comment}
-                          </Badge>
+                        </Badge>
                           {record.comment === 'SUBSTITUTED' && (record.substituteLecturerName || record.substituteLecturerId) && (
                             <span className="text-xs text-muted-foreground">
                               Sub: {record.substituteLecturerName
@@ -1687,20 +1687,20 @@ export default function LectureRecords() {
               <section className="space-y-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lecture identity</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="date">DATE *</Label>
-                    <Input
-                      id="date"
-                      name="date"
-                      type="date"
-                      required
+                <div className="space-y-2">
+                  <Label htmlFor="date">DATE *</Label>
+                  <Input 
+                    id="date" 
+                    name="date" 
+                    type="date" 
+                    required 
                       defaultValue={
                         currentRecordId !== null
                           ? formatDateForInput(records.find((r) => r.id === currentRecordId)?.date)
                           : formatDateForInput(new Date())
                       }
-                    />
-                  </div>
+                  />
+                </div>
                   <div className="space-y-2 lg:col-span-3">
                     <Label>LECTURER&apos;S NAME *</Label>
                     <Combobox
@@ -1735,33 +1735,33 @@ export default function LectureRecords() {
                       searchPlaceholder="Search lecturers by name or department..."
                       emptyText="No lecturer found."
                       initialDisplayCount={10}
-                    />
-                  </div>
+                  />
                 </div>
+              </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     <Label>DEPARTMENT</Label>
                     {lecturerAssignments && lecturerAssignments.departments.length > 0 ? (
-                      <Select
+                  <Select 
                         value={selectedDepartmentId}
-                        onValueChange={(value) => {
+                    onValueChange={(value) => {
                           setSelectedDepartmentId(value);
                           setSelectedClassId('');
                           setSelectedClassName('');
                           const dept = lecturerAssignments?.departments.find((d) => d.id === value);
                           setSelectedDepartmentName(dept?.name || '');
                         }}
-                      >
-                        <SelectTrigger>
+                  >
+                    <SelectTrigger>
                           <SelectValue placeholder="Select a department" />
-                        </SelectTrigger>
-                        <SelectContent>
+                    </SelectTrigger>
+                    <SelectContent>
                           {lecturerAssignments.departments.map((dept) => (
                             <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      ))}
+                    </SelectContent>
+                  </Select>
                     ) : (
                       <Input
                         value={selectedDepartmentName || 'Lecturer not assigned to any department'}
@@ -1769,14 +1769,14 @@ export default function LectureRecords() {
                         disabled
                       />
                     )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="class">CLASS *</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="class">CLASS *</Label>
                     {lecturerAssignments &&
                     selectedDepartmentId &&
                     lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId)?.classes.length ? (
-                      <Select
-                        name="class"
+                    <Select 
+                      name="class"
                         value={selectedClassId}
                         onValueChange={(value) => {
                           setSelectedClassId(value);
@@ -1784,82 +1784,82 @@ export default function LectureRecords() {
                           const cls = dept?.classes.find((c: { id: string; label: string }) => c.id === value);
                           setSelectedClassName(cls?.label || '');
                         }}
-                        required
-                      >
+                      required
+                    >
                         <SelectTrigger id="class">
-                          <SelectValue placeholder="Select a class" />
-                        </SelectTrigger>
-                        <SelectContent>
+                        <SelectValue placeholder="Select a class" />
+                      </SelectTrigger>
+                      <SelectContent>
                           {lecturerAssignments.departments
                             .find((d) => d.id === selectedDepartmentId)
                             ?.classes.map((cls) => (
                               <SelectItem key={cls.id} value={cls.id}>{cls.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        name="class"
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input 
+                      name="class" 
                         value={selectedClassName || ''}
                         onChange={(e) => setSelectedClassName(e.target.value)}
                         placeholder="Lecturer not assigned to any class"
-                      />
-                    )}
-                  </div>
+                    />
+                  )}
                 </div>
+              </div>
               </section>
 
               <section className="space-y-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scheduled timing</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="timeForStarting">TIME FOR STARTING (Scheduled) *</Label>
-                    <Input
-                      id="timeForStarting"
-                      name="timeForStarting"
-                      type="time"
-                      required
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeForStarting || '08:00' : '08:00'}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="timeOutForEnding">TIME OUT FOR ENDING (Scheduled) *</Label>
-                    <Input
-                      id="timeOutForEnding"
-                      name="timeOutForEnding"
-                      type="time"
-                      required
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeOutForEnding || '10:00' : '10:00'}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timeForStarting">TIME FOR STARTING (Scheduled) *</Label>
+                  <Input 
+                    id="timeForStarting" 
+                    name="timeForStarting" 
+                    type="time" 
+                    required 
+                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeForStarting || '08:00' : '08:00'} 
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timeOutForEnding">TIME OUT FOR ENDING (Scheduled) *</Label>
+                  <Input 
+                    id="timeOutForEnding" 
+                    name="timeOutForEnding" 
+                    type="time" 
+                    required 
+                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeOutForEnding || '10:00' : '10:00'} 
+                  />
+                </div>
+              </div>
               </section>
 
               <section className="space-y-3 rounded-lg border bg-muted/30 p-4">
-                <div>
+                  <div>
                   <h4 className="text-base font-semibold">Actual attendance tracking</h4>
                   <p className="text-xs text-muted-foreground">Record the lecturer&apos;s real arrival and departure times.</p>
-                </div>
+                  </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="checkInTime">Check-in time (actual)</Label>
-                    <Input
-                      id="checkInTime"
-                      name="checkInTime"
-                      type="time"
+                    <Input 
+                      id="checkInTime" 
+                      name="checkInTime" 
+                      type="time" 
                       step="1"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkInTime || '' : ''}
+                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkInTime || '' : ''} 
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually arrived.</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="checkOutTime">Check-out time (actual)</Label>
-                    <Input
-                      id="checkOutTime"
-                      name="checkOutTime"
-                      type="time"
+                    <Input 
+                      id="checkOutTime" 
+                      name="checkOutTime" 
+                      type="time" 
                       step="1"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkOutTime || '' : ''}
+                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkOutTime || '' : ''} 
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually left.</p>
                   </div>
@@ -1880,10 +1880,10 @@ export default function LectureRecords() {
               <section className="space-y-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">QA outcome</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     <Label htmlFor="comment">STATUS *</Label>
-                    <Select
-                      name="comment"
+                  <Select 
+                    name="comment" 
                       value={selectedComment}
                       onValueChange={(value) => {
                         setSelectedComment(value);
@@ -1895,16 +1895,16 @@ export default function LectureRecords() {
                     >
                       <SelectTrigger id="comment">
                         <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
+                    </SelectTrigger>
+                    <SelectContent>
                         {commentOptions.map((comment) => (
                           <SelectItem key={comment} value={comment}>
                             {COMMENT_FILTER_LABELS[comment] ?? comment}
                           </SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    </SelectContent>
+                  </Select>
+                </div>
                   {selectedComment === 'SUBSTITUTED' && (
                     <div className="space-y-2">
                       <Label>SUBSTITUTE LECTURER *</Label>
@@ -1935,7 +1935,7 @@ export default function LectureRecords() {
                       <p className="text-xs text-muted-foreground">
                         Who actually taught this session in place of {selectedLecturerName || 'the scheduled lecturer'}?
                       </p>
-                    </div>
+              </div>
                   )}
                 </div>
                 <div className="space-y-2">
