@@ -62,10 +62,8 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
   return '/dashboard';
 }
 
-export function homePathForRole(role: string | null, permissions?: string[]): string {
+export function homePathForRole(_role: string | null, permissions?: string[]): string {
   if (permissions?.length) return homePathForPermissions(permissions);
-  if (role === 'QAClinicals') return CLINICAL_ROUTES.sessions;
-  if (role === 'ClinicalCoordinator') return CLINICAL_ROUTES.sites;
   return '/dashboard';
 }
 

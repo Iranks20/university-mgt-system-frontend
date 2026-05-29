@@ -30,7 +30,7 @@ import { toast } from 'sonner';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
-import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
+import { formatProgramIntakeOptionLabel, useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 import {
   buildLecturerComboboxOptions,
   extractEnrolledStudentIdsFromClassEnrollments,
@@ -39,6 +39,7 @@ import {
   type EnrollCandidateRow,
   type LecturerOption,
 } from '@/lib/class-admin-utils';
+import { getApiErrorMessage } from '@/lib/api';
 
 type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
@@ -49,6 +50,9 @@ type ClassRow = {
   courseId: string;
   lecturerId: string | null;
   lecturerName: string;
+  lecturerIds?: string[];
+  primaryLecturerId?: string | null;
+  cohortProgramIntakeIds?: string[];
   students: number;
   room: string;
   isActive?: boolean;
@@ -5202,7 +5206,10 @@ function ClassesTab({
   const [form, setForm] = useState({ 
     name: '', 
     courseId: '', 
-    lecturerId: '', 
+    lecturerId: '',
+    lecturerIds: [] as string[],
+    primaryLecturerId: '',
+    cohortProgramIntakeIds: [] as string[],
     venueId: '', 
     dayOfWeek: '1', 
     startTime: '08:00', 
@@ -5211,6 +5218,7 @@ function ClassesTab({
   });
   const [adminCourses, setAdminCourses] = useState<{ id: string; code: string; name: string }[]>([]);
   const [venues, setVenues] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [programIntakeOptions, setProgramIntakeOptions] = useState<Array<{ id: string; label: string }>>([]);
   const classIntakeScope = useProgramIntakeScope({ showSchool: false, intakeField: 'type' });
   const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
   const [scopeLoading, setScopeLoading] = useState<boolean>(false);
@@ -5252,6 +5260,20 @@ function ClassesTab({
 
       setAdminCourses(allCourses.map((c: any) => ({ id: c.id, code: c.code ?? '', name: c.name ?? '' })));
       setVenues(allVenues.map((v: any) => ({ id: v.id, name: v.name, code: v.code || '' })));
+      const [intakes, programsRes] = await Promise.all([
+        academicService.getProgramIntakes(),
+        academicService.getPrograms(),
+      ]);
+      const programs = Array.isArray(programsRes) ? programsRes : (programsRes as { data?: any[] })?.data ?? [];
+      const programById = new Map(
+        programs.map((p: { id: string; code?: string; name?: string }) => [p.id, { code: p.code, name: p.name }])
+      );
+      setProgramIntakeOptions(
+        (Array.isArray(intakes) ? intakes : []).map((i: any) => ({
+          id: i.id,
+          label: formatProgramIntakeOptionLabel(i, programById),
+        }))
+      );
       await loadClasses(classesPage, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
     } catch (error) {
       console.error('Error refreshing class data:', error);
@@ -5321,15 +5343,20 @@ function ClassesTab({
   };
 
   const filteredClasses = classes.filter(c => {
-    if (lecturerFilter !== 'all' && c.lecturerId !== lecturerFilter) return false;
-    if (assignmentFilter === 'assigned' && !c.lecturerId) return false;
-    if (assignmentFilter === 'unassigned' && c.lecturerId) return false;
+    const lecturerIds = c.lecturerIds || (c.lecturerId ? [c.lecturerId] : []);
+    if (lecturerFilter !== 'all' && !lecturerIds.includes(lecturerFilter)) return false;
+    if (assignmentFilter === 'assigned' && lecturerIds.length === 0) return false;
+    if (assignmentFilter === 'unassigned' && lecturerIds.length > 0) return false;
     return true;
   });
 
   const assignLecturerToClass = async (classId: string, lecturerId: string | null) => {
     try {
-      await academicService.updateClass(classId, { lecturerId: lecturerId ?? null });
+      await academicService.updateClass(classId, {
+        lecturerId: lecturerId ?? null,
+        lecturerIds: lecturerId ? [lecturerId] : [],
+        primaryLecturerId: lecturerId ?? null,
+      });
       await refreshClassData();
       toast.success(lecturerId ? 'Lecturer assigned' : 'Lecturer removed');
       window.dispatchEvent(new CustomEvent('class-updated'));
@@ -5376,7 +5403,10 @@ function ClassesTab({
     setForm({ 
       name: '', 
       courseId: '', 
-      lecturerId: '', 
+      lecturerId: '',
+      lecturerIds: [],
+      primaryLecturerId: '',
+      cohortProgramIntakeIds: [],
       venueId: '', 
       dayOfWeek: '1', 
       startTime: '08:00', 
@@ -5394,7 +5424,13 @@ function ClassesTab({
       setForm({ 
         name: cls.name, 
         courseId: cls.courseId, 
-        lecturerId: cls.lecturerId || '', 
+        lecturerId: cls.lecturerId || '',
+        lecturerIds: ((classDetails as any)?.lecturerIds || (cls.lecturerId ? [cls.lecturerId] : [])) as string[],
+        primaryLecturerId:
+          ((classDetails as any)?.primaryLecturerId || cls.lecturerId || '') as string,
+        cohortProgramIntakeIds:
+          ((classDetails as any)?.cohortProgramIntakeIds ||
+            ((classDetails as any)?.programIntakeId ? [(classDetails as any).programIntakeId] : [])) as string[],
         venueId: (classDetails as any)?.venueId || '', 
         dayOfWeek: String((classDetails as any)?.dayOfWeek ?? 1), 
         startTime: (classDetails as any)?.startTime || '08:00', 
@@ -5406,7 +5442,10 @@ function ClassesTab({
       setForm({ 
         name: cls.name, 
         courseId: cls.courseId, 
-        lecturerId: cls.lecturerId || '', 
+        lecturerId: cls.lecturerId || '',
+        lecturerIds: cls.lecturerId ? [cls.lecturerId] : [],
+        primaryLecturerId: cls.lecturerId || '',
+        cohortProgramIntakeIds: [],
         venueId: '', 
         dayOfWeek: '1', 
         startTime: '08:00', 
@@ -5420,8 +5459,15 @@ function ClassesTab({
   const saveClass = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (!editingClass && !form.lecturerId) {
-        toast.error('Please select a lecturer');
+      const effectiveLecturerIds = [...new Set((form.lecturerIds || []).filter(Boolean))];
+      if (!editingClass && effectiveLecturerIds.length === 0 && !form.lecturerId) {
+        toast.error('Please select at least one lecturer');
+        return;
+      }
+      const primaryLecturerId =
+        form.primaryLecturerId || form.lecturerId || effectiveLecturerIds[0] || '';
+      if (effectiveLecturerIds.length > 0 && !effectiveLecturerIds.includes(primaryLecturerId)) {
+        toast.error('Primary lecturer must be in lecturer pool');
         return;
       }
       const course = adminCourses.find(co => co.id === form.courseId);
@@ -5431,7 +5477,11 @@ function ClassesTab({
       if (editingClass) {
         await academicService.updateClass(editingClass.id, {
           courseId: form.courseId,
-          lecturerId: form.lecturerId || undefined,
+          lecturerId: primaryLecturerId || undefined,
+          lecturerIds: effectiveLecturerIds.length > 0 ? effectiveLecturerIds : undefined,
+          primaryLecturerId: primaryLecturerId || undefined,
+          programIntakeIds: form.cohortProgramIntakeIds,
+          programIntakeId: form.cohortProgramIntakeIds[0] || undefined,
           venueId: form.venueId || undefined,
           dayOfWeek: parseInt(form.dayOfWeek, 10),
           startTime: form.startTime,
@@ -5443,7 +5493,11 @@ function ClassesTab({
         await academicService.createClass({
               name: form.name,
           courseId: form.courseId,
-          lecturerId: form.lecturerId || '',
+          lecturerId: primaryLecturerId || undefined,
+          lecturerIds: effectiveLecturerIds.length > 0 ? effectiveLecturerIds : undefined,
+          primaryLecturerId: primaryLecturerId || undefined,
+          programIntakeIds: form.cohortProgramIntakeIds,
+          programIntakeId: form.cohortProgramIntakeIds[0] || undefined,
           venueId: form.venueId || '',
           capacity: form.capacity,
           dayOfWeek: parseInt(form.dayOfWeek, 10),
@@ -5458,7 +5512,7 @@ function ClassesTab({
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error) {
       console.error('Error saving class:', error);
-      toast.error('Failed to save class. Please try again.');
+      toast.error(getApiErrorMessage(error, 'Failed to save class. Please try again.'));
     }
   };
 
@@ -5473,19 +5527,39 @@ function ClassesTab({
     try {
       const classDetails = (await academicService.getClassById(cls.id)) as {
         programIntakeId?: string | null;
+        cohortProgramIntakeIds?: string[];
       } | null;
-      const programIntakeId = classDetails?.programIntakeId ?? null;
-      setEnrollScopeLabel(programIntakeId ? 'Students in this class intake cohort' : '');
+      const programIntakeIds = [
+        ...(classDetails?.cohortProgramIntakeIds || []),
+        ...(classDetails?.programIntakeId ? [classDetails.programIntakeId] : []),
+      ].filter((v, i, a) => !!v && a.indexOf(v) === i);
+      const primaryProgramIntakeId = programIntakeIds[0] ?? null;
+      setEnrollScopeLabel(
+        programIntakeIds.length > 1
+          ? `Students in ${programIntakeIds.length} linked intake cohorts`
+          : primaryProgramIntakeId
+            ? 'Students in this class intake cohort'
+            : ''
+      );
 
       const enrollmentRows = await enrollmentService.getClassEnrollments(cls.id);
       const enrolledIds = extractEnrolledStudentIdsFromClassEnrollments(enrollmentRows);
       setSelectedStudentIds(enrolledIds);
 
-      const candidates = await fetchStudentsForEnrollmentScope({
-        programIntakeId,
-        programId: null,
-      });
-      if (candidates.length === 0 && !programIntakeId) {
+      const candidateGroups = await Promise.all(
+        (programIntakeIds.length > 0 ? programIntakeIds : [null]).map((id) =>
+          fetchStudentsForEnrollmentScope({
+            programIntakeId: id,
+            programId: null,
+          })
+        )
+      );
+      const candidateMap = new Map<string, EnrollCandidateRow>();
+      for (const group of candidateGroups) {
+        for (const c of group) candidateMap.set(c.id, c);
+      }
+      const candidates = [...candidateMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+      if (candidates.length === 0 && !primaryProgramIntakeId) {
         toast.warning('This class has no intake scope. Link it to a program intake in Timetable Builder first.');
       }
       setEnrollCandidates(candidates);
@@ -5669,7 +5743,11 @@ function ClassesTab({
                     disabled={lecturersLoading}
                     loading={lecturersLoading}
                     selectedLabel={
-                      cls.lecturerId && cls.lecturerName !== '—' ? cls.lecturerName : undefined
+                      cls.lecturerId && cls.lecturerName !== '—'
+                        ? cls.lecturerIds && cls.lecturerIds.length > 1
+                          ? `${cls.lecturerName} (+${cls.lecturerIds.length - 1})`
+                          : cls.lecturerName
+                        : undefined
                     }
                   />
                 </TableCell>
@@ -5774,12 +5852,13 @@ function ClassesTab({
       </Dialog>
 
       <Dialog open={addEditOpen} onOpenChange={setAddEditOpen}>
-        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex w-[95vw] max-w-2xl max-h-[min(90dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:w-full">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
             <DialogTitle>{editingClass ? 'Edit class' : 'Add class group'}</DialogTitle>
             <DialogDescription>Set course, lecturer assignment, schedule, and venue. Use Enrollments on the table to assign students.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={saveClass} className="space-y-4">
+          <form onSubmit={saveClass} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
             <div className="space-y-2">
               <Label>Class name</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. SWE II - Group A" />
@@ -5815,7 +5894,20 @@ function ClassesTab({
                 }
                 value={form.lecturerId || (editingClass ? '__none__' : '')}
                 onValueChange={(v) =>
-                  setForm((f) => ({ ...f, lecturerId: v === '__none__' ? '' : v }))
+                  setForm((f) => {
+                    const nextId = v === '__none__' ? '' : v;
+                    if (!nextId) {
+                      return { ...f, lecturerId: '', primaryLecturerId: '', lecturerIds: [] };
+                    }
+                    const set = new Set(f.lecturerIds);
+                    set.add(nextId);
+                    return {
+                      ...f,
+                      lecturerId: nextId,
+                      primaryLecturerId: nextId,
+                      lecturerIds: [...set],
+                    };
+                  })
                 }
                 placeholder={editingClass ? 'Select lecturer' : 'Select lecturer (required)'}
                 searchPlaceholder="Search all lecturers..."
@@ -5824,6 +5916,94 @@ function ClassesTab({
                 disabled={lecturersLoading}
                 loading={lecturersLoading}
               />
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Lecturer pool — search above to add; uncheck to remove
+                </div>
+                {form.lecturerIds.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No lecturers in the pool yet.</p>
+                ) : (
+                  <div className="max-h-32 space-y-2 overflow-y-auto">
+                    {allLecturers
+                      .filter((l) => form.lecturerIds.includes(l.id))
+                      .map((l) => (
+                        <label key={l.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked
+                            onCheckedChange={(v) => {
+                              setForm((f) => {
+                                const next = new Set(f.lecturerIds);
+                                if (v) next.add(l.id);
+                                else next.delete(l.id);
+                                const ids = [...next];
+                                const primary =
+                                  ids.includes(f.primaryLecturerId) ? f.primaryLecturerId : ids[0] || '';
+                                return {
+                                  ...f,
+                                  lecturerIds: ids,
+                                  primaryLecturerId: primary,
+                                  lecturerId: primary,
+                                };
+                              });
+                            }}
+                          />
+                          <span>{l.name}</span>
+                        </label>
+                      ))}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label>Primary lecturer</Label>
+                  <Select
+                    value={form.primaryLecturerId || 'none'}
+                    onValueChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        primaryLecturerId: v === 'none' ? '' : v,
+                        lecturerId: v === 'none' ? '' : v,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select primary lecturer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— None —</SelectItem>
+                      {allLecturers
+                        .filter((l) => form.lecturerIds.includes(l.id))
+                        .map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Combined cohort intakes</Label>
+              <div className="max-h-32 space-y-2 overflow-y-auto rounded-md border p-3">
+                {programIntakeOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No program intakes available for this scope.</p>
+                ) : null}
+                {programIntakeOptions.map((opt) => (
+                  <label key={opt.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={form.cohortProgramIntakeIds.includes(opt.id)}
+                      onCheckedChange={(v) =>
+                        setForm((f) => {
+                          const next = new Set(f.cohortProgramIntakeIds);
+                          if (v) next.add(opt.id);
+                          else next.delete(opt.id);
+                          return { ...f, cohortProgramIntakeIds: [...next] };
+                        })
+                      }
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Venue</Label>
@@ -5843,7 +6023,7 @@ function ClassesTab({
                 initialDisplayCount={10}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Day of Week</Label>
                 <Select value={form.dayOfWeek} onValueChange={v => setForm(f => ({ ...f, dayOfWeek: v }))}>
@@ -5870,7 +6050,7 @@ function ClassesTab({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Start Time</Label>
                 <Input 
@@ -5890,7 +6070,8 @@ function ClassesTab({
                 />
               </div>
             </div>
-            <DialogFooter>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-5 py-4 sm:px-6">
               <Button type="button" variant="outline" onClick={() => setAddEditOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">{editingClass ? 'Save' : 'Add class'}</Button>
             </DialogFooter>
@@ -5911,8 +6092,8 @@ function ClassesTab({
           }
         }}
       >
-        <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex w-[95vw] max-w-3xl max-h-[min(90dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:w-full">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
             <DialogTitle>Manage enrollments</DialogTitle>
             <DialogDescription>
               {enrollClass
@@ -5921,11 +6102,11 @@ function ClassesTab({
             </DialogDescription>
           </DialogHeader>
           {enrollLoading ? (
-            <div className="flex justify-center py-12">
+            <div className="flex flex-1 justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
               <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
                 <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -5954,7 +6135,7 @@ function ClassesTab({
                 {selectedStudentIds.length} enrolled · {enrollCandidates.length} in cohort ·{' '}
                 {visibleEnrollCandidates.length} shown
               </p>
-              <div className="rounded-md border max-h-[min(50vh,420px)] overflow-auto">
+              <div className="max-h-[min(45dvh,380px)] overflow-auto rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -6009,7 +6190,7 @@ function ClassesTab({
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-5 py-4 sm:px-6">
             <Button
               variant="outline"
               onClick={() => {
@@ -7540,8 +7721,26 @@ export default function AdminView({
             name: c.name,
             course: c.course?.name || '',
             courseId: c.courseId,
-            lecturerId: c.lecturerId,
-            lecturerName: c.lecturer ? `${c.lecturer.firstName} ${c.lecturer.lastName}` : '—',
+            lecturerId: c.primaryLecturerId ?? c.lecturerId ?? c.lecturerPool?.find((x: any) => x.isPrimary)?.lecturerId ?? null,
+            lecturerIds: Array.isArray(c.lecturerIds)
+              ? c.lecturerIds
+              : Array.isArray(c.lecturerPool)
+                ? c.lecturerPool.map((x: any) => x.lecturerId).filter(Boolean)
+                : c.lecturerId
+                  ? [c.lecturerId]
+                  : [],
+            primaryLecturerId:
+              c.primaryLecturerId ?? c.lecturerId ?? c.lecturerPool?.find((x: any) => x.isPrimary)?.lecturerId ?? null,
+            cohortProgramIntakeIds: Array.isArray(c.cohortProgramIntakeIds)
+              ? c.cohortProgramIntakeIds
+              : c.programIntakeId
+                ? [c.programIntakeId]
+                : [],
+            lecturerName: c.lecturer
+              ? `${c.lecturer.firstName} ${c.lecturer.lastName}`
+              : c.lecturerPool?.find((x: any) => x.isPrimary)?.lecturer?.firstName
+                ? `${c.lecturerPool.find((x: any) => x.isPrimary).lecturer.firstName} ${c.lecturerPool.find((x: any) => x.isPrimary).lecturer.lastName}`
+                : '—',
             students: c.enrolledCount || 0,
             room: c.venue?.name || '',
             isActive: c.isActive !== false,

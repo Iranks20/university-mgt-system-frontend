@@ -193,9 +193,20 @@ export default function ManagementStaffPerformance() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Departments</SelectItem>
-                    {Array.from(new Set(staffData.map((s: any) => s.departmentId || s.dept))).map((dept: string) => (
-                      <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                    ))}
+                    {Array.from(
+                      staffData.reduce((map: Map<string, string>, s: any) => {
+                        if (s.departmentId) {
+                          map.set(s.departmentId, s.departmentName || s.dept || 'Department');
+                        }
+                        return map;
+                      }, new Map<string, string>())
+                    )
+                      .sort((a, b) => a[1].localeCompare(b[1]))
+                      .map(([deptId, deptName]) => (
+                        <SelectItem key={deptId} value={deptId}>
+                          {deptName}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -272,7 +283,7 @@ export default function ManagementStaffPerformance() {
                         </div>
                       </TableCell>
                       <TableCell>{staff.role}</TableCell>
-                      <TableCell>{staff.departmentId || '—'}</TableCell>
+                      <TableCell>{staff.departmentName || '—'}</TableCell>
                       <TableCell className="text-center font-bold text-gray-700">{staff.performanceScore ? `${(staff.performanceScore * 20).toFixed(0)}%` : '—'}</TableCell>
                       <TableCell className="text-center">{workDays != null ? workDays : '—'}</TableCell>
                       <TableCell className="text-center text-red-600 font-medium">{staff.missed ?? '—'}</TableCell>

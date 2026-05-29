@@ -283,6 +283,17 @@ export const adminService = {
   setUserCustomRoles: async (userId: string, customRoleIds: string[]): Promise<{ message: string }> => {
     return await api.put<{ message: string }>(`/admin/users/${userId}/custom-roles`, { customRoleIds });
   },
+
+  syncSystemRbac: async (): Promise<{
+    rolesSynced: number;
+    usersReconciled: number;
+    userAssignmentsRemoved: number;
+  }> => {
+    const res = await api.post<{
+      data: { rolesSynced: number; usersReconciled: number; userAssignmentsRemoved: number };
+    }>('/admin/rbac/sync-system-roles');
+    return (res as any)?.data ?? (res as any);
+  },
 };
 
 export interface AuditLogEntry {

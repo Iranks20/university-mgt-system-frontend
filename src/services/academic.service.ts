@@ -1,6 +1,22 @@
 import api from '@/lib/api';
 import type { School, Level, Department, Course, Class, Venue } from '@/types';
 
+type ClassUpsertPayload = {
+  name: string;
+  courseId: string;
+  lecturerId?: string | null;
+  lecturerIds?: string[];
+  primaryLecturerId?: string | null;
+  programIntakeId?: string | null;
+  programIntakeIds?: string[];
+  venueId?: string | null;
+  dayOfWeek?: number | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  capacity?: number;
+  isActive?: boolean;
+};
+
 export const academicService = {
   getSchools: async (): Promise<School[]> => {
     try {
@@ -316,6 +332,63 @@ export const academicService = {
     }
   },
 
+  getClassesRelatedForAttendance: async (
+    classId: string
+  ): Promise<{
+    primaryClassId: string;
+    classes: Array<{
+      id: string;
+      name: string;
+      label: string;
+      cohortProgramIntakeIds: string[];
+      isPrimary: boolean;
+    }>;
+    cohortIntakes: Array<{ id: string; label: string }>;
+  }> => {
+    const empty = { primaryClassId: classId, classes: [], cohortIntakes: [] };
+    try {
+      const res = await api.get<{
+        data:
+          | {
+              primaryClassId?: string;
+              classes?: Array<{
+                id: string;
+                name: string;
+                label: string;
+                cohortProgramIntakeIds: string[];
+                isPrimary: boolean;
+              }>;
+              cohortIntakes?: Array<{ id: string; label: string }>;
+            }
+          | Array<{
+              id: string;
+              name: string;
+              label: string;
+              cohortProgramIntakeIds: string[];
+              isPrimary: boolean;
+            }>;
+      }>(`/academic/classes/${classId}/related-for-attendance`);
+      const payload = res?.data;
+      if (Array.isArray(payload)) {
+        return {
+          primaryClassId: classId,
+          classes: payload,
+          cohortIntakes: (payload.find((r) => r.id === classId)?.cohortProgramIntakeIds ?? []).map(
+            (id) => ({ id, label: id })
+          ),
+        };
+      }
+      return {
+        primaryClassId: payload?.primaryClassId || classId,
+        classes: Array.isArray(payload?.classes) ? payload.classes : [],
+        cohortIntakes: Array.isArray(payload?.cohortIntakes) ? payload.cohortIntakes : [],
+      };
+    } catch (error) {
+      console.error('Error fetching related classes for attendance:', error);
+      return empty;
+    }
+  },
+
   getClassById: async (id: string): Promise<Class | null> => {
     try {
       return await api.get<Class>(`/academic/classes/${id}`);
@@ -325,7 +398,7 @@ export const academicService = {
     }
   },
 
-  createClass: async (classData: Omit<Class, 'id'>): Promise<Class> => {
+  createClass: async (classData: ClassUpsertPayload): Promise<Class> => {
     try {
       return await api.post<Class>('/academic/classes', classData);
     } catch (error) {
@@ -403,10 +476,7 @@ export const academicService = {
     }
   },
 
-  updateClass: async (
-    id: string,
-    classData: Partial<Omit<Class, 'lecturerId'>> & { lecturerId?: string | null }
-  ): Promise<Class> => {
+  updateClass: async (id: string, classData: Partial<ClassUpsertPayload>): Promise<Class> => {
     try {
       return await api.put<Class>(`/academic/classes/${id}`, classData);
     } catch (error) {

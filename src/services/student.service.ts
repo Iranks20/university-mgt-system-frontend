@@ -370,7 +370,18 @@ export const studentService = {
     }
   },
 
-  createSessionAttendance: async (payload: { classId: string; date: string; records: Array<{ studentId: string; status: string; remarks?: string | null }> }): Promise<{ date: string; classId: string; count: number; results: Array<{ studentId: string; status: string; created: boolean }> }> => {
+  createSessionAttendance: async (payload: {
+    classId: string;
+    classIds?: string[];
+    date: string;
+    records: Array<{ studentId: string; status: string; remarks?: string | null }>;
+  }): Promise<{
+    date: string;
+    classId: string;
+    classIds?: string[];
+    count: number;
+    results: Array<{ studentId: string; classId: string; status: string; created: boolean }>;
+  }> => {
     try {
       const res = await api.post<any>('/students/attendance/session', payload);
       const data = (res as any)?.data ?? res;

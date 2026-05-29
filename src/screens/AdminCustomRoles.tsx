@@ -14,7 +14,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const SYSTEM_ROLE_CODES = new Set(['Admin', 'Management', 'QA', 'Lecturer', 'Staff', 'Student']);
+const SYSTEM_ROLE_CODES = new Set([
+  'Admin',
+  'Management',
+  'QA',
+  'QAClinicals',
+  'ClinicalCoordinator',
+  'Lecturer',
+  'Staff',
+  'Student',
+]);
 
 export default function AdminCustomRoles() {
   const [tab, setTab] = useState<'roles' | 'permission-groups' | 'permissions'>('roles');
@@ -52,6 +61,7 @@ export default function AdminCustomRoles() {
   const [catalogEditOpen, setCatalogEditOpen] = useState(false);
   const [selectedPermission, setSelectedPermission] = useState<PermissionCatalogRow | null>(null);
   const [permMetaForm, setPermMetaForm] = useState({ label: '', description: '', groupId: '', sortOrder: 0, isVisible: true });
+  const [syncingRbac, setSyncingRbac] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -246,11 +256,33 @@ export default function AdminCustomRoles() {
     }
   };
 
+  const handleSyncSystemRbac = async () => {
+    const ok = window.confirm(
+      'Reset all built-in system roles (Admin, QA, QA Clinicals, etc.) to the standard permission matrix? Custom roles are not changed. Users must sign in again to refresh their menu.'
+    );
+    if (!ok) return;
+    setSyncingRbac(true);
+    try {
+      const result = await adminService.syncSystemRbac();
+      toast.success(
+        `System roles synced (${result.rolesSynced} roles, ${result.usersReconciled} users updated).`
+      );
+      load();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to sync system roles');
+    } finally {
+      setSyncingRbac(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
-        <p className="text-gray-500">Manage roles, permission groups, and permission catalog metadata.</p>
+        <p className="text-gray-500">
+          Built-in system roles control what each user type sees in the sidebar. Edit permissions here; use
+          sync to restore the standard matrix after a bad change.
+        </p>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
@@ -268,9 +300,20 @@ export default function AdminCustomRoles() {
                   <CardTitle>Roles</CardTitle>
                   <CardDescription>Manage roles and assign permission sets.</CardDescription>
                 </div>
-                <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={() => setCreateOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" /> Add role
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={syncingRbac || saving}
+                    onClick={handleSyncSystemRbac}
+                  >
+                    {syncingRbac ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Shield className="h-4 w-4 mr-2" />}
+                    Sync system roles
+                  </Button>
+                  <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={() => setCreateOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Add role
+                  </Button>
+                </div>
               </div>
               <div className="flex flex-col md:flex-row gap-2 pt-2">
                 <div className="relative flex-1 min-w-[200px]">

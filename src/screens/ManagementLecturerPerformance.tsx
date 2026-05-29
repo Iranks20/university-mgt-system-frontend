@@ -128,7 +128,8 @@ export default function ManagementLecturerPerformance() {
               id: lecturer.id,
               name: `${lecturer.firstName || ''} ${lecturer.lastName || ''}`.trim() || 'Unknown',
               staffNumber: lecturer.staffNumber,
-              department: lecturer.departmentId || 'N/A',
+              departmentId: lecturer.departmentId || null,
+              department: lecturer.departmentName || 'N/A',
               school: schoolName,
               attendance: attendanceRate,
               classesTaught: taught,
@@ -158,7 +159,8 @@ export default function ManagementLecturerPerformance() {
       lecturer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lecturer.staffNumber.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesDepartment = departmentFilter === 'All' || lecturer.department === departmentFilter;
+    const matchesDepartment =
+      departmentFilter === 'All' || lecturer.departmentId === departmentFilter;
     const matchesSchool = schoolFilter === 'All' || lecturer.school === schoolFilter;
     
     const matchesFilter = 
@@ -197,7 +199,14 @@ export default function ManagementLecturerPerformance() {
     return <Badge {...config}>{status}</Badge>;
   };
 
-  const uniqueDepartments = Array.from(new Set(lecturerPerformance.map(l => l.department)));
+  const uniqueDepartments = Array.from(
+    lecturerPerformance.reduce((map, l) => {
+      if (l.departmentId) {
+        map.set(l.departmentId, l.department);
+      }
+      return map;
+    }, new Map<string, string>())
+  ).sort((a, b) => a[1].localeCompare(b[1]));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -334,8 +343,10 @@ export default function ManagementLecturerPerformance() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Departments</SelectItem>
-                  {uniqueDepartments.map(dept => (
-                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                  {uniqueDepartments.map(([deptId, deptName]) => (
+                    <SelectItem key={deptId} value={deptId}>
+                      {deptName}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

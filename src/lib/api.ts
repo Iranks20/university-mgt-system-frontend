@@ -127,4 +127,11 @@ class ApiClient {
 
 export const api = new ApiClient(API_BASE_URL);
 
+export function getApiErrorMessage(error: unknown, fallback = 'Request failed'): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export default api;

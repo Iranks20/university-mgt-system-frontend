@@ -15,6 +15,7 @@ import {
 import type { StudentSortDirection } from '@/lib/attendance-metrics';
 import { AttendanceStatusSelect } from '@/components/AttendanceStatusSelect';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -95,11 +96,28 @@ export default function LectureRecords() {
   const [timetableSeedDate, setTimetableSeedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [timetableSeedLoading, setTimetableSeedLoading] = useState(false);
   const [sessionAttendanceOpen, setSessionAttendanceOpen] = useState(false);
-  const [sessionRecord, setSessionRecord] = useState<{ classId: string; date: string; className: string } | null>(null);
+  const [sessionRecord, setSessionRecord] = useState<{ classId: string; classIds: string[]; date: string; className: string } | null>(null);
+  const [sessionClassOptions, setSessionClassOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedSessionClassIds, setSelectedSessionClassIds] = useState<string[]>([]);
+  const [sessionCohortOptions, setSessionCohortOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedSessionCohortIds, setSelectedSessionCohortIds] = useState<string[]>([]);
+  const [sessionEnrollmentsAll, setSessionEnrollmentsAll] = useState<
+    Array<{
+      studentId: string;
+      student?: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        studentNumber: string;
+        programIntakeId?: string | null;
+      };
+    }>
+  >([]);
   const [sessionEnrollments, setSessionEnrollments] = useState<Array<{ studentId: string; student?: { id: string; firstName: string; lastName: string; studentNumber: string } }>>([]);
   const [sessionStatusMap, setSessionStatusMap] = useState<Record<string, string>>({});
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionSaving, setSessionSaving] = useState(false);
+  const [sessionStudentSortKey, setSessionStudentSortKey] = useState<'name' | 'studentNumber'>('name');
   const [sessionStudentSortDirection, setSessionStudentSortDirection] = useState<StudentSortDirection>('asc');
   const [selectedClassName, setSelectedClassName] = useState('');
   const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
@@ -157,31 +175,67 @@ export default function LectureRecords() {
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
       setSessionLoading(true);
-      Promise.all([
-        enrollmentService.getClassEnrollments(sessionRecord.classId, { roster: true }),
-        studentService.getSessionAttendance(sessionRecord.classId, sessionRecord.date),
-      ])
-        .then(([list, existing]) => {
-          const roster = (list as any[]) || [];
-          setSessionEnrollments(roster);
+      Promise.all(
+        selectedSessionClassIds.map((classId) =>
+          Promise.all([
+            enrollmentService.getClassEnrollments(classId, { roster: true }),
+            studentService.getSessionAttendance(classId, sessionRecord.date),
+          ])
+        )
+      )
+        .then((results) => {
+          const rosterMap = new Map<string, any>();
           const map: Record<string, string> = {};
-          (existing || []).forEach((a: any) => {
-            if (a?.studentId && a?.status) {
-              map[a.studentId] = a.status;
-            }
+          results.forEach(([list, existing]) => {
+            ((list as any[]) || []).forEach((enr: any) => {
+              if (enr?.studentId && !rosterMap.has(enr.studentId)) {
+                rosterMap.set(enr.studentId, enr);
+              }
+            });
+            (existing || []).forEach((a: any) => {
+              if (a?.studentId && a?.status && !map[a.studentId]) {
+                map[a.studentId] = a.status;
+              }
+            });
           });
+          setSessionEnrollmentsAll([...rosterMap.values()]);
           setSessionStatusMap(map);
         })
         .catch(() => {
           toast.error("Couldn't load the class list. Please try again.");
-          setSessionEnrollments([]);
+          setSessionEnrollmentsAll([]);
           setSessionStatusMap({});
         })
         .finally(() => setSessionLoading(false));
     }
-  }, [sessionAttendanceOpen, sessionRecord]);
+  }, [sessionAttendanceOpen, sessionRecord, selectedSessionClassIds]);
 
-  const openSessionAttendance = (record: QALectureRecord & { classId?: string | null }) => {
+  useEffect(() => {
+    if (!sessionAttendanceOpen) return;
+    if (sessionCohortOptions.length <= 1) {
+      setSessionEnrollments(sessionEnrollmentsAll);
+      return;
+    }
+    const allowed = new Set(
+      selectedSessionCohortIds.length > 0
+        ? selectedSessionCohortIds
+        : sessionCohortOptions.map((c) => c.id)
+    );
+    setSessionEnrollments(
+      sessionEnrollmentsAll.filter((enr) => {
+        const intakeId = enr.student?.programIntakeId;
+        if (!intakeId) return false;
+        return allowed.has(intakeId);
+      })
+    );
+  }, [
+    sessionAttendanceOpen,
+    sessionEnrollmentsAll,
+    sessionCohortOptions,
+    selectedSessionCohortIds,
+  ]);
+
+  const openSessionAttendance = async (record: QALectureRecord & { classId?: string | null; courseId?: string | null }) => {
     const classId = (record as any).classId;
     if (!classId) {
       toast.error('No class is linked to this lecture, so attendance cannot be recorded.');
@@ -191,8 +245,32 @@ export default function LectureRecords() {
       ? record.date.slice(0, 10) 
       : new Date(record.date).toISOString().slice(0, 10);
     const className = record.class || (record as any).className || 'Class';
-    setSessionRecord({ classId, date, className });
+    let classIds = [classId];
+    let options = [{ id: classId, name: className }];
+    let cohortOptions: Array<{ id: string; label: string }> = [];
+    try {
+      const scope = await academicService.getClassesRelatedForAttendance(classId);
+      if (scope.classes.length > 0) {
+        options = scope.classes.map((r) => ({
+          id: r.id,
+          name: r.label?.trim() || r.name || className,
+        }));
+        classIds = options.map((o) => o.id);
+      }
+      cohortOptions = scope.cohortIntakes;
+    } catch {
+      classIds = [classId];
+      options = [{ id: classId, name: className }];
+      cohortOptions = [];
+    }
+    setSessionClassOptions(options);
+    setSelectedSessionClassIds(classIds);
+    setSessionCohortOptions(cohortOptions);
+    setSelectedSessionCohortIds(cohortOptions.map((c) => c.id));
+    setSessionEnrollmentsAll([]);
+    setSessionRecord({ classId, classIds, date, className });
     setSessionStatusMap({});
+    setSessionStudentSortKey('name');
     setSessionStudentSortDirection('asc');
     setSessionAttendanceOpen(true);
   };
@@ -206,16 +284,36 @@ export default function LectureRecords() {
       : '—';
   };
 
+  const sessionEnrollmentStudentNumber = (
+    enr: { student?: { studentNumber?: string } }
+  ) => enr.student?.studentNumber?.trim() || '—';
+
+  const onSessionStudentSort = (key: 'name' | 'studentNumber') => {
+    if (sessionStudentSortKey === key) {
+      setSessionStudentSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSessionStudentSortKey(key);
+    setSessionStudentSortDirection('asc');
+  };
+
   const sortedSessionEnrollments = useMemo(() => {
     return [...sessionEnrollments].sort((a, b) => {
-      const cmp = sessionEnrollmentStudentName(a).localeCompare(
-        sessionEnrollmentStudentName(b),
-        undefined,
-        { sensitivity: 'base' }
-      );
+      const cmp =
+        sessionStudentSortKey === 'studentNumber'
+          ? sessionEnrollmentStudentNumber(a).localeCompare(
+              sessionEnrollmentStudentNumber(b),
+              undefined,
+              { sensitivity: 'base', numeric: true }
+            )
+          : sessionEnrollmentStudentName(a).localeCompare(
+              sessionEnrollmentStudentName(b),
+              undefined,
+              { sensitivity: 'base' }
+            );
       return sessionStudentSortDirection === 'asc' ? cmp : -cmp;
     });
-  }, [sessionEnrollments, sessionStudentSortDirection]);
+  }, [sessionEnrollments, sessionStudentSortDirection, sessionStudentSortKey]);
 
   const setSessionStudentStatus = (studentId: string, status: string) => {
     setSessionStatusMap(prev => ({ ...prev, [studentId]: status }));
@@ -230,6 +328,26 @@ export default function LectureRecords() {
     setSessionStatusMap(next);
   };
 
+  const toggleSessionClassSelection = (classId: string, checked: boolean) => {
+    setSelectedSessionClassIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(classId);
+      else next.delete(classId);
+      if (next.size === 0) next.add(sessionRecord?.classId || classId);
+      return [...next];
+    });
+  };
+
+  const toggleSessionCohortSelection = (cohortId: string, checked: boolean) => {
+    setSelectedSessionCohortIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(cohortId);
+      else next.delete(cohortId);
+      if (next.size === 0) return sessionCohortOptions.map((c) => c.id);
+      return [...next];
+    });
+  };
+
   const handleSessionAttendanceSubmit = async () => {
     if (!sessionRecord || sessionEnrollments.length === 0) return;
     setSessionSaving(true);
@@ -240,6 +358,7 @@ export default function LectureRecords() {
       }));
       const result = await studentService.createSessionAttendance({
         classId: sessionRecord.classId,
+        classIds: selectedSessionClassIds,
         date: sessionRecord.date,
         records: payload,
       });
@@ -256,8 +375,14 @@ export default function LectureRecords() {
       }
       setSessionAttendanceOpen(false);
       setSessionRecord(null);
+      setSessionClassOptions([]);
+      setSelectedSessionClassIds([]);
+      setSessionCohortOptions([]);
+      setSelectedSessionCohortIds([]);
+      setSessionEnrollmentsAll([]);
       setSessionEnrollments([]);
       setSessionStatusMap({});
+      setSessionStudentSortKey('name');
       setSessionStudentSortDirection('asc');
     } catch (err: any) {
       toast.error(err?.message || "Couldn't save attendance. Please try again.");
@@ -1342,7 +1467,7 @@ export default function LectureRecords() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortDirection('asc'); } }}>
+      <Dialog open={sessionAttendanceOpen} onOpenChange={(open) => { setSessionAttendanceOpen(open); if (!open) { setSessionRecord(null); setSessionClassOptions([]); setSelectedSessionClassIds([]); setSessionCohortOptions([]); setSelectedSessionCohortIds([]); setSessionEnrollmentsAll([]); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortKey('name'); setSessionStudentSortDirection('asc'); } }}>
         <DialogContent className="w-[96vw] max-w-6xl max-h-[92vh] flex flex-col p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b">
             <DialogTitle>Record student attendance</DialogTitle>
@@ -1354,10 +1479,55 @@ export default function LectureRecords() {
             <div className="py-10 text-center text-muted-foreground">Loading students…</div>
           ) : (
             <>
+              {(sessionCohortOptions.length > 1 || sessionClassOptions.length > 1) && (
+                <div className="px-6 py-3 border-b bg-muted/30 space-y-3">
+                  {sessionCohortOptions.length > 1 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Combined cohort intakes (select programs to include)
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-auto">
+                        {sessionCohortOptions.map((opt) => (
+                          <label key={opt.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedSessionCohortIds.includes(opt.id)}
+                              onCheckedChange={(v: boolean | 'indeterminate') =>
+                                toggleSessionCohortSelection(opt.id, v === true)
+                              }
+                            />
+                            <span>{opt.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {sessionClassOptions.length > 1 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Include related classes for combined attendance
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-36 overflow-auto">
+                        {sessionClassOptions.map((opt) => (
+                          <label key={opt.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedSessionClassIds.includes(opt.id)}
+                              onCheckedChange={(v: boolean | 'indeterminate') =>
+                                toggleSessionClassSelection(opt.id, v === true)
+                              }
+                            />
+                            <span>{opt.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {sessionEnrollments.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-6 py-3 text-sm">
                   <span className="text-muted-foreground">
-                    {sessionEnrollments.length} student{sessionEnrollments.length === 1 ? '' : 's'} in this class
+                    {sessionEnrollments.length} student{sessionEnrollments.length === 1 ? '' : 's'} in selected{' '}
+                    {sessionCohortOptions.length > 1 ? 'cohort' : 'class'} scope
                     {Object.keys(sessionStatusMap).length > 0 && (
                       <> · <span className="text-foreground font-medium">{Object.keys(sessionStatusMap).length}</span> already marked</>
                     )}
@@ -1387,14 +1557,12 @@ export default function LectureRecords() {
                       <TableHead>
                         <button
                           type="button"
-                          onClick={() =>
-                            setSessionStudentSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
-                          }
+                          onClick={() => onSessionStudentSort('name')}
                           disabled={sessionEnrollments.length === 0}
                           className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] disabled:opacity-50 -ml-1 px-1 py-0.5 rounded"
                         >
                           Student
-                          {sessionEnrollments.length > 0 ? (
+                          {sessionEnrollments.length > 0 && sessionStudentSortKey === 'name' ? (
                             sessionStudentSortDirection === 'asc' ? (
                               <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
                             ) : (
@@ -1403,7 +1571,23 @@ export default function LectureRecords() {
                           ) : null}
                         </button>
                       </TableHead>
-                      <TableHead className="w-40">Student number</TableHead>
+                      <TableHead className="w-40">
+                        <button
+                          type="button"
+                          onClick={() => onSessionStudentSort('studentNumber')}
+                          disabled={sessionEnrollments.length === 0}
+                          className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] disabled:opacity-50 -ml-1 px-1 py-0.5 rounded"
+                        >
+                          Student number
+                          {sessionEnrollments.length > 0 && sessionStudentSortKey === 'studentNumber' ? (
+                            sessionStudentSortDirection === 'asc' ? (
+                              <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            ) : (
+                              <ArrowDown className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                            )
+                          ) : null}
+                        </button>
+                      </TableHead>
                       <TableHead className="w-44">Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1447,7 +1631,7 @@ export default function LectureRecords() {
                 </Table>
               </div>
               <DialogFooter className="px-6 py-3 border-t">
-                <Button type="button" variant="outline" onClick={() => { setSessionAttendanceOpen(false); setSessionRecord(null); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortDirection('asc'); }}>
+                <Button type="button" variant="outline" onClick={() => { setSessionAttendanceOpen(false); setSessionRecord(null); setSessionClassOptions([]); setSelectedSessionClassIds([]); setSessionCohortOptions([]); setSelectedSessionCohortIds([]); setSessionEnrollmentsAll([]); setSessionEnrollments([]); setSessionStatusMap({}); setSessionStudentSortKey('name'); setSessionStudentSortDirection('asc'); }}>
                   Cancel
                 </Button>
                 <Button onClick={handleSessionAttendanceSubmit} disabled={sessionSaving || sessionEnrollments.length === 0} className="bg-[#015F2B] hover:bg-[#014022]">

@@ -48,6 +48,22 @@ export function formatCohortLabel(intake: ProgramIntakeRecord): string {
   return `${intake.year}.${intake.semester} · ${intake.intakeType}`;
 }
 
+export function formatProgramIntakeOptionLabel(
+  intake: {
+    program?: { code?: string | null; name?: string | null } | null;
+    programId?: string;
+    year: number;
+    semester: number;
+    intakeType: string;
+  },
+  programById?: Map<string, { code?: string; name?: string }>
+): string {
+  const linked = intake.program;
+  const mapped = intake.programId ? programById?.get(intake.programId) : undefined;
+  const programLabel = linked?.code || linked?.name || mapped?.code || mapped?.name || 'Program';
+  return `${programLabel} · Y${intake.year} S${intake.semester} · ${intake.intakeType}`;
+}
+
 export function buildIntakeTypeScopeLabel(params: {
   showSchool: boolean;
   schoolId: string;
