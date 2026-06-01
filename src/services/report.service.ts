@@ -47,7 +47,11 @@ export const reportService = {
     }
   },
 
-  exportReport: async (type: string, format: 'excel' | 'pdf' | 'csv', dateRange?: { start: string; end: string }): Promise<{ downloadUrl: string; filename: string; expiresAt: string }> => {
+  exportReport: async (
+    type: string,
+    format: 'excel' | 'xlsx' | 'pdf' | 'csv',
+    dateRange?: { start: string; end: string }
+  ): Promise<{ downloadUrl: string; filename: string; expiresAt: string }> => {
     try {
       const response = await api.post<any>('/reports/export', {
         type,

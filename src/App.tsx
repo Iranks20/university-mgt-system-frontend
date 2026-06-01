@@ -45,20 +45,7 @@ import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendanceP
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
 import { homePathForRole } from './lib/clinical-access'
-
-const CLINICAL_ROLES = ['Admin', 'Management', 'QAClinicals', 'ClinicalCoordinator'] as const
-const CLINICAL_ROUTE_GUARD = {
-	allowedRoles: [...CLINICAL_ROLES],
-	requiredPermissionSets: [
-		['clinical.sessions.record'],
-		['clinical.reports.view'],
-		['clinical.sites.manage'],
-		['clinical.sessions.verify'],
-		['clinical.assignments.manage'],
-		['clinical.instructors.manage'],
-		['clinical.rotations.manage'],
-	],
-}
+import { routeGuardProps } from './lib/nav-permissions'
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -88,20 +75,7 @@ function AppRoutes() {
 			<Route 
 				path="/dashboard" 
 				element={
-					<ProtectedRoute
-						requiredPermissionSets={[
-							['analytics.core_dashboard', 'analytics.ops', 'qa.review'],
-							['analytics.core_dashboard', 'analytics.ops', 'analytics.mgmt_overview', 'reports.access'],
-							['academic.personal_schedule', 'qa.lecturer_portal', 'staff.lecturer_me'],
-							['academic.personal_schedule', 'qa.lecturer_portal', 'staff.timeclock'],
-							['students.self', 'settings.read', 'timetable.student_me', 'enrollment.self', 'students.attendance_self'],
-							['staff.timeclock'],
-							['clinical.sessions.record'],
-							['clinical.sessions.verify'],
-							['clinical.reports.view'],
-							['clinical.sites.manage'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/dashboard')}>
 						<Dashboard />
 					</ProtectedRoute>
 				} 
@@ -109,16 +83,7 @@ function AppRoutes() {
 			<Route 
 				path="/presence" 
 				element={
-					<ProtectedRoute
-						requiredPermissionSets={[
-							// Lecturer flow (current class + QA portal actions)
-							['academic.personal_schedule', 'qa.lecturer_portal'],
-							// Student flow (current class + self attendance + student identity)
-							['academic.personal_schedule', 'students.self', 'students.attendance_self'],
-							// Staff timeclock flow
-							['staff.timeclock'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/presence')}>
 						<Presence />
 					</ProtectedRoute>
 				} 
@@ -128,12 +93,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-classes" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Student']}
-						requiredPermissionSets={[
-							['students.self', 'enrollment.self', 'settings.read', 'students.attendance_self'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-classes')}>
 						<StudentClasses />
 					</ProtectedRoute>
 				} 
@@ -141,15 +101,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-history" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Student', 'Staff']}
-						requiredPermissionSets={[
-							// Student attendance history flow
-							['students.self', 'enrollment.self', 'students.attendance_self'],
-							// Staff check-in history flow
-							['staff.timeclock'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Student', 'Staff']} {...routeGuardProps('/student-history')}>
 						<StudentHistory />
 					</ProtectedRoute>
 				} 
@@ -157,12 +109,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-records" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['QA']}
-						requiredPermissionSets={[
-							['students.read', 'students.attendance_staff', 'academic.read'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/student-records')}>
 						<StudentRecords />
 					</ProtectedRoute>
 				} 
@@ -172,17 +119,7 @@ function AppRoutes() {
 			<Route 
 				path="/timetable" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Lecturer', 'QA', 'Student']}
-						requiredPermissionSets={[
-							// Student timetable flow
-							['timetable.student_me'],
-							// Lecturer timetable + QA portal checks
-							['academic.personal_schedule', 'qa.lecturer_portal'],
-							// QA/ops timetable view
-							['timetable.ops'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/timetable')}>
 						<Timetable />
 					</ProtectedRoute>
 				} 
@@ -190,12 +127,7 @@ function AppRoutes() {
 			<Route 
 				path="/lecturer-performance" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Lecturer']}
-						requiredPermissionSets={[
-							['analytics.lecturer_private', 'staff.lecturer_me'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Lecturer']} {...routeGuardProps('/lecturer-performance')}>
 						<LecturerPerformance />
 					</ProtectedRoute>
 				} 
@@ -203,12 +135,7 @@ function AppRoutes() {
 			<Route 
 				path="/lecturer-course-attendance" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Lecturer']}
-						requiredPermissionSets={[
-							['academic.personal_schedule', 'enrollment.class_read', 'qa.review', 'students.attendance_staff'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/lecturer-course-attendance')}>
 						<LecturerCourseAttendance />
 					</ProtectedRoute>
 				} 
@@ -216,17 +143,7 @@ function AppRoutes() {
 			<Route 
 				path="/cancellations" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Lecturer', 'QA', 'Admin', 'Management']}
-						requiredPermissionSets={[
-							// Lecturer: see own + pick scheduled sessions + submit
-							['cancellations.lecturer', 'timetable.lecturer_me'],
-							// Management: view queue/history
-							['cancellations.queue'],
-							// QA/Admin: view queue/history + approve/reject
-							['cancellations.queue', 'cancellations.decide'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/cancellations')}>
 						<Cancellations />
 					</ProtectedRoute>
 				} 
@@ -236,12 +153,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-overview" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['analytics.mgmt_overview'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-overview')}>
 						<ManagementOverview />
 					</ProtectedRoute>
 				} 
@@ -249,12 +161,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-departments" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['academic.read', 'academic.mgmt_read'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-departments')}>
 						<ManagementDepartments />
 					</ProtectedRoute>
 				} 
@@ -262,12 +169,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-staff-performance" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['staff.read', 'reports.access'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-staff-performance')}>
 						<ManagementStaffPerformance />
 					</ProtectedRoute>
 				} 
@@ -275,12 +177,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-student-performance" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['students.read', 'analytics.ops', 'analytics.mgmt_overview', 'settings.read', 'reports.access'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-student-performance')}>
 						<ManagementStudentPerformance />
 					</ProtectedRoute>
 				} 
@@ -288,12 +185,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-lecturer-performance" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['settings.read', 'staff.read', 'qa.review', 'analytics.ops', 'academic.mgmt_read', 'reports.access'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/management-lecturer-performance')}>
 						<ManagementLecturerPerformance />
 					</ProtectedRoute>
 				} 
@@ -301,12 +193,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-student-details" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin']}
-						requiredPermissionSets={[
-							['students.read', 'students.attendance_staff', 'settings.read', 'reports.access'],
-						]}
-					>
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-student-details')}>
 						<ManagementStudentDetails />
 					</ProtectedRoute>
 				} 
@@ -314,12 +201,7 @@ function AppRoutes() {
 			<Route 
 				path="/curriculum-management" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Management', 'Admin', 'Lecturer']}
-						requiredPermissionSets={[
-							['academic.read'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/curriculum-management')}>
 						<CurriculumManagement />
 					</ProtectedRoute>
 				} 
@@ -327,31 +209,26 @@ function AppRoutes() {
 			<Route 
 				path="/timetable-builder" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['Admin', 'Management', 'QA']}
-						requiredPermissionSets={[
-							['academic.read', 'academic.venues', 'academic.program_intakes', 'academic.write', 'staff.read'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/timetable-builder')}>
 						<TimetableBuilder />
 					</ProtectedRoute>
 				} 
 			/>
-			<Route path="/clinical-rotations" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD}><ClinicalLegacyRedirect /></ProtectedRoute>} />
-			<Route path="/clinical/sites" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sites.manage'], ['clinical.reports.view']]}><ClinicalSitesPage /></ProtectedRoute>} />
-			<Route path="/clinical/site-team" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.assignments.manage']]}><ClinicalSiteTeamPage /></ProtectedRoute>} />
-			<Route path="/clinical/instructors" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.instructors.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalInstructorsPage /></ProtectedRoute>} />
-			<Route path="/clinical/rotations" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.rotations.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalRotationsListPage /></ProtectedRoute>} />
-			<Route path="/clinical/sessions" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sessions.record'], ['clinical.sessions.verify']]}><ClinicalSessionsPage /></ProtectedRoute>} />
-			<Route path="/clinical/attendance" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.sessions.record']]}><ClinicalAttendancePage /></ProtectedRoute>} />
-			<Route path="/clinical/reports" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.reports.view']]}><ClinicalReportsPage /></ProtectedRoute>} />
-			<Route path="/clinical/policies" element={<ProtectedRoute {...CLINICAL_ROUTE_GUARD} requiredPermissionSets={[['clinical.policies.manage'], ['clinical.sites.manage'], ['clinical.rotations.manage']]}><ClinicalProgramPoliciesPage /></ProtectedRoute>} />
+			<Route path="/clinical-rotations" element={<ProtectedRoute {...routeGuardProps('/clinical-rotations')}><ClinicalLegacyRedirect /></ProtectedRoute>} />
+			<Route path="/clinical/sites" element={<ProtectedRoute {...routeGuardProps('/clinical/sites')}><ClinicalSitesPage /></ProtectedRoute>} />
+			<Route path="/clinical/site-team" element={<ProtectedRoute {...routeGuardProps('/clinical/site-team')}><ClinicalSiteTeamPage /></ProtectedRoute>} />
+			<Route path="/clinical/instructors" element={<ProtectedRoute {...routeGuardProps('/clinical/instructors')}><ClinicalInstructorsPage /></ProtectedRoute>} />
+			<Route path="/clinical/rotations" element={<ProtectedRoute {...routeGuardProps('/clinical/rotations')}><ClinicalRotationsListPage /></ProtectedRoute>} />
+			<Route path="/clinical/sessions" element={<ProtectedRoute {...routeGuardProps('/clinical/sessions')}><ClinicalSessionsPage /></ProtectedRoute>} />
+			<Route path="/clinical/attendance" element={<ProtectedRoute {...routeGuardProps('/clinical/attendance')}><ClinicalAttendancePage /></ProtectedRoute>} />
+			<Route path="/clinical/reports" element={<ProtectedRoute {...routeGuardProps('/clinical/reports')}><ClinicalReportsPage /></ProtectedRoute>} />
+			<Route path="/clinical/policies" element={<ProtectedRoute {...routeGuardProps('/clinical/policies')}><ClinicalProgramPoliciesPage /></ProtectedRoute>} />
 			
 			{/* Admin Routes */}
 			<Route 
 				path="/admin-students" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-students')}>
 						<AdminStudents />
 					</ProtectedRoute>
 				} 
@@ -359,7 +236,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-lecturers" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-lecturers')}>
 						<AdminLecturers />
 					</ProtectedRoute>
 				} 
@@ -367,7 +244,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-courses" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['academic.write']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-courses')}>
 						<AdminCourses />
 					</ProtectedRoute>
 				} 
@@ -375,7 +252,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-classes" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['academic.write']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-classes')}>
 						<AdminClasses />
 					</ProtectedRoute>
 				} 
@@ -383,7 +260,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-timetables" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['timetable.ops']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-timetables')}>
 						<AdminTimetables />
 					</ProtectedRoute>
 				} 
@@ -391,7 +268,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-schools" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['academic.write']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-schools')}>
 						<AdminSchools />
 					</ProtectedRoute>
 				} 
@@ -399,7 +276,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-venues" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['academic.venues']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-venues')}>
 						<AdminVenues />
 					</ProtectedRoute>
 				} 
@@ -407,7 +284,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-users" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-users')}>
 						<AdminUsers />
 					</ProtectedRoute>
 				} 
@@ -415,7 +292,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-roles" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-roles')}>
 						<AdminCustomRoles />
 					</ProtectedRoute>
 				} 
@@ -423,7 +300,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-settings" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['settings.read']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-settings')}>
 						<AdminSettings />
 					</ProtectedRoute>
 				} 
@@ -431,7 +308,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-calendar" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['academic.write']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-calendar')}>
 						<AdminCalendar />
 					</ProtectedRoute>
 				} 
@@ -439,7 +316,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-strategic-goals" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-strategic-goals')}>
 						<AdminStrategicGoals />
 					</ProtectedRoute>
 				} 
@@ -447,7 +324,7 @@ function AppRoutes() {
 			<Route 
 				path="/admin-audit-log" 
 				element={
-					<ProtectedRoute allowedRoles={['Admin']} requiredPermissionSets={[['admin.console']]}>
+					<ProtectedRoute {...routeGuardProps('/admin-audit-log')}>
 						<AdminAuditLog />
 					</ProtectedRoute>
 				} 
@@ -457,12 +334,7 @@ function AppRoutes() {
 			<Route 
 				path="/lecture-records" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['QA']}
-						requiredPermissionSets={[
-							['qa.review', 'qa.write', 'qa.import', 'staff.read', 'enrollment.class_read', 'students.attendance_staff'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/lecture-records')}>
 						<LectureRecords />
 					</ProtectedRoute>
 				} 
@@ -470,12 +342,7 @@ function AppRoutes() {
 			<Route 
 				path="/reports" 
 				element={
-					<ProtectedRoute
-						allowedRoles={['QA', 'Management']}
-						requiredPermissionSets={[
-							['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops'],
-						]}
-					>
+					<ProtectedRoute {...routeGuardProps('/reports')}>
 						<Reports />
 					</ProtectedRoute>
 				} 

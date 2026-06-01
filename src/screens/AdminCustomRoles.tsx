@@ -280,8 +280,8 @@ export default function AdminCustomRoles() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
         <p className="text-gray-500">
-          Built-in system roles control what each user type sees in the sidebar. Edit permissions here; use
-          sync to restore the standard matrix after a bad change.
+          The sidebar and pages are controlled by permissions on this screen. After changes, users must sign out and
+          sign in again.
         </p>
       </div>
 

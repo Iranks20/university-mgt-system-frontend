@@ -1,8 +1,10 @@
 import React from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import AppShell from './AppShell';
 import RoleProvider, { useRole } from './RoleProvider';
+import AccessDenied from './AccessDenied';
+import { hasAnyPermission, resolveHomePath } from '@/lib/nav-permissions';
 
 type ProtectedRouteProps = {
   children: React.ReactNode;
@@ -11,10 +13,16 @@ type ProtectedRouteProps = {
   requiredPermissionSets?: string[][];
 };
 
-function ProtectedRouteContent({ children, allowedRoles, requiredPermissions, requiredPermissionSets }: ProtectedRouteProps) {
+function ProtectedRouteContent({
+  children,
+  allowedRoles,
+  requiredPermissions,
+  requiredPermissionSets,
+}: ProtectedRouteProps) {
   const { role } = useRole();
   const { userRole, user } = useAuth();
-  
+  const location = useLocation();
+
   const currentRole = role || userRole;
   const permissions = user?.permissions || [];
   const enforcePermissions =
@@ -22,22 +30,42 @@ function ProtectedRouteContent({ children, allowedRoles, requiredPermissions, re
     !!(requiredPermissionSets?.length || requiredPermissions?.length);
 
   if (enforcePermissions) {
-    const have = new Set(permissions);
+    let permissionOk = true;
     if (requiredPermissionSets && requiredPermissionSets.length > 0) {
-      const ok = requiredPermissionSets.some((set) => set.length > 0 && set.every((p) => have.has(p)));
-      if (!ok) return <Navigate to="/dashboard" replace />;
+      permissionOk = hasAnyPermission(permissions, requiredPermissionSets);
     } else if (requiredPermissions && requiredPermissions.length > 0) {
-      const ok = requiredPermissions.some((p) => have.has(p));
-      if (!ok) return <Navigate to="/dashboard" replace />;
+      permissionOk = hasAnyPermission(permissions, requiredPermissions);
+    }
+
+    let roleOk = true;
+    if (allowedRoles && allowedRoles.length > 0) {
+      roleOk = !!currentRole && allowedRoles.includes(currentRole);
+    }
+
+    if (!permissionOk || !roleOk) {
+      const home = resolveHomePath(permissions);
+      if (home && location.pathname !== home) {
+        return <Navigate to={home} replace />;
+      }
+      return <AccessDenied homePath={home} />;
     }
   } else if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
-    return <Navigate to="/dashboard" replace />;
+    const home = resolveHomePath(permissions);
+    if (home && location.pathname !== home) {
+      return <Navigate to={home} replace />;
+    }
+    return <AccessDenied homePath={home} />;
   }
 
   return <>{children}</>;
 }
 
-export default function ProtectedRoute({ children, allowedRoles, requiredPermissions, requiredPermissionSets }: ProtectedRouteProps) {
+export default function ProtectedRoute({
+  children,
+  allowedRoles,
+  requiredPermissions,
+  requiredPermissionSets,
+}: ProtectedRouteProps) {
   const { isAuthenticated, userRole } = useAuth();
 
   if (!isAuthenticated) {
@@ -47,7 +75,11 @@ export default function ProtectedRoute({ children, allowedRoles, requiredPermiss
   return (
     <RoleProvider>
       <AppShell>
-        <ProtectedRouteContent allowedRoles={allowedRoles} requiredPermissions={requiredPermissions} requiredPermissionSets={requiredPermissionSets}>
+        <ProtectedRouteContent
+          allowedRoles={allowedRoles}
+          requiredPermissions={requiredPermissions}
+          requiredPermissionSets={requiredPermissionSets}
+        >
           {children}
         </ProtectedRouteContent>
       </AppShell>

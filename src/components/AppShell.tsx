@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { hasAnyPermission, navAllowed } from '@/lib/nav-permissions';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
@@ -38,6 +39,7 @@ const ADMIN_USERS_CHILD_PATHS = [
   '/admin-lecturers',
   '/admin-users',
   '/admin-roles',
+  '/admin-audit-log',
 ] as const;
 
 const ADMIN_CLINICAL_CHILD_PATHS = [
@@ -65,58 +67,6 @@ type SidebarItem =
   | { type: 'single'; label: string; path: string; icon: LucideIcon }
   | { type: 'folder'; id: string; label: string; icon: LucideIcon; children: SidebarChild[] };
 
-const NAV_PERMISSION: Record<string, string[] | string[][]> = {
-  '/admin-users': ['admin.console'],
-  '/admin-roles': ['admin.console'],
-  '/admin-students': ['admin.console'],
-  '/admin-lecturers': ['admin.console'],
-  '/admin-courses': ['academic.write'],
-  '/admin-classes': ['academic.write'],
-  '/admin-timetables': ['timetable.ops'],
-  '/admin-schools': ['academic.write'],
-  '/admin-venues': ['academic.venues'],
-  '/admin-calendar': ['academic.write'],
-  '/admin-strategic-goals': ['admin.console'],
-  '/admin-settings': ['settings.read'],
-  '/timetable': [['timetable.student_me'], ['academic.personal_schedule', 'qa.lecturer_portal'], ['timetable.ops']],
-  '/timetable-builder': [['academic.read', 'academic.venues', 'academic.program_intakes', 'academic.write', 'staff.read']],
-  '/clinical-rotations': [['clinical.sessions.record'], ['clinical.reports.view'], ['clinical.sites.manage'], ['clinical.sessions.verify'], ['clinical.assignments.manage'], ['clinical.instructors.manage'], ['clinical.rotations.manage']],
-  '/clinical/sites': [['clinical.sites.manage'], ['clinical.reports.view']],
-  '/clinical/site-team': [['clinical.assignments.manage']],
-  '/clinical/instructors': [['clinical.instructors.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']],
-  '/clinical/rotations': [['clinical.rotations.manage'], ['clinical.sessions.record'], ['clinical.sessions.verify']],
-  '/clinical/policies': [['clinical.policies.manage'], ['clinical.sites.manage'], ['clinical.rotations.manage']],
-  '/clinical/sessions': [['clinical.sessions.record'], ['clinical.sessions.verify']],
-  '/clinical/attendance': [['clinical.sessions.record']],
-  '/clinical/reports': [['clinical.reports.view']],
-  '/lecture-records': [['qa.review', 'qa.write', 'qa.import', 'staff.read', 'enrollment.class_read', 'students.attendance_staff']],
-  '/student-records': [['students.read', 'students.attendance_staff', 'academic.read']],
-  '/reports': [['reports.access', 'qa.review', 'analytics.core_dashboard', 'analytics.ops', 'academic.read', 'timetable.ops']],
-  '/management-overview': [['analytics.mgmt_overview']],
-  '/management-departments': [['academic.read', 'academic.mgmt_read']],
-  '/management-staff-performance': [['staff.read', 'reports.access']],
-  '/management-lecturer-performance': [['settings.read', 'staff.read', 'qa.review', 'analytics.ops', 'academic.mgmt_read', 'reports.access']],
-  '/management-student-performance': [['students.read', 'analytics.ops', 'analytics.mgmt_overview', 'settings.read', 'reports.access']],
-  '/cancellations': [['cancellations.lecturer', 'timetable.lecturer_me'], ['cancellations.queue'], ['cancellations.queue', 'cancellations.decide']],
-  '/curriculum-management': ['academic.read'],
-  '/lecturer-course-attendance': [['academic.personal_schedule', 'enrollment.class_read', 'qa.review', 'students.attendance_staff']],
-  '/lecturer-performance': [['analytics.lecturer_private', 'staff.lecturer_me']],
-  '/student-classes': [['students.self', 'enrollment.self', 'settings.read', 'students.attendance_self']],
-  '/student-history': [['students.self', 'enrollment.self', 'students.attendance_self'], ['staff.timeclock']],
-  '/presence': [['academic.personal_schedule', 'qa.lecturer_portal'], ['academic.personal_schedule', 'students.self', 'students.attendance_self'], ['staff.timeclock']],
-};
-
-function hasAnyPermission(userPermissions: string[] | undefined, required: string[] | string[][] | undefined): boolean {
-  if (!required || (Array.isArray(required) && required.length === 0)) return true;
-  const have = new Set(userPermissions || []);
-  if (Array.isArray(required) && Array.isArray(required[0])) {
-    const sets = required as string[][];
-    return sets.some((set) => set.length > 0 && set.every((p) => have.has(p)));
-  }
-  const list = required as string[];
-  return list.some((p) => have.has(p));
-}
-
 function navTarget(path: string): { pathname: string; search: string } {
   const [pathname, query = ''] = path.split('?');
   return { pathname, search: query ? `?${query}` : '' };
@@ -138,6 +88,7 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
   { label: 'System accounts', icon: UserCog, path: '/admin-users' },
   { label: 'Roles & Permissions', icon: KeyRound, path: '/admin-roles' },
+  { label: 'Audit log', icon: FileText, path: '/admin-audit-log' },
 ];
 
 const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon }> = [
@@ -167,13 +118,6 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Strategic Goals', path: '/admin-strategic-goals', icon: TrendingUp },
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
-
-function navAllowed(userPermissions: string[], path: string): boolean {
-  const basePath = path.split('?')[0];
-  const required = NAV_PERMISSION[path] ?? NAV_PERMISSION[basePath];
-  if (!required) return false;
-  return hasAnyPermission(userPermissions, required);
-}
 
 function buildNavFromPermissions(userPermissions: string[]): SidebarItem[] {
   const allow = (path: string) => navAllowed(userPermissions, path);

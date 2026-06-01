@@ -1,4 +1,5 @@
 import { CLINICAL_ROUTES, clinicalReportsPath, LEGACY_CLINICAL_TAB_PATH } from './clinical-routes';
+import { resolveHomePath } from './nav-permissions';
 
 export type ClinicalAccess = {
   canManageSites: boolean;
@@ -63,7 +64,11 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
 }
 
 export function homePathForRole(_role: string | null, permissions?: string[]): string {
-  if (permissions?.length) return homePathForPermissions(permissions);
+  if (permissions?.length) {
+    const clinicalHome = homePathForPermissions(permissions);
+    if (clinicalHome !== '/dashboard') return clinicalHome;
+    return resolveHomePath(permissions) ?? '/dashboard';
+  }
   return '/dashboard';
 }
 

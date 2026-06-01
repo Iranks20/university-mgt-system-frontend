@@ -636,14 +636,15 @@ export default function Reports() {
             </Select>
             <Button variant="outline" className="gap-2" onClick={async () => {
               try {
-                const result = await reportService.exportReport('all', 'csv');
+                const result = await reportService.exportReport('all', 'xlsx');
                 if (result.downloadUrl) {
                   const link = document.createElement('a');
                   link.href = result.downloadUrl;
-                  link.download = result.filename;
+                  link.download = result.filename.endsWith('.xlsx') ? result.filename : `${result.filename}.xlsx`;
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
+                  toast.success('Excel report downloaded.');
                 }
               } catch (error: any) {
                 console.error('Error exporting reports:', error);
@@ -655,8 +656,8 @@ export default function Reports() {
             <Button className="bg-[#015F2B] hover:bg-[#014022] gap-2" onClick={async () => {
               try {
                 const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
-                await reportService.downloadReport(report.id, 'csv');
-                toast.success('Report saved and downloaded as CSV.');
+                await reportService.downloadReport(report.id, 'xlsx');
+                toast.success('Report saved and downloaded as Excel.');
                 // Refresh reports list
                 const reports = await reportService.getReports();
                 const reportList = Array.isArray(reports) ? reports : [];
