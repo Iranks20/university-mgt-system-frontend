@@ -5188,6 +5188,7 @@ function ClassesTab({
   const [lecturerFilter, setLecturerFilter] = useState<string>('all');
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [addEditOpen, setAddEditOpen] = useState(false);
+  const [classSaving, setClassSaving] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassRow | null>(null);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [deactivatingClassRow, setDeactivatingClassRow] = useState<ClassRow | null>(null);
@@ -5399,6 +5400,7 @@ function ClassesTab({
   };
 
   const openAdd = () => {
+    setClassSaving(false);
     setEditingClass(null);
     setForm({ 
       name: '', 
@@ -5417,6 +5419,7 @@ function ClassesTab({
   };
 
   const openEdit = async (cls: ClassRow) => {
+    setClassSaving(false);
     setEditingClass(cls);
     // Fetch class details to get full information
     try {
@@ -5458,24 +5461,36 @@ function ClassesTab({
 
   const saveClass = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (classSaving) return;
+
+    const trimmedName = form.name.trim();
+    if (!trimmedName) {
+      toast.error('Please enter a class name');
+      return;
+    }
+    if (!form.courseId) {
+      toast.error('Please select a course');
+      return;
+    }
+
+    const effectiveLecturerIds = [...new Set((form.lecturerIds || []).filter(Boolean))];
+    if (!editingClass && effectiveLecturerIds.length === 0 && !form.lecturerId) {
+      toast.error('Please select at least one lecturer');
+      return;
+    }
+    const primaryLecturerId =
+      form.primaryLecturerId || form.lecturerId || effectiveLecturerIds[0] || '';
+    if (effectiveLecturerIds.length > 0 && primaryLecturerId && !effectiveLecturerIds.includes(primaryLecturerId)) {
+      toast.error('Primary lecturer must be in lecturer pool');
+      return;
+    }
+
+    const wasEditing = Boolean(editingClass);
+    setClassSaving(true);
     try {
-      const effectiveLecturerIds = [...new Set((form.lecturerIds || []).filter(Boolean))];
-      if (!editingClass && effectiveLecturerIds.length === 0 && !form.lecturerId) {
-        toast.error('Please select at least one lecturer');
-        return;
-      }
-      const primaryLecturerId =
-        form.primaryLecturerId || form.lecturerId || effectiveLecturerIds[0] || '';
-      if (effectiveLecturerIds.length > 0 && !effectiveLecturerIds.includes(primaryLecturerId)) {
-        toast.error('Primary lecturer must be in lecturer pool');
-        return;
-      }
-      const course = adminCourses.find(co => co.id === form.courseId);
-      const lecturer = allLecturers.find(l => l.id === form.lecturerId);
-      const venue = venues.find(v => v.id === form.venueId);
-      
       if (editingClass) {
         await academicService.updateClass(editingClass.id, {
+          name: trimmedName,
           courseId: form.courseId,
           lecturerId: primaryLecturerId || undefined,
           lecturerIds: effectiveLecturerIds.length > 0 ? effectiveLecturerIds : undefined,
@@ -5488,10 +5503,9 @@ function ClassesTab({
           endTime: form.endTime,
           capacity: form.capacity,
         });
-        await refreshClassData();
       } else {
         await academicService.createClass({
-              name: form.name,
+          name: trimmedName,
           courseId: form.courseId,
           lecturerId: primaryLecturerId || undefined,
           lecturerIds: effectiveLecturerIds.length > 0 ? effectiveLecturerIds : undefined,
@@ -5505,14 +5519,20 @@ function ClassesTab({
           endTime: form.endTime,
           enrolledCount: 0,
         } as any);
-        await refreshClassData();
       }
+
       setAddEditOpen(false);
-      toast.success(editingClass ? 'Class updated successfully' : 'Class created successfully');
+      setEditingClass(null);
+      toast.success(wasEditing ? 'Class updated successfully' : 'Class created successfully');
       window.dispatchEvent(new CustomEvent('class-updated'));
+      void refreshClassData().catch((error) => {
+        console.error('Error refreshing class data:', error);
+      });
     } catch (error) {
       console.error('Error saving class:', error);
       toast.error(getApiErrorMessage(error, 'Failed to save class. Please try again.'));
+    } finally {
+      setClassSaving(false);
     }
   };
 
@@ -5851,7 +5871,14 @@ function ClassesTab({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addEditOpen} onOpenChange={setAddEditOpen}>
+      <Dialog
+        open={addEditOpen}
+        onOpenChange={(open) => {
+          if (classSaving) return;
+          setAddEditOpen(open);
+          if (!open) setEditingClass(null);
+        }}
+      >
         <DialogContent className="flex w-[95vw] max-w-2xl max-h-[min(90dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:w-full">
           <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
             <DialogTitle>{editingClass ? 'Edit class' : 'Add class group'}</DialogTitle>
@@ -6072,8 +6099,24 @@ function ClassesTab({
             </div>
             </div>
             <DialogFooter className="shrink-0 gap-2 border-t bg-background px-5 py-4 sm:px-6">
-              <Button type="button" variant="outline" onClick={() => setAddEditOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">{editingClass ? 'Save' : 'Add class'}</Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={classSaving}
+                onClick={() => setAddEditOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-[#015F2B] hover:bg-[#014022]" disabled={classSaving}>
+                {classSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {classSaving
+                  ? editingClass
+                    ? 'Saving…'
+                    : 'Adding…'
+                  : editingClass
+                    ? 'Save'
+                    : 'Add class'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
