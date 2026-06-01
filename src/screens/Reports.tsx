@@ -6,7 +6,7 @@ import {
 import { 
   FileText, Download, Filter, Calendar, Users, Building, 
   TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -102,6 +102,8 @@ export default function Reports() {
   const [courseWiseReport, setCourseWiseReport] = useState<CourseWiseAttendanceSummaryReport | null>(null);
   const [courseWiseLoading, setCourseWiseLoading] = useState(false);
   const [courseWiseExporting, setCourseWiseExporting] = useState(false);
+  const [exportAllLoading, setExportAllLoading] = useState(false);
+  const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
@@ -615,6 +617,53 @@ export default function Reports() {
     toast.success('Export downloaded');
   };
 
+  const headerReportActionBusy = exportAllLoading || newReportLoading;
+
+  const handleExportAll = async () => {
+    if (headerReportActionBusy) return;
+    setExportAllLoading(true);
+    try {
+      const result = await reportService.exportReport('all', 'xlsx');
+      if (result.downloadUrl) {
+        const link = document.createElement('a');
+        link.href = result.downloadUrl;
+        link.download = result.filename.endsWith('.xlsx') ? result.filename : `${result.filename}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Excel report downloaded.');
+      }
+    } catch (error: any) {
+      console.error('Error exporting reports:', error);
+      toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setExportAllLoading(false);
+    }
+  };
+
+  const handleNewReport = async () => {
+    if (headerReportActionBusy) return;
+    setNewReportLoading(true);
+    try {
+      const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
+      await reportService.downloadReport(report.id, 'xlsx');
+      toast.success('Report saved and downloaded as Excel.');
+      const reports = await reportService.getReports();
+      const reportList = Array.isArray(reports) ? reports : [];
+      setRecentReports(reportList.map((r: any) => ({
+        id: r.id,
+        name: r.title || `${r.type || 'Report'}`,
+        date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
+        type: r.type || '—',
+      })));
+    } catch (error: any) {
+      console.error('Error generating report:', error);
+      toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setNewReportLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -634,45 +683,30 @@ export default function Reports() {
                 <SelectItem value="semester">This Semester</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" className="gap-2" onClick={async () => {
-              try {
-                const result = await reportService.exportReport('all', 'xlsx');
-                if (result.downloadUrl) {
-                  const link = document.createElement('a');
-                  link.href = result.downloadUrl;
-                  link.download = result.filename.endsWith('.xlsx') ? result.filename : `${result.filename}.xlsx`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  toast.success('Excel report downloaded.');
-                }
-              } catch (error: any) {
-                console.error('Error exporting reports:', error);
-                toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
-              }
-            }}>
-              <Download size={16} /> Export All
+            <Button
+              variant="outline"
+              className="gap-2 min-w-[130px]"
+              onClick={handleExportAll}
+              disabled={headerReportActionBusy}
+            >
+              {exportAllLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              {exportAllLoading ? 'Exporting…' : 'Export All'}
             </Button>
-            <Button className="bg-[#015F2B] hover:bg-[#014022] gap-2" onClick={async () => {
-              try {
-                const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
-                await reportService.downloadReport(report.id, 'xlsx');
-                toast.success('Report saved and downloaded as Excel.');
-                // Refresh reports list
-                const reports = await reportService.getReports();
-                const reportList = Array.isArray(reports) ? reports : [];
-                setRecentReports(reportList.map((r: any) => ({
-                  id: r.id,
-                  name: r.title || `${r.type || 'Report'}`,
-                  date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
-                  type: r.type || '—',
-                })));
-              } catch (error: any) {
-                console.error('Error generating report:', error);
-                toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
-              }
-            }}>
-              <FileText size={16} /> New Report
+            <Button
+              className="bg-[#015F2B] hover:bg-[#014022] gap-2 min-w-[130px]"
+              onClick={handleNewReport}
+              disabled={headerReportActionBusy}
+            >
+              {newReportLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <FileText size={16} />
+              )}
+              {newReportLoading ? 'Generating…' : 'New Report'}
             </Button>
           </div>
         </div>
