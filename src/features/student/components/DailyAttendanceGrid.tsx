@@ -93,7 +93,7 @@ export default function DailyAttendanceGrid({
     } catch (e: any) {
       setGrid(null);
       setCellMap({});
-      toast.error(e?.message || 'Failed to load daily attendance grid.');
+      toast.error('Failed to load daily attendance grid. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -153,7 +153,16 @@ export default function DailyAttendanceGrid({
       onSaved?.();
       await loadGrid();
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save attendance.');
+      const msg = String(e?.message || '');
+      const busy =
+        msg.toLowerCase().includes('pool timeout') ||
+        msg.toLowerCase().includes('failed to retrieve a connection from pool') ||
+        String(e?.code || '') === 'DB_BUSY';
+      toast.error(
+        busy
+          ? 'System is busy saving attendance. Please wait a moment and try again.'
+          : 'Failed to save attendance. Please try again.'
+      );
     } finally {
       setSaving(false);
     }
