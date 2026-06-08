@@ -66,7 +66,7 @@ export function SitesSection({
     setSaving(true);
     try {
       const payload = {
-        code: form.code.trim(),
+        code: form.code.trim().toUpperCase(),
         name: form.name.trim(),
         location: form.location.trim() || undefined,
         isActive: form.isActive,
@@ -81,7 +81,14 @@ export function SitesSection({
       setModalOpen(false);
       await onRefresh();
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save site');
+      const duplicate =
+        err?.code === 'DUPLICATE_CLINICAL_SITE_CODE' ||
+        String(err?.message || '').toLowerCase().includes('already');
+      toast.error(
+        duplicate
+          ? err?.message || 'This site code is already in use. Choose a different code.'
+          : err?.message || 'Failed to save site'
+      );
     } finally {
       setSaving(false);
     }
@@ -204,7 +211,13 @@ export function SitesSection({
             <form onSubmit={save} className="space-y-4">
               <div className="space-y-2">
                 <Label>Site code</Label>
-                <Input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} placeholder="e.g. MNRH" required />
+                <Input
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                  placeholder="e.g. MNRH"
+                  maxLength={50}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label>Site name</Label>
