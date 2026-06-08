@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import WorstPerformers from '@/components/WorstPerformers';
 import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 import { qaService } from '@/services/qa.service';
+import { studentService } from '@/services/student.service';
 import { analyticsService } from '@/services/analytics.service';
 import { reportService } from '@/services/report.service';
 import { staffService } from '@/services/staff.service';
@@ -91,7 +92,10 @@ function DashboardContent() {
 type TeachingRange = 'today' | 'yesterday' | 'this_week' | 'last_30_days';
 
 function QADashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
+  const [markingCoveragePending, setMarkingCoveragePending] = useState<number | null>(null);
+  const [markingCoverageLoading, setMarkingCoverageLoading] = useState(true);
   const [teachingRange, setTeachingRange] = useState<TeachingRange>('last_30_days');
   const [teachingStatsByRange, setTeachingStatsByRange] = useState<{
     scheduledCount: number;
@@ -120,14 +124,17 @@ function QADashboard() {
   };
 
   const fetchData = async () => {
+    setMarkingCoverageLoading(true);
     try {
-      const [dashboardStats, teachingByRange, schoolSummary, lecturesRes, trends, timeLostResult] = await Promise.allSettled([
+      const today = new Date().toISOString().slice(0, 10);
+      const [dashboardStats, teachingByRange, schoolSummary, lecturesRes, trends, timeLostResult, markingCoverageResult] = await Promise.allSettled([
         analyticsService.getDashboardStats(),
         analyticsService.getTeachingStatsByRange(teachingRange),
         qaService.getSchoolSummaryReport(),
         qaService.getLectureRecords({ page: 1, limit: 5 }),
         analyticsService.getAttendanceTrends(7),
         analyticsService.getTimeLostStats(),
+        studentService.getDailyMarkingCoverage({ date: today, status: 'pending' }),
       ]);
       if (dashboardStats.status === 'fulfilled') setStats(dashboardStats.value);
       if (teachingByRange.status === 'fulfilled' && teachingByRange.value) setTeachingStatsByRange(teachingByRange.value);
@@ -143,11 +150,17 @@ function QADashboard() {
       if (trends.status === 'fulfilled') setAttendanceTrend(Array.isArray(trends.value) && trends.value.length > 0 ? trends.value : []);
       if (timeLostResult.status === 'fulfilled' && timeLostResult.value) setTimeLostStats(timeLostResult.value);
       else setTimeLostStats(null);
+      if (markingCoverageResult.status === 'fulfilled' && markingCoverageResult.value?.summary) {
+        setMarkingCoveragePending(markingCoverageResult.value.summary.pending);
+      } else {
+        setMarkingCoveragePending(null);
+      }
     } catch (error) {
       console.error('Error fetching QA dashboard data:', error);
       toast.error('Failed to load dashboard data');
     } finally {
       setTimeLostLoading(false);
+      setMarkingCoverageLoading(false);
     }
   };
 
@@ -197,6 +210,37 @@ function QADashboard() {
         <StatsCard icon={UserCheck} label="Student Attendance" value={stats?.studentAttendancePercent != null ? `${stats.studentAttendancePercent}%` : '0%'} color="text-blue-600" />
         <StatsCard icon={Clock} label="Time Lost (Hrs)" value={timeLostLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (timeLostStats?.totalHours?.toFixed(1) ?? '—')} color="text-[#F6A000]" />
       </div>
+
+      <Card className="border-amber-200 bg-amber-50/40">
+        <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="h-10 w-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 shrink-0">
+              <UserCheck size={20} />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Student attendance marking (today)</p>
+              <p className="text-sm text-muted-foreground">
+                {markingCoverageLoading ? (
+                  'Checking class slots…'
+                ) : markingCoveragePending != null ? (
+                  <>
+                    <span className="font-medium text-amber-800">{markingCoveragePending}</span> class
+                    {markingCoveragePending === 1 ? '' : 'es'} still need marking today.
+                  </>
+                ) : (
+                  'Unable to load marking coverage right now.'
+                )}
+              </p>
+            </div>
+          </div>
+          <Button
+            className="bg-[#015F2B] hover:bg-[#014022] shrink-0"
+            onClick={() => navigate('/student-records?tab=coverage&date=today&status=pending')}
+          >
+            Open marking coverage <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">

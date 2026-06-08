@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { navAllowed, resolveHomePath, routeAllowed } from '@/lib/nav-permissions';
+import { navAllowed, resolveHomePath, routeAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
 
 const campusQaPerms = [
   'qa.review',
@@ -41,5 +41,15 @@ describe('nav-permissions route alignment', () => {
 
   it('resolves a home path for campus QA', () => {
     expect(resolveHomePath(campusQaPerms)).toBe('/dashboard');
+  });
+});
+
+describe('clinical sidebar nesting', () => {
+  it('nests clinical items only for Admin and Management', () => {
+    expect(shouldNestClinicalNavItems('Admin')).toBe(true);
+    expect(shouldNestClinicalNavItems('Management')).toBe(true);
+    expect(shouldNestClinicalNavItems('QAClinicals')).toBe(false);
+    expect(shouldNestClinicalNavItems('ClinicalCoordinator')).toBe(false);
+    expect(shouldNestClinicalNavItems('QA')).toBe(false);
   });
 });

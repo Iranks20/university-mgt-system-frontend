@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   Search, Filter, MoreHorizontal, FileSpreadsheet,
   User, CheckCircle, XCircle, Clock, MapPin,
@@ -11,6 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DailyAttendanceGrid from '@/features/student/components/DailyAttendanceGrid';
+import DailyMarkingCoverage from '@/features/student/components/DailyMarkingCoverage';
+import { useRole } from '@/components/RoleProvider';
+import type { DailyBulkPrefill, DailyMarkingCoverageFilter } from '@/types/student';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -44,7 +48,34 @@ const YEAR_OPTIONS = [1, 2, 3, 4, 5] as const;
 const SEMESTER_OPTIONS = [1, 2] as const;
 const ALL_VALUE = '__all__';
 
+function resolveCoverageDateParam(value: string | null): string | undefined {
+  if (!value) return undefined;
+  if (value === 'today') return new Date().toISOString().slice(0, 10);
+  return value;
+}
+
+function resolveInitialTab(
+  tabParam: string | null,
+  defaultTab: 'log' | 'coverage' | 'daily-bulk'
+): 'log' | 'coverage' | 'daily-bulk' {
+  if (tabParam === 'coverage' || tabParam === 'daily-bulk' || tabParam === 'log') {
+    return tabParam;
+  }
+  return defaultTab;
+}
+
 export default function StudentRecords() {
+  const { role } = useRole();
+  const [searchParams] = useSearchParams();
+  const defaultTab = role === 'QA' ? 'coverage' : 'log';
+  const [activeTab, setActiveTab] = useState<'log' | 'coverage' | 'daily-bulk'>(() =>
+    resolveInitialTab(searchParams.get('tab'), defaultTab)
+  );
+  const [bulkPrefill, setBulkPrefill] = useState<DailyBulkPrefill | null>(null);
+  const [coverageRefreshToken, setCoverageRefreshToken] = useState(0);
+  const coverageInitialDate = resolveCoverageDateParam(searchParams.get('date'));
+  const coverageInitialStatus = (searchParams.get('status') as DailyMarkingCoverageFilter | null) ?? 'pending';
+
   const [records, setRecords] = useState<AttendanceRecordRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -458,20 +489,38 @@ export default function StudentRecords() {
         </div>
       </div>
 
-      <Tabs defaultValue="log" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'log' | 'coverage' | 'daily-bulk')} className="space-y-4">
         <TabsList className="bg-gray-100 p-1">
-          <TabsTrigger value="log">Attendance log</TabsTrigger>
+          <TabsTrigger value="coverage">Marking coverage</TabsTrigger>
           <TabsTrigger value="daily-bulk">Daily bulk marking</TabsTrigger>
+          <TabsTrigger value="log">Attendance log</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="coverage" className="mt-0">
+          <DailyMarkingCoverage
+            schools={schools.map((s) => ({ id: s.id, name: s.name }))}
+            programs={allPrograms}
+            programToSchoolMap={programToSchoolMap}
+            initialDate={coverageInitialDate}
+            initialStatus={coverageInitialStatus}
+            refreshToken={coverageRefreshToken}
+            onMarkClass={(prefill) => {
+              setBulkPrefill(prefill);
+              setActiveTab('daily-bulk');
+            }}
+          />
+        </TabsContent>
 
         <TabsContent value="daily-bulk" className="mt-0">
           <DailyAttendanceGrid
             schools={schools.map((s) => ({ id: s.id, name: s.name }))}
             programs={allPrograms}
             programToSchoolMap={programToSchoolMap}
+            prefill={bulkPrefill}
             onSaved={() => {
               loadAttendanceRecords();
               loadAttendanceSummary();
+              setCoverageRefreshToken((token) => token + 1);
             }}
           />
         </TabsContent>

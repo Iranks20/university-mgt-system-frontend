@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { hasAnyPermission, navAllowed } from '@/lib/nav-permissions';
+import { navAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
@@ -119,24 +119,28 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
-function buildNavFromPermissions(userPermissions: string[]): SidebarItem[] {
+function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
   const allow = (path: string) => navAllowed(userPermissions, path);
   const items: SidebarItem[] = [
     { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   ];
 
   const clinicalChildren = ADMIN_CLINICAL_NAV_CHILDREN.filter((c) => allow(c.path));
-  if (clinicalChildren.length === 1) {
-    const only = clinicalChildren[0];
-    items.push({ type: 'single', label: only.label, icon: only.icon, path: only.path });
-  } else if (clinicalChildren.length > 1) {
-    items.push({
-      type: 'folder',
-      id: 'clinicals',
-      label: 'Clinicals',
-      icon: Briefcase,
-      children: clinicalChildren,
-    });
+  const nestClinicalNav = shouldNestClinicalNavItems(role);
+  if (clinicalChildren.length > 0) {
+    if (nestClinicalNav && clinicalChildren.length > 1) {
+      items.push({
+        type: 'folder',
+        id: 'clinicals',
+        label: 'Clinicals',
+        icon: Briefcase,
+        children: clinicalChildren,
+      });
+    } else {
+      for (const child of clinicalChildren) {
+        items.push({ type: 'single', label: child.label, icon: child.icon, path: child.path });
+      }
+    }
   }
 
   for (const entry of FLAT_NAV_CANDIDATES) {
@@ -302,7 +306,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   const userPermissions = user?.permissions || [];
-  const filteredNavItems = buildNavFromPermissions(userPermissions);
+  const filteredNavItems = buildNavFromPermissions(userPermissions, role);
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
   const headerPageTitle = getHeaderTitle(location.pathname, location.search, filteredNavItems);

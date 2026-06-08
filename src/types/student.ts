@@ -208,6 +208,65 @@ export interface DailyMarkingGrid {
   students: DailyMarkingGridStudent[];
 }
 
+export type DailyMarkingCoverageStatus =
+  | 'not_started'
+  | 'partial'
+  | 'complete'
+  | 'no_students';
+
+export type DailyMarkingCoverageFilter = 'all' | 'pending' | 'not_started' | 'partial' | 'complete';
+
+export interface DailyMarkingCoverageItem {
+  programIntakeId: string;
+  cohortLabel: string;
+  programId: string;
+  programName: string;
+  programCode: string;
+  schoolId: string | null;
+  schoolName: string | null;
+  year: number;
+  semester: number;
+  intakeType: string;
+  classId: string;
+  className: string;
+  courseId: string;
+  courseName: string;
+  courseCode: string;
+  startTime: string | null;
+  endTime: string | null;
+  expectedStudents: number;
+  markedStudents: number;
+  status: DailyMarkingCoverageStatus;
+}
+
+export interface DailyMarkingCoverageSummary {
+  totalSlots: number;
+  complete: number;
+  partial: number;
+  notStarted: number;
+  noStudents: number;
+  pending: number;
+}
+
+export interface DailyMarkingCoverage {
+  date: string;
+  dayOfWeek: number;
+  dayName: string;
+  summary: DailyMarkingCoverageSummary;
+  items: DailyMarkingCoverageItem[];
+}
+
+export type DailyBulkPrefill = {
+  programIntakeId: string;
+  programId: string;
+  schoolId: string | null;
+  year: number;
+  semester: number;
+  intakeType: string;
+  date: string;
+  requestId: number;
+};
+
 export interface WeeklyMatrixDayGroup {
   dayOfWeek: number;
   dayLabel: string;

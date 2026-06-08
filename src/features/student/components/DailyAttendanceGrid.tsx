@@ -17,7 +17,8 @@ import {
   type StudentSortDirection,
   type StudentSortField,
 } from '@/lib/attendance-metrics';
-import type { DailyMarkingGrid } from '@/types/student';
+import type { DailyBulkPrefill, DailyMarkingGrid } from '@/types/student';
+import { PROGRAM_INTAKE_ALL } from '@/hooks/useProgramIntakeScope';
 import { toast } from 'sonner';
 import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
 import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
@@ -29,6 +30,7 @@ interface DailyAttendanceGridProps {
   programs: Array<{ id: string; name: string; code: string; departmentId: string }>;
   programToSchoolMap: Map<string, string>;
   onSaved?: () => void;
+  prefill?: DailyBulkPrefill | null;
 }
 
 export default function DailyAttendanceGrid({
@@ -36,6 +38,7 @@ export default function DailyAttendanceGrid({
   programs,
   programToSchoolMap,
   onSaved,
+  prefill,
 }: DailyAttendanceGridProps) {
   const intakeScope = useProgramIntakeScope({
     intakeField: 'cohortList',
@@ -98,6 +101,36 @@ export default function DailyAttendanceGrid({
       setLoading(false);
     }
   }, [intakeScope.programIntakeId, intakeScope.isComplete, markDate]);
+
+  useEffect(() => {
+    if (!prefill) return;
+    if (prefill.schoolId) {
+      intakeScope.setSchoolId(prefill.schoolId);
+    } else if (intakeScope.allowAllSchool) {
+      intakeScope.setSchoolId(PROGRAM_INTAKE_ALL);
+    }
+    intakeScope.setProgramId(prefill.programId);
+    intakeScope.setYear(String(prefill.year));
+    intakeScope.setSemester(String(prefill.semester));
+    setMarkDate(prefill.date);
+  }, [prefill?.requestId]);
+
+  useEffect(() => {
+    if (!prefill || intakeScope.loadingIntakes) return;
+    if (intakeScope.intakes.some((i) => i.id === prefill.programIntakeId)) {
+      intakeScope.setProgramIntakeId(prefill.programIntakeId);
+    }
+  }, [prefill?.requestId, intakeScope.loadingIntakes, intakeScope.intakes, prefill?.programIntakeId]);
+
+  const prefillReady =
+    Boolean(prefill) &&
+    intakeScope.isComplete &&
+    intakeScope.programIntakeId === prefill?.programIntakeId;
+
+  useEffect(() => {
+    if (!prefillReady || !prefill) return;
+    void loadGrid();
+  }, [prefillReady, prefill?.requestId]);
 
   const setCell = (studentId: string, classId: string, value: AttendanceStatus) => {
     setCellMap((prev) => ({ ...prev, [cellKey(studentId, classId)]: value }));

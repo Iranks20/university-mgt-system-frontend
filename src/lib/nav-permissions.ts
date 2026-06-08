@@ -246,6 +246,10 @@ export function navAllowed(userPermissions: string[], path: string): boolean {
   return routeAllowed(userPermissions, path);
 }
 
+export function shouldNestClinicalNavItems(role: string): boolean {
+  return role === 'Admin' || role === 'Management';
+}
+
 export function formatPermissionRequirement(required: PermissionRequirement | undefined): string {
   if (!required || (Array.isArray(required) && required.length === 0)) {
     return 'Visible to all signed-in users';

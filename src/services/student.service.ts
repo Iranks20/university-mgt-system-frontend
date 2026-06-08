@@ -3,6 +3,7 @@ import type { Student, StudentAttendance } from '@/types';
 import type {
   ClassAttendanceSummaryReport,
   CourseWiseAttendanceSummaryReport,
+  DailyMarkingCoverage,
   DailyMarkingGrid,
   WeeklyAttendanceMatrixReport,
   StudentAttendanceReport,
@@ -225,6 +226,20 @@ export const studentService = {
       params
     );
     return (res as { data?: DailyMarkingGrid })?.data ?? (res as DailyMarkingGrid);
+  },
+
+  getDailyMarkingCoverage: async (params: {
+    date: string;
+    schoolId?: string;
+    programId?: string;
+    programIntakeId?: string;
+    status?: string;
+  }): Promise<DailyMarkingCoverage | null> => {
+    const res = await api.get<DailyMarkingCoverage | { data: DailyMarkingCoverage }>(
+      '/students/attendance/daily-marking-coverage',
+      params
+    );
+    return (res as { data?: DailyMarkingCoverage })?.data ?? (res as DailyMarkingCoverage);
   },
 
   saveDailyMarkingGrid: async (payload: {
