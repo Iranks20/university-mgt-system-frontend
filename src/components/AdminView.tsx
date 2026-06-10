@@ -5824,9 +5824,9 @@ function ClassesTab({
           <div className="flex items-center justify-between border-t px-4 py-2">
             <span className="text-sm text-muted-foreground">{classesTotal} total</span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, { programIntakeId })}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Previous</Button>
               <span className="text-sm">Page {classesPage} of {Math.max(1, Math.ceil(classesTotal / pageSize))}</span>
-              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, { programIntakeId })}>Next</Button>
+              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Next</Button>
             </div>
           </div>
         )}

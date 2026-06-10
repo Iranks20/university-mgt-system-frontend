@@ -288,6 +288,7 @@ export const academicService = {
     programIntakeId?: string;
     page?: number;
     limit?: number;
+    search?: string;
     classStatus?: 'active' | 'inactive' | 'all';
   }): Promise<{ data: Class[]; total: number; page: number; pageSize: number }> => {
     try {
@@ -297,6 +298,7 @@ export const academicService = {
       if (params?.programIntakeId) query.set('programIntakeId', params.programIntakeId);
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
+      if (params?.search?.trim()) query.set('search', params.search.trim());
       if (params?.classStatus) query.set('classStatus', params.classStatus);
       const res = await api.get<{ data: Class[]; total: number; page: number; pageSize: number }>('/academic/classes' + (query.toString() ? '?' + query.toString() : ''));
       return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 20 };

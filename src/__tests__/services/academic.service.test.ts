@@ -133,6 +133,14 @@ describe('AcademicService - Calendar & CRUD', () => {
 
       expect(api.get).toHaveBeenCalledWith('/academic/classes?programIntakeId=intake-1&page=2&limit=10');
     });
+
+    it('should include search in query when provided', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 20 } as any);
+
+      await academicService.getClasses({ page: 1, limit: 20, search: 'med 101' });
+
+      expect(api.get).toHaveBeenCalledWith('/academic/classes?page=1&limit=20&search=med+101');
+    });
   });
 
   describe('updateClass', () => {
