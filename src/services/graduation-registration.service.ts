@@ -19,6 +19,13 @@ export interface GraduationRegistrationRow {
   fullName: string;
   dateOfBirth: string;
   nationality: string;
+  village: string;
+  parish: string;
+  subcounty: string;
+  county: string;
+  district: string;
+  region: string;
+  country: string;
   briefBioNotes: string | null;
   parentGuardianName: string;
   sponsorOrganization: string | null;
@@ -46,6 +53,13 @@ export interface GraduationRegistrationSubmitPayload {
   fullName: string;
   dateOfBirth: string;
   nationality: string;
+  village: string;
+  parish: string;
+  subcounty: string;
+  county: string;
+  district: string;
+  region: string;
+  country: string;
   briefBioNotes?: string;
   parentGuardianName: string;
   sponsorOrganization?: string;
