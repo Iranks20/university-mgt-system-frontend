@@ -24,6 +24,8 @@ export interface GraduationFormOption {
   label: string;
 }
 
+export type GraduationAddressFormat = 'Uganda' | 'International';
+
 export interface GraduationFormOptions {
   schools: Array<{ id: string; name: string }>;
   programs: Array<{ id: string; name: string; schoolId: string }>;
@@ -42,15 +44,22 @@ export interface GraduationRegistrationRow {
   fullName: string;
   dateOfBirth: string;
   nationality: string;
-  village: string;
-  parish: string;
-  subcounty: string;
-  county: string;
-  district: string;
-  region: string;
-  country: string;
-  homePlotStreet: string;
+  permanentAddressFormat: GraduationAddressFormat;
+  village: string | null;
+  parish: string | null;
+  subcounty: string | null;
+  county: string | null;
+  district: string | null;
+  region: string | null;
+  country: string | null;
+  homePlotStreet: string | null;
   poBoxNumber: string | null;
+  intlStreetAddress: string | null;
+  intlCity: string | null;
+  intlStateProvince: string | null;
+  intlAreaLga: string | null;
+  intlPostalCode: string | null;
+  intlCountry: string | null;
   personalMobilePhone: string;
   whatsAppNumber: string;
   nationalIdOrPassport: string;
@@ -91,20 +100,34 @@ export interface GraduationRegistrationRow {
   updatedAt: string;
 }
 
-export interface GraduationRegistrationSubmitPayload {
+export type GraduationRegistrationSubmitPayload =
+  | ({
+      permanentAddressFormat: 'Uganda';
+      village: string;
+      parish: string;
+      subcounty: string;
+      county: string;
+      district: string;
+      region: string;
+      country: string;
+      homePlotStreet: string;
+      poBoxNumber?: string;
+    } & GraduationRegistrationSubmitCore)
+  | ({
+      permanentAddressFormat: 'International';
+      intlStreetAddress: string;
+      intlCity: string;
+      intlStateProvince: string;
+      intlAreaLga?: string;
+      intlPostalCode?: string;
+      intlCountry: string;
+    } & GraduationRegistrationSubmitCore);
+
+interface GraduationRegistrationSubmitCore {
   studentId: string;
   fullName: string;
   dateOfBirth: string;
   nationality: string;
-  village: string;
-  parish: string;
-  subcounty: string;
-  county: string;
-  district: string;
-  region: string;
-  country: string;
-  homePlotStreet: string;
-  poBoxNumber?: string;
   personalMobilePhone: string;
   whatsAppNumber: string;
   nationalIdOrPassport: string;
@@ -140,6 +163,60 @@ export interface GraduationRegistrationSubmitPayload {
   declarationAccepted: true;
   signatureSignedName: string;
   signatureImage: string;
+}
+
+export interface GraduationRegistrationUpdatePayload {
+  studentId: string;
+  fullName: string;
+  dateOfBirth: string;
+  nationality: string;
+  permanentAddressFormat: GraduationAddressFormat;
+  village: string | null;
+  parish: string | null;
+  subcounty: string | null;
+  county: string | null;
+  district: string | null;
+  region: string | null;
+  country: string | null;
+  homePlotStreet: string | null;
+  poBoxNumber: string | null;
+  intlStreetAddress: string | null;
+  intlCity: string | null;
+  intlStateProvince: string | null;
+  intlAreaLga: string | null;
+  intlPostalCode: string | null;
+  intlCountry: string | null;
+  personalMobilePhone: string;
+  whatsAppNumber: string;
+  nationalIdOrPassport: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  namePronunciation: string;
+  universityEmail: string;
+  permanentContactEmail: string | null;
+  briefBioNotes: string | null;
+  parentGuardianName: string;
+  parentGuardianEmail: string | null;
+  sponsorOrganization: string;
+  parentSponsorPhone: string;
+  p7SchoolAttended: string;
+  s4SchoolAttended: string;
+  s6SchoolAttended: string | null;
+  previousQualifications: string | null;
+  facultySchool: string;
+  programName: string;
+  awardClassification: string;
+  graduationCohort: string;
+  institutionalClearance: GraduationClearanceStatus;
+  employmentStatusAtGraduation: GraduationEmploymentStatus;
+  postGraduationPlan: GraduationPostGraduationPlan;
+  postGraduationPlanDetail: string | null;
+  accessibilityNeeds: string | null;
+  alumniCommunicationConsent: boolean;
+  rsvpStatus: GraduationRsvpStatus;
+  gownSize: string;
+  guestCount: number;
+  staffEscortAssigned: string | null;
 }
 
 export interface GraduationListParams {
@@ -210,19 +287,12 @@ export const graduationRegistrationService = {
     }>('/graduation-registrations/filter-options');
   },
 
-  async update(
-    id: string,
-    payload: Partial<{
-      institutionalClearance: GraduationClearanceStatus;
-      staffEscortAssigned: string | null;
-      fullName: string;
-      graduationCohort: string;
-      guestCount: number;
-      rsvpStatus: GraduationRsvpStatus;
-      gownSize: string;
-    }>
-  ) {
+  async update(id: string, payload: GraduationRegistrationUpdatePayload) {
     return api.patch<GraduationRegistrationRow>(`/graduation-registrations/${id}`, payload);
+  },
+
+  async remove(id: string) {
+    return api.delete<{ id: string; deleted: boolean }>(`/graduation-registrations/${id}`);
   },
 
   async exportExcel(params: GraduationListParams = {}) {

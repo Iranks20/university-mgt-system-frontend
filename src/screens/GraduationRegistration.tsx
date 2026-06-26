@@ -43,6 +43,7 @@ const emptyForm = {
   whatsAppNumber: '',
   emergencyContactName: '',
   emergencyContactPhone: '',
+  permanentAddressFormat: 'Uganda' as 'Uganda' | 'International',
   village: '',
   parish: '',
   subcounty: '',
@@ -52,6 +53,13 @@ const emptyForm = {
   country: 'Uganda',
   homePlotStreet: '',
   poBoxNumber: '',
+  intlStreetAddress: '',
+  intlCity: '',
+  intlStateProvince: '',
+  intlAreaLga: '',
+  intlPostalCode: '',
+  intlCountry: '',
+  whatsAppSameAsMobile: false,
   briefBioNotes: '',
   parentGuardianName: '',
   parentGuardianEmail: '',
@@ -108,6 +116,8 @@ export default function GraduationRegistration() {
     if (!options || !form.schoolSelect || form.schoolSelect === OTHER_SCHOOL) return [];
     return options.programs.filter((p) => p.schoolId === form.schoolSelect);
   }, [options, form.schoolSelect]);
+
+  const isUgandaAddress = form.permanentAddressFormat === 'Uganda';
 
   const setField = (key: keyof typeof emptyForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -175,22 +185,17 @@ export default function GraduationRegistration() {
 
     setSubmitting(true);
     try {
-      await graduationRegistrationService.submitPublic({
+      const whatsAppNumber = form.whatsAppSameAsMobile
+        ? form.personalMobilePhone.trim()
+        : form.whatsAppNumber.trim();
+
+      const sharedPayload = {
         studentId: form.studentId.trim(),
         fullName: form.fullName.trim(),
         dateOfBirth: form.dateOfBirth,
         nationality: form.nationality.trim(),
-        village: form.village.trim(),
-        parish: form.parish.trim(),
-        subcounty: form.subcounty.trim(),
-        county: form.county.trim(),
-        district: form.district.trim(),
-        region: form.region.trim(),
-        country: form.country.trim(),
-        homePlotStreet: form.homePlotStreet.trim(),
-        poBoxNumber: form.poBoxNumber.trim() || undefined,
         personalMobilePhone: form.personalMobilePhone.trim(),
-        whatsAppNumber: form.whatsAppNumber.trim(),
+        whatsAppNumber,
         nationalIdOrPassport: form.nationalIdOrPassport.trim(),
         emergencyContactName: form.emergencyContactName.trim(),
         emergencyContactPhone: form.emergencyContactPhone.trim(),
@@ -220,14 +225,41 @@ export default function GraduationRegistration() {
         postGraduationPlan: form.postGraduationPlan,
         postGraduationPlanDetail: form.postGraduationPlanDetail.trim() || undefined,
         accessibilityNeeds: form.accessibilityNeeds.trim() || undefined,
-        alumniCommunicationConsent: true,
+        alumniCommunicationConsent: true as const,
         rsvpStatus: form.rsvpStatus,
         gownSize: form.gownSize,
         guestCount: Number(form.guestCount) || 0,
-        declarationAccepted: true,
+        declarationAccepted: true as const,
         signatureSignedName: signatureSignedName.trim(),
         signatureImage: signaturePadRef.current.toDataURL(),
-      });
+      };
+
+      if (isUgandaAddress) {
+        await graduationRegistrationService.submitPublic({
+          ...sharedPayload,
+          permanentAddressFormat: 'Uganda',
+          village: form.village.trim(),
+          parish: form.parish.trim(),
+          subcounty: form.subcounty.trim(),
+          county: form.county.trim(),
+          district: form.district.trim(),
+          region: form.region.trim(),
+          country: form.country.trim(),
+          homePlotStreet: form.homePlotStreet.trim(),
+          poBoxNumber: form.poBoxNumber.trim() || undefined,
+        });
+      } else {
+        await graduationRegistrationService.submitPublic({
+          ...sharedPayload,
+          permanentAddressFormat: 'International',
+          intlStreetAddress: form.intlStreetAddress.trim(),
+          intlCity: form.intlCity.trim(),
+          intlStateProvince: form.intlStateProvince.trim(),
+          intlAreaLga: form.intlAreaLga.trim() || undefined,
+          intlPostalCode: form.intlPostalCode.trim() || undefined,
+          intlCountry: form.intlCountry.trim(),
+        });
+      }
       setSubmitted(true);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
@@ -360,7 +392,23 @@ export default function GraduationRegistration() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="whatsAppNumber">WhatsApp number *</Label>
-                  <Input id="whatsAppNumber" required value={form.whatsAppNumber} onChange={(e) => setField('whatsAppNumber', e.target.value)} />
+                  <Input
+                    id="whatsAppNumber"
+                    required={!form.whatsAppSameAsMobile}
+                    disabled={form.whatsAppSameAsMobile}
+                    value={form.whatsAppSameAsMobile ? form.personalMobilePhone : form.whatsAppNumber}
+                    onChange={(e) => setField('whatsAppNumber', e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-3 md:col-span-2">
+                  <Checkbox
+                    id="whatsAppSameAsMobile"
+                    checked={form.whatsAppSameAsMobile}
+                    onCheckedChange={(checked) => setField('whatsAppSameAsMobile', checked === true)}
+                  />
+                  <Label htmlFor="whatsAppSameAsMobile" className="cursor-pointer">
+                    WhatsApp number is the same as mobile
+                  </Label>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="emergencyContactName">Emergency contact name *</Label>
@@ -376,45 +424,104 @@ export default function GraduationRegistration() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Home address</CardTitle>
-                <CardDescription>Local council levels LC1–LC5, region and country</CardDescription>
+                <CardDescription>
+                  Where is your permanent home address? Ugandan students use LC1–LC5; international students use the address format for their country.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="village">Village (LC1) *</Label>
-                  <Input id="village" required value={form.village} onChange={(e) => setField('village', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="parish">Parish (LC2) *</Label>
-                  <Input id="parish" required value={form.parish} onChange={(e) => setField('parish', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subcounty">Subcounty (LC3) *</Label>
-                  <Input id="subcounty" required value={form.subcounty} onChange={(e) => setField('subcounty', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="county">County (LC4) *</Label>
-                  <Input id="county" required value={form.county} onChange={(e) => setField('county', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="district">District (LC5) *</Label>
-                  <Input id="district" required value={form.district} onChange={(e) => setField('district', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="region">Region *</Label>
-                  <Input id="region" required value={form.region} onChange={(e) => setField('region', e.target.value)} />
-                </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="country">Country *</Label>
-                  <Input id="country" required value={form.country} onChange={(e) => setField('country', e.target.value)} />
+                  <Label>Permanent home address *</Label>
+                  <Select
+                    value={form.permanentAddressFormat}
+                    onValueChange={(v) => {
+                      const format = v as 'Uganda' | 'International';
+                      setField('permanentAddressFormat', format);
+                      if (format === 'Uganda') {
+                        setField('country', 'Uganda');
+                      }
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Uganda">Uganda (LC1–LC5)</SelectItem>
+                      <SelectItem value="International">Outside Uganda</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="homePlotStreet">Home plot / street *</Label>
-                  <Input id="homePlotStreet" required placeholder="e.g. Plot 29 Main Street" value={form.homePlotStreet} onChange={(e) => setField('homePlotStreet', e.target.value)} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="poBoxNumber">P.O. Box number</Label>
-                  <Input id="poBoxNumber" value={form.poBoxNumber} onChange={(e) => setField('poBoxNumber', e.target.value)} />
-                </div>
+
+                {isUgandaAddress ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="village">Village (LC1) *</Label>
+                      <Input id="village" required value={form.village} onChange={(e) => setField('village', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="parish">Parish (LC2) *</Label>
+                      <Input id="parish" required value={form.parish} onChange={(e) => setField('parish', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subcounty">Subcounty (LC3) *</Label>
+                      <Input id="subcounty" required value={form.subcounty} onChange={(e) => setField('subcounty', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="county">County (LC4) *</Label>
+                      <Input id="county" required value={form.county} onChange={(e) => setField('county', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="district">District (LC5) *</Label>
+                      <Input id="district" required value={form.district} onChange={(e) => setField('district', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="region">Region *</Label>
+                      <Input id="region" required value={form.region} onChange={(e) => setField('region', e.target.value)} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="country">Country *</Label>
+                      <Input id="country" required value={form.country} onChange={(e) => setField('country', e.target.value)} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="homePlotStreet">Home plot / street *</Label>
+                      <Input id="homePlotStreet" required placeholder="e.g. Plot 29 Main Street" value={form.homePlotStreet} onChange={(e) => setField('homePlotStreet', e.target.value)} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="poBoxNumber">P.O. Box number</Label>
+                      <Input id="poBoxNumber" value={form.poBoxNumber} onChange={(e) => setField('poBoxNumber', e.target.value)} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="intlStreetAddress">Street / house address *</Label>
+                      <Input
+                        id="intlStreetAddress"
+                        required
+                        placeholder="e.g. 12 Admiralty Way, Lekki"
+                        value={form.intlStreetAddress}
+                        onChange={(e) => setField('intlStreetAddress', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="intlCity">City / town *</Label>
+                      <Input id="intlCity" required value={form.intlCity} onChange={(e) => setField('intlCity', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="intlStateProvince">State / province *</Label>
+                      <Input id="intlStateProvince" required value={form.intlStateProvince} onChange={(e) => setField('intlStateProvince', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="intlAreaLga">Area / LGA / neighbourhood</Label>
+                      <Input id="intlAreaLga" value={form.intlAreaLga} onChange={(e) => setField('intlAreaLga', e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="intlPostalCode">Postal / ZIP code</Label>
+                      <Input id="intlPostalCode" value={form.intlPostalCode} onChange={(e) => setField('intlPostalCode', e.target.value)} />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="intlCountry">Country *</Label>
+                      <Input id="intlCountry" required placeholder="e.g. Nigeria" value={form.intlCountry} onChange={(e) => setField('intlCountry', e.target.value)} />
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -479,23 +586,33 @@ export default function GraduationRegistration() {
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="p7SchoolAttended">P.7 school attended *</Label>
+                  <Label htmlFor="p7SchoolAttended">
+                    {isUgandaAddress ? 'P.7 school attended *' : 'Primary / elementary school *'}
+                  </Label>
                   <Input id="p7SchoolAttended" required value={form.p7SchoolAttended} onChange={(e) => setField('p7SchoolAttended', e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="s4SchoolAttended">S.4 school attended *</Label>
+                  <Label htmlFor="s4SchoolAttended">
+                    {isUgandaAddress ? 'S.4 school attended *' : 'Secondary school (O-Level / JSS / equivalent) *'}
+                  </Label>
                   <Input id="s4SchoolAttended" required value={form.s4SchoolAttended} onChange={(e) => setField('s4SchoolAttended', e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="s6SchoolAttended">S.6 or equivalent school</Label>
+                  <Label htmlFor="s6SchoolAttended">
+                    {isUgandaAddress ? 'S.6 or equivalent school' : 'Secondary school (A-Level / SS / equivalent)'}
+                  </Label>
                   <Input
                     id="s6SchoolAttended"
-                    placeholder="e.g. UACE school, or certificate/entry programme if no S.6"
+                    placeholder={
+                      isUgandaAddress
+                        ? 'e.g. UACE school, or certificate/entry programme if no S.6'
+                        : 'e.g. high school or pre-university programme if applicable'
+                    }
                     value={form.s6SchoolAttended}
                     onChange={(e) => setField('s6SchoolAttended', e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional. Leave blank if you entered via certificate or another pathway without S.6.
+                    Optional. Leave blank if not applicable to your education pathway.
                   </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
