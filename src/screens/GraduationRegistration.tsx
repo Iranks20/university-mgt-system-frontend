@@ -13,21 +13,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   graduationRegistrationService,
+  type GraduationClearanceStatus,
+  type GraduationEmploymentStatus,
   type GraduationFormOptions,
+  type GraduationPostGraduationPlan,
   type GraduationRsvpStatus,
 } from '@/services/graduation-registration.service';
 import { toast } from 'sonner';
 
 const OTHER_SCHOOL = '__other_school__';
 const OTHER_PROGRAM = '__other_program__';
+const OTHER_SPONSOR = '__other__';
+const OTHER_PLAN = 'Other';
 
 const emptyForm = {
   studentId: '',
   fullName: '',
   dateOfBirth: '',
   nationality: '',
+  nationalIdOrPassport: '',
+  namePronunciation: '',
+  permanentContactEmail: '',
+  universityEmail: '',
+  personalMobilePhone: '',
+  whatsAppNumber: '',
+  emergencyContactName: '',
+  emergencyContactPhone: '',
   village: '',
   parish: '',
   subcounty: '',
@@ -35,11 +49,17 @@ const emptyForm = {
   district: '',
   region: '',
   country: 'Uganda',
+  homePlotStreet: '',
+  poBoxNumber: '',
   briefBioNotes: '',
   parentGuardianName: '',
-  sponsorOrganization: '',
-  parentSponsorContact: '',
-  highSchoolAttended: '',
+  parentGuardianEmail: '',
+  sponsorSelect: '',
+  sponsorOrganizationOther: '',
+  parentSponsorPhone: '',
+  p7SchoolAttended: '',
+  s4SchoolAttended: '',
+  s6SchoolAttended: '',
   previousQualifications: '',
   schoolSelect: '',
   facultySchoolOther: '',
@@ -47,10 +67,15 @@ const emptyForm = {
   programNameOther: '',
   awardClassification: '',
   graduationCohort: '',
+  institutionalClearance: '' as GraduationClearanceStatus | '',
+  employmentStatusAtGraduation: '' as GraduationEmploymentStatus | '',
+  postGraduationPlan: '' as GraduationPostGraduationPlan | '',
+  postGraduationPlanDetail: '',
+  alumniCommunicationConsent: false,
   rsvpStatus: '' as GraduationRsvpStatus | '',
   gownSize: '',
   guestCount: '0',
-  permanentContactEmail: '',
+  accessibilityNeeds: '',
 };
 
 export default function GraduationRegistration() {
@@ -73,7 +98,7 @@ export default function GraduationRegistration() {
     return options.programs.filter((p) => p.schoolId === form.schoolSelect);
   }, [options, form.schoolSelect]);
 
-  const setField = (key: keyof typeof emptyForm, value: string) => {
+  const setField = (key: keyof typeof emptyForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -81,6 +106,22 @@ export default function GraduationRegistration() {
     e.preventDefault();
     if (!form.rsvpStatus) {
       toast.error('Please select your attendance plan.');
+      return;
+    }
+    if (!form.institutionalClearance) {
+      toast.error('Please select your institutional clearance status.');
+      return;
+    }
+    if (!form.employmentStatusAtGraduation) {
+      toast.error('Please select your employment status at graduation.');
+      return;
+    }
+    if (!form.postGraduationPlan) {
+      toast.error('Please select your post-graduation plan.');
+      return;
+    }
+    if (!form.alumniCommunicationConsent) {
+      toast.error('Please consent to alumni communications to submit.');
       return;
     }
 
@@ -99,6 +140,16 @@ export default function GraduationRegistration() {
       return;
     }
 
+    const sponsorOrganization =
+      form.sponsorSelect === OTHER_SPONSOR
+        ? form.sponsorOrganizationOther.trim()
+        : form.sponsorSelect;
+
+    if (!sponsorOrganization) {
+      toast.error('Please select or enter your sponsor.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await graduationRegistrationService.submitPublic({
@@ -113,11 +164,24 @@ export default function GraduationRegistration() {
         district: form.district.trim(),
         region: form.region.trim(),
         country: form.country.trim(),
+        homePlotStreet: form.homePlotStreet.trim(),
+        poBoxNumber: form.poBoxNumber.trim() || undefined,
+        personalMobilePhone: form.personalMobilePhone.trim(),
+        whatsAppNumber: form.whatsAppNumber.trim(),
+        nationalIdOrPassport: form.nationalIdOrPassport.trim(),
+        emergencyContactName: form.emergencyContactName.trim(),
+        emergencyContactPhone: form.emergencyContactPhone.trim(),
+        namePronunciation: form.namePronunciation.trim(),
+        universityEmail: form.universityEmail.trim(),
+        permanentContactEmail: form.permanentContactEmail.trim() || undefined,
         briefBioNotes: form.briefBioNotes.trim() || undefined,
         parentGuardianName: form.parentGuardianName.trim(),
-        sponsorOrganization: form.sponsorOrganization.trim() || undefined,
-        parentSponsorContact: form.parentSponsorContact.trim(),
-        highSchoolAttended: form.highSchoolAttended.trim(),
+        parentGuardianEmail: form.parentGuardianEmail.trim() || undefined,
+        sponsorOrganization,
+        parentSponsorPhone: form.parentSponsorPhone.trim(),
+        p7SchoolAttended: form.p7SchoolAttended.trim(),
+        s4SchoolAttended: form.s4SchoolAttended.trim(),
+        s6SchoolAttended: form.s6SchoolAttended.trim(),
         previousQualifications: form.previousQualifications.trim() || undefined,
         facultySchool,
         schoolId: form.schoolSelect !== OTHER_SCHOOL ? form.schoolSelect : undefined,
@@ -128,17 +192,22 @@ export default function GraduationRegistration() {
             : undefined,
         awardClassification: form.awardClassification,
         graduationCohort: form.graduationCohort.trim(),
+        institutionalClearance: form.institutionalClearance,
+        employmentStatusAtGraduation: form.employmentStatusAtGraduation,
+        postGraduationPlan: form.postGraduationPlan,
+        postGraduationPlanDetail: form.postGraduationPlanDetail.trim() || undefined,
+        accessibilityNeeds: form.accessibilityNeeds.trim() || undefined,
+        alumniCommunicationConsent: true,
         rsvpStatus: form.rsvpStatus,
         gownSize: form.gownSize,
         guestCount: Number(form.guestCount) || 0,
-        permanentContactEmail: form.permanentContactEmail.trim(),
       });
       setSubmitted(true);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       const message = err instanceof Error ? err.message : 'Submission failed';
       if (code === 'GRADUATION_EMAIL_ALREADY_REGISTERED') {
-        toast.error('This email has already been used to register.');
+        toast.error('This university email has already been used to register.');
       } else {
         toast.error(message);
       }
@@ -205,9 +274,69 @@ export default function GraduationRegistration() {
                   <Label htmlFor="nationality">Nationality *</Label>
                   <Input id="nationality" required value={form.nationality} onChange={(e) => setField('nationality', e.target.value)} />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nationalIdOrPassport">National ID or passport number *</Label>
+                  <Input id="nationalIdOrPassport" required value={form.nationalIdOrPassport} onChange={(e) => setField('nationalIdOrPassport', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="namePronunciation">Name pronunciation (for stage announcement) *</Label>
+                  <Input id="namePronunciation" required placeholder="e.g. Ah-mah-dee O-kello" value={form.namePronunciation} onChange={(e) => setField('namePronunciation', e.target.value)} />
+                </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="briefBioNotes">Brief bio / achievements</Label>
                   <Textarea id="briefBioNotes" rows={3} value={form.briefBioNotes} onChange={(e) => setField('briefBioNotes', e.target.value)} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Contact & email</CardTitle>
+                <CardDescription>
+                  Your university email is required and can only be used once for this graduation registration.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="universityEmail">University email *</Label>
+                  <Input
+                    id="universityEmail"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="e.g. student@kcu.ac.ug"
+                    value={form.universityEmail}
+                    onChange={(e) => setField('universityEmail', e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required. Each university email can submit only once — used to prevent duplicate registrations.
+                  </p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="permanentContactEmail">Personal email (alumni contact)</Label>
+                  <Input
+                    id="permanentContactEmail"
+                    type="email"
+                    autoComplete="email"
+                    value={form.permanentContactEmail}
+                    onChange={(e) => setField('permanentContactEmail', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="personalMobilePhone">Student phone number *</Label>
+                  <Input id="personalMobilePhone" required value={form.personalMobilePhone} onChange={(e) => setField('personalMobilePhone', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="whatsAppNumber">WhatsApp number *</Label>
+                  <Input id="whatsAppNumber" required value={form.whatsAppNumber} onChange={(e) => setField('whatsAppNumber', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergencyContactName">Emergency contact name *</Label>
+                  <Input id="emergencyContactName" required value={form.emergencyContactName} onChange={(e) => setField('emergencyContactName', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergencyContactPhone">Emergency contact phone *</Label>
+                  <Input id="emergencyContactPhone" required value={form.emergencyContactPhone} onChange={(e) => setField('emergencyContactPhone', e.target.value)} />
                 </div>
               </CardContent>
             </Card>
@@ -246,25 +375,68 @@ export default function GraduationRegistration() {
                   <Label htmlFor="country">Country *</Label>
                   <Input id="country" required value={form.country} onChange={(e) => setField('country', e.target.value)} />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="homePlotStreet">Home plot / street *</Label>
+                  <Input id="homePlotStreet" required placeholder="e.g. Plot 29 Main Street" value={form.homePlotStreet} onChange={(e) => setField('homePlotStreet', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="poBoxNumber">P.O. Box number</Label>
+                  <Input id="poBoxNumber" value={form.poBoxNumber} onChange={(e) => setField('poBoxNumber', e.target.value)} />
+                </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Family & sponsor</CardTitle>
+                <CardTitle className="text-lg">Sponsor & contacts</CardTitle>
+                <CardDescription>
+                  Sponsor may be an organisation, scholarship body, or private individual — not only family.
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Sponsor *</Label>
+                  <Select
+                    value={form.sponsorSelect}
+                    onValueChange={(v) => setField('sponsorSelect', v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select sponsor" /></SelectTrigger>
+                    <SelectContent>
+                      {(options?.sponsorTypes || []).map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.sponsorSelect === OTHER_SPONSOR && (
+                  <div className="space-y-2">
+                    <Label htmlFor="sponsorOrganizationOther">Sponsor name *</Label>
+                    <Input
+                      id="sponsorOrganizationOther"
+                      required
+                      placeholder="Organisation or individual name"
+                      value={form.sponsorOrganizationOther}
+                      onChange={(e) => setField('sponsorOrganizationOther', e.target.value)}
+                    />
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="parentGuardianName">Parent / guardian name *</Label>
-                  <Input id="parentGuardianName" required value={form.parentGuardianName} onChange={(e) => setField('parentGuardianName', e.target.value)} />
+                  <Label htmlFor="parentGuardianName">Contact person name *</Label>
+                  <Input
+                    id="parentGuardianName"
+                    required
+                    placeholder="Sponsor representative, parent, guardian, or next of kin"
+                    value={form.parentGuardianName}
+                    onChange={(e) => setField('parentGuardianName', e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sponsorOrganization">Sponsor / organization</Label>
-                  <Input id="sponsorOrganization" value={form.sponsorOrganization} onChange={(e) => setField('sponsorOrganization', e.target.value)} />
+                  <Label htmlFor="parentGuardianEmail">Contact person email</Label>
+                  <Input id="parentGuardianEmail" type="email" value={form.parentGuardianEmail} onChange={(e) => setField('parentGuardianEmail', e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="parentSponsorContact">Parent / sponsor contact *</Label>
-                  <Input id="parentSponsorContact" required value={form.parentSponsorContact} onChange={(e) => setField('parentSponsorContact', e.target.value)} />
+                  <Label htmlFor="parentSponsorPhone">Contact person phone *</Label>
+                  <Input id="parentSponsorPhone" required value={form.parentSponsorPhone} onChange={(e) => setField('parentSponsorPhone', e.target.value)} />
                 </div>
               </CardContent>
             </Card>
@@ -275,8 +447,16 @@ export default function GraduationRegistration() {
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="highSchoolAttended">High school attended *</Label>
-                  <Input id="highSchoolAttended" required value={form.highSchoolAttended} onChange={(e) => setField('highSchoolAttended', e.target.value)} />
+                  <Label htmlFor="p7SchoolAttended">P.7 school attended *</Label>
+                  <Input id="p7SchoolAttended" required value={form.p7SchoolAttended} onChange={(e) => setField('p7SchoolAttended', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="s4SchoolAttended">S.4 school attended *</Label>
+                  <Input id="s4SchoolAttended" required value={form.s4SchoolAttended} onChange={(e) => setField('s4SchoolAttended', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="s6SchoolAttended">S.6 school attended *</Label>
+                  <Input id="s6SchoolAttended" required value={form.s6SchoolAttended} onChange={(e) => setField('s6SchoolAttended', e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="previousQualifications">Previous qualifications</Label>
@@ -351,12 +531,92 @@ export default function GraduationRegistration() {
                   <Label htmlFor="graduationCohort">Graduation cohort *</Label>
                   <Input id="graduationCohort" required placeholder="e.g. September 2026" value={form.graduationCohort} onChange={(e) => setField('graduationCohort', e.target.value)} />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Institutional clearance *</Label>
+                  <Select
+                    value={form.institutionalClearance}
+                    onValueChange={(v) => setField('institutionalClearance', v as GraduationClearanceStatus)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select clearance status" /></SelectTrigger>
+                    <SelectContent>
+                      {(options?.clearanceStatuses || []).map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Confirm whether you have cleared with finance, registry, and library.
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Ceremony & contact</CardTitle>
+                <CardTitle className="text-lg">Career & alumni</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Employment status at graduation *</Label>
+                  <Select
+                    value={form.employmentStatusAtGraduation}
+                    onValueChange={(v) => setField('employmentStatusAtGraduation', v as GraduationEmploymentStatus)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                      {(options?.employmentStatuses || []).map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Post-graduation plan *</Label>
+                  <Select
+                    value={form.postGraduationPlan}
+                    onValueChange={(v) => setField('postGraduationPlan', v as GraduationPostGraduationPlan)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select plan" /></SelectTrigger>
+                    <SelectContent>
+                      {(options?.postGraduationPlans || []).map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(form.postGraduationPlan === OTHER_PLAN || form.employmentStatusAtGraduation === 'Other') && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="postGraduationPlanDetail">Plan details</Label>
+                    <Textarea
+                      id="postGraduationPlanDetail"
+                      rows={2}
+                      value={form.postGraduationPlanDetail}
+                      onChange={(e) => setField('postGraduationPlanDetail', e.target.value)}
+                      placeholder="Briefly describe your plans"
+                    />
+                  </div>
+                )}
+                <div className="flex items-start gap-3 md:col-span-2 rounded-md border p-4">
+                  <Checkbox
+                    id="alumniCommunicationConsent"
+                    checked={form.alumniCommunicationConsent}
+                    onCheckedChange={(checked) => setField('alumniCommunicationConsent', checked === true)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="alumniCommunicationConsent" className="cursor-pointer">
+                      Alumni communication consent *
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      I agree to receive alumni updates from King Ceasor University by email or other channels.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Ceremony logistics</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -385,9 +645,14 @@ export default function GraduationRegistration() {
                   <Input id="guestCount" type="number" min={0} max={20} required value={form.guestCount} onChange={(e) => setField('guestCount', e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="permanentContactEmail">Permanent contact email *</Label>
-                  <Input id="permanentContactEmail" type="email" required value={form.permanentContactEmail} onChange={(e) => setField('permanentContactEmail', e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Used for alumni contact. Each email can register once.</p>
+                  <Label htmlFor="accessibilityNeeds">Accessibility needs at ceremony</Label>
+                  <Textarea
+                    id="accessibilityNeeds"
+                    rows={2}
+                    value={form.accessibilityNeeds}
+                    onChange={(e) => setField('accessibilityNeeds', e.target.value)}
+                    placeholder="Wheelchair access, mobility support, etc. Leave blank if none."
+                  />
                 </div>
               </CardContent>
             </Card>

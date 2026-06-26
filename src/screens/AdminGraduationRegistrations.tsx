@@ -320,7 +320,12 @@ export default function AdminGraduationRegistrations() {
           </DialogHeader>
           {selected && (
             <div className="grid gap-3 text-sm md:grid-cols-2">
-              <Detail label="Email" value={selected.permanentContactEmail} />
+              <Detail label="University email" value={selected.universityEmail} />
+              <Detail label="Personal email" value={selected.permanentContactEmail || '—'} />
+              <Detail label="Mobile" value={selected.personalMobilePhone || '—'} />
+              <Detail label="WhatsApp" value={selected.whatsAppNumber || '—'} />
+              <Detail label="National ID / passport" value={selected.nationalIdOrPassport || '—'} />
+              <Detail label="Name pronunciation" value={selected.namePronunciation || '—'} />
               <Detail label="Date of birth" value={selected.dateOfBirth} />
               <Detail label="Nationality" value={selected.nationality} />
               <Detail label="Village (LC1)" value={selected.village || '—'} />
@@ -330,16 +335,29 @@ export default function AdminGraduationRegistrations() {
               <Detail label="District (LC5)" value={selected.district || '—'} />
               <Detail label="Region" value={selected.region || '—'} />
               <Detail label="Country" value={selected.country || '—'} />
+              <Detail label="Plot / street" value={selected.homePlotStreet || '—'} className="md:col-span-2" />
+              <Detail label="P.O. Box" value={selected.poBoxNumber || '—'} />
+              <Detail label="Emergency contact" value={selected.emergencyContactName || '—'} />
+              <Detail label="Emergency phone" value={selected.emergencyContactPhone || '—'} />
               <Detail label="School" value={selected.facultySchool} />
+              <Detail label="Clearance (self-reported)" value={selected.institutionalClearance === 'FullyCleared' ? 'Fully cleared' : 'Pending'} />
+              <Detail label="Employment at graduation" value={selected.employmentStatusAtGraduation || '—'} />
+              <Detail label="Post-graduation plan" value={selected.postGraduationPlan || '—'} />
+              <Detail label="Plan details" value={selected.postGraduationPlanDetail || '—'} className="md:col-span-2" />
+              <Detail label="Alumni consent" value={selected.alumniCommunicationConsent ? 'Yes' : 'No'} />
               <Detail label="Award" value={selected.awardClassification} />
               <Detail label="Cohort" value={selected.graduationCohort} />
               <Detail label="RSVP" value={rsvpLabel(selected.rsvpStatus)} />
               <Detail label="Gown size" value={selected.gownSize} />
               <Detail label="Guests" value={String(selected.guestCount)} />
-              <Detail label="Parent / guardian" value={selected.parentGuardianName} />
+              <Detail label="Accessibility needs" value={selected.accessibilityNeeds || '—'} className="md:col-span-2" />
               <Detail label="Sponsor" value={selected.sponsorOrganization || '—'} />
-              <Detail label="Contact" value={selected.parentSponsorContact} />
-              <Detail label="High school" value={selected.highSchoolAttended} className="md:col-span-2" />
+              <Detail label="Contact person" value={selected.parentGuardianName} />
+              <Detail label="Contact email" value={selected.parentGuardianEmail || '—'} />
+              <Detail label="Contact phone" value={selected.parentSponsorPhone} />
+              <Detail label="P.7 school" value={selected.p7SchoolAttended || '—'} />
+              <Detail label="S.4 school" value={selected.s4SchoolAttended || '—'} />
+              <Detail label="S.6 school" value={selected.s6SchoolAttended || '—'} className="md:col-span-2" />
               <Detail label="Previous qualifications" value={selected.previousQualifications || '—'} className="md:col-span-2" />
               <Detail label="Bio" value={selected.briefBioNotes || '—'} className="md:col-span-2" />
               <div className="space-y-2 md:col-span-2 border-t pt-4">

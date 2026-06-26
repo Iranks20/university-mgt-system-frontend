@@ -4,6 +4,25 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/,
 
 export type GraduationRsvpStatus = 'Attending' | 'InAbsentia';
 export type GraduationClearanceStatus = 'FullyCleared' | 'Pending';
+export type GraduationEmploymentStatus =
+  | 'Employed'
+  | 'SelfEmployed'
+  | 'SeekingEmployment'
+  | 'FurtherStudy'
+  | 'NotApplicable'
+  | 'Other';
+export type GraduationPostGraduationPlan =
+  | 'Employment'
+  | 'SelfEmployment'
+  | 'FurtherStudy'
+  | 'InternshipOrTraining'
+  | 'Undecided'
+  | 'Other';
+
+export interface GraduationFormOption {
+  value: string;
+  label: string;
+}
 
 export interface GraduationFormOptions {
   schools: Array<{ id: string; name: string }>;
@@ -11,6 +30,10 @@ export interface GraduationFormOptions {
   awardClassifications: string[];
   gownSizes: string[];
   rsvpStatuses: GraduationRsvpStatus[];
+  clearanceStatuses: GraduationFormOption[];
+  employmentStatuses: GraduationFormOption[];
+  postGraduationPlans: GraduationFormOption[];
+  sponsorTypes: GraduationFormOption[];
 }
 
 export interface GraduationRegistrationRow {
@@ -26,11 +49,24 @@ export interface GraduationRegistrationRow {
   district: string;
   region: string;
   country: string;
+  homePlotStreet: string;
+  poBoxNumber: string | null;
+  personalMobilePhone: string;
+  whatsAppNumber: string;
+  nationalIdOrPassport: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  namePronunciation: string;
+  universityEmail: string;
+  permanentContactEmail: string | null;
   briefBioNotes: string | null;
   parentGuardianName: string;
+  parentGuardianEmail: string | null;
   sponsorOrganization: string | null;
-  parentSponsorContact: string;
-  highSchoolAttended: string;
+  parentSponsorPhone: string;
+  p7SchoolAttended: string;
+  s4SchoolAttended: string;
+  s6SchoolAttended: string;
   previousQualifications: string | null;
   facultySchool: string;
   schoolId: string | null;
@@ -39,11 +75,15 @@ export interface GraduationRegistrationRow {
   awardClassification: string;
   graduationCohort: string;
   institutionalClearance: GraduationClearanceStatus;
+  employmentStatusAtGraduation: GraduationEmploymentStatus;
+  postGraduationPlan: GraduationPostGraduationPlan;
+  postGraduationPlanDetail: string | null;
+  accessibilityNeeds: string | null;
+  alumniCommunicationConsent: boolean;
   rsvpStatus: GraduationRsvpStatus;
   gownSize: string;
   guestCount: number;
   staffEscortAssigned: string | null;
-  permanentContactEmail: string;
   submittedAt: string;
   updatedAt: string;
 }
@@ -60,11 +100,24 @@ export interface GraduationRegistrationSubmitPayload {
   district: string;
   region: string;
   country: string;
+  homePlotStreet: string;
+  poBoxNumber?: string;
+  personalMobilePhone: string;
+  whatsAppNumber: string;
+  nationalIdOrPassport: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  namePronunciation: string;
+  universityEmail: string;
+  permanentContactEmail?: string;
   briefBioNotes?: string;
   parentGuardianName: string;
-  sponsorOrganization?: string;
-  parentSponsorContact: string;
-  highSchoolAttended: string;
+  parentGuardianEmail?: string;
+  sponsorOrganization: string;
+  parentSponsorPhone: string;
+  p7SchoolAttended: string;
+  s4SchoolAttended: string;
+  s6SchoolAttended: string;
   previousQualifications?: string;
   facultySchool: string;
   schoolId?: string;
@@ -72,10 +125,15 @@ export interface GraduationRegistrationSubmitPayload {
   programId?: string;
   awardClassification: string;
   graduationCohort: string;
+  institutionalClearance: GraduationClearanceStatus;
+  employmentStatusAtGraduation: GraduationEmploymentStatus;
+  postGraduationPlan: GraduationPostGraduationPlan;
+  postGraduationPlanDetail?: string;
+  accessibilityNeeds?: string;
+  alumniCommunicationConsent: true;
   rsvpStatus: GraduationRsvpStatus;
   gownSize: string;
   guestCount: number;
-  permanentContactEmail: string;
 }
 
 export interface GraduationListParams {
