@@ -130,7 +130,7 @@ export default function StudentRecords() {
     academicService.getLevels().then(list => setAllLevels(list || []));
     academicService.getDepartments().then(list => setAllDepartments(list || []));
     academicService.getPrograms().then(list => setAllPrograms((list as any[]) || []));
-    academicService.getCourses({ limit: 500 }).then(r => setAllCourses(r.data || []));
+    academicService.getAllCourses().then(courses => setAllCourses(courses)).catch(() => setAllCourses([]));
   }, []);
 
   const programToSchoolMap = useMemo(() => {
@@ -149,12 +149,26 @@ export default function StudentRecords() {
     [filteredPrograms]
   );
 
+  const deptIdsInScope = useMemo(() => {
+    if (selectedSchool === ALL_VALUE) return null;
+    const schoolLevelIds = new Set(
+      allLevels.filter(l => l.schoolId === selectedSchool).map(l => l.id)
+    );
+    return new Set(
+      allDepartments.filter(d => schoolLevelIds.has(d.levelId)).map(d => d.id)
+    );
+  }, [selectedSchool, allLevels, allDepartments]);
+
   const filteredCourses = useMemo(() => {
     let list = allCourses;
     if (selectedProgramId !== ALL_VALUE) {
       list = list.filter(c => c.programId === selectedProgramId);
-    } else if (selectedSchool !== ALL_VALUE) {
-      list = list.filter(c => c.programId && programIdsInScope.has(c.programId));
+    } else if (selectedSchool !== ALL_VALUE && deptIdsInScope) {
+      list = list.filter(
+        c =>
+          deptIdsInScope.has(c.departmentId) ||
+          (c.programId != null && programIdsInScope.has(c.programId))
+      );
     }
     if (selectedYear !== ALL_VALUE) {
       list = list.filter(c => c.level === Number(selectedYear));
@@ -163,7 +177,7 @@ export default function StudentRecords() {
       list = list.filter(c => c.semester === Number(selectedSemester));
     }
     return list;
-  }, [allCourses, selectedProgramId, selectedSchool, selectedYear, selectedSemester, programIdsInScope]);
+  }, [allCourses, selectedProgramId, selectedSchool, selectedYear, selectedSemester, programIdsInScope, deptIdsInScope]);
 
   const handleSchoolChange = (value: string) => {
     setSelectedSchool(value);
