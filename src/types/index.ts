@@ -11,6 +11,7 @@ export type UserRole =
   | 'Lecturer'
   | 'Student'
   | 'Staff'
+  | 'HR'
   | 'Management'
   | 'Admin';
 

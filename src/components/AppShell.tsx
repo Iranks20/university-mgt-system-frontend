@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound,
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
   ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -24,13 +24,14 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { navAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
+import { navAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
   if (r === 'QAClinicals') return 'QA Clinicals';
   if (r === 'ClinicalCoordinator') return 'Clinical Coordinator';
   if (r === 'Staff') return 'Non-Teaching Staff';
+  if (r === 'HR') return 'HR Officer';
   return r;
 }
 
@@ -91,6 +92,22 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Audit log', icon: FileText, path: '/admin-audit-log' },
 ];
 
+const HR_MODULE_NAV_CHILDREN: SidebarChild[] = [
+  { label: 'HR Dashboard', icon: LayoutDashboard, path: '/hr/dashboard' },
+  { label: 'Employees', icon: Users, path: '/hr/employees' },
+  { label: 'Leave', icon: CalendarX, path: '/hr/leave' },
+  { label: 'Staff Attendance', icon: Clock, path: '/hr/attendance' },
+  { label: 'Onboarding', icon: UserPlus, path: '/hr/onboarding' },
+  { label: 'HR Documents', icon: FileText, path: '/hr/documents' },
+  { label: 'Performance Appraisal', icon: ClipboardList, path: '/hr/appraisals' },
+  { label: 'HR Reports', icon: BarChart, path: '/hr/reports' },
+];
+
+const HR_ROLE_NAV_CHILDREN: SidebarChild[] = [
+  ...HR_MODULE_NAV_CHILDREN,
+  { label: 'Settings', icon: Settings, path: '/admin-settings' },
+];
+
 const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: 'Timetable', path: '/timetable', icon: Calendar },
   { label: 'Timetable Builder', path: '/timetable-builder', icon: Calendar },
@@ -101,6 +118,7 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Mark Presence', path: '/presence', icon: MapPin },
   { label: 'Course Attendance', path: '/lecturer-course-attendance', icon: UserCheck },
   { label: 'Performance', path: '/lecturer-performance', icon: BarChart },
+  { label: 'My Appraisal', path: '/staff-appraisal', icon: ClipboardList },
   { label: 'My Classes', path: '/student-classes', icon: BookOpen },
   { label: 'Attendance History', path: '/student-history', icon: Clock },
   { label: 'University Overview', path: '/management-overview', icon: BarChart },
@@ -119,8 +137,22 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
+function isPathUnderHrSection(pathname: string): boolean {
+  return HR_MODULE_NAV_CHILDREN.some((p) => pathname === p.path || pathname.startsWith(`${p.path}/`));
+}
+
 function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
-  const allow = (path: string) => navAllowed(userPermissions, path);
+  const allow = (path: string) => navAllowed(userPermissions, path, role);
+
+  if (role === 'HR') {
+    return HR_ROLE_NAV_CHILDREN.filter((entry) => allow(entry.path)).map((entry) => ({
+      type: 'single' as const,
+      label: entry.label,
+      icon: entry.icon,
+      path: entry.path,
+    }));
+  }
+
   const items: SidebarItem[] = [
     { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   ];
@@ -138,6 +170,24 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
       });
     } else {
       for (const child of clinicalChildren) {
+        items.push({ type: 'single', label: child.label, icon: child.icon, path: child.path });
+      }
+    }
+  }
+
+  const hrModuleChildren = HR_MODULE_NAV_CHILDREN.filter((c) => allow(c.path));
+  const nestHrNav = shouldNestHrNavItems(role);
+  if (hrModuleChildren.length > 0) {
+    if (nestHrNav && hrModuleChildren.length > 1) {
+      items.push({
+        type: 'folder',
+        id: 'human-resources',
+        label: 'Human Resources',
+        icon: UsersRound,
+        children: hrModuleChildren,
+      });
+    } else {
+      for (const child of hrModuleChildren) {
         items.push({ type: 'single', label: child.label, icon: child.icon, path: child.path });
       }
     }
@@ -208,6 +258,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [openNavFolders, setOpenNavFolders] = useState<Record<string, boolean>>(() => ({
     users: isPathUnderAdminUsersSection(location.pathname),
     clinicals: isPathUnderAdminClinicalSection(location.pathname),
+    'human-resources': isPathUnderHrSection(location.pathname),
   }));
 
   const setNavFolderOpen = (id: string, open: boolean) => {
@@ -222,6 +273,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
     if (isPathUnderAdminClinicalSection(location.pathname)) {
       setNavFolderOpen('clinicals', true);
+    }
+    if (isPathUnderHrSection(location.pathname)) {
+      setNavFolderOpen('human-resources', true);
     }
   }, [location.pathname]);
 

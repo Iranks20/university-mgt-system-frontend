@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { navAllowed, resolveHomePath, routeAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
+import { navAllowed, resolveHomePath, routeAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
 
 const campusQaPerms = [
   'qa.review',
@@ -51,5 +51,38 @@ describe('clinical sidebar nesting', () => {
     expect(shouldNestClinicalNavItems('QAClinicals')).toBe(false);
     expect(shouldNestClinicalNavItems('ClinicalCoordinator')).toBe(false);
     expect(shouldNestClinicalNavItems('QA')).toBe(false);
+  });
+});
+
+describe('HR sidebar nesting', () => {
+  it('nests HR items only for Admin', () => {
+    expect(shouldNestHrNavItems('Admin')).toBe(true);
+    expect(shouldNestHrNavItems('Management')).toBe(false);
+    expect(shouldNestHrNavItems('HR')).toBe(false);
+    expect(shouldNestHrNavItems('QA')).toBe(false);
+  });
+});
+
+describe('HR module access', () => {
+  const qaPerms = [
+    'qa.review',
+    'hr.read',
+    'hr.write',
+    'hr.appraisal_manage',
+    'analytics.core_dashboard',
+    'settings.read',
+  ];
+
+  it('hides HR module routes from QA even if permissions include hr.read', () => {
+    expect(navAllowed(qaPerms, '/hr/dashboard', 'QA')).toBe(false);
+    expect(navAllowed(qaPerms, '/hr/employees', 'QA')).toBe(false);
+    expect(routeAllowed(qaPerms, '/hr/appraisals', 'QA')).toBe(false);
+    expect(navAllowed(qaPerms, '/hr/dashboard', 'Admin')).toBe(true);
+    expect(resolveHomePath(qaPerms, 'QA')).toBe('/dashboard');
+  });
+
+  it('still allows lecturers My Appraisal without HR module access', () => {
+    expect(navAllowed(['hr.appraisal_submit'], '/staff-appraisal', 'Lecturer')).toBe(true);
+    expect(navAllowed(['hr.appraisal_submit'], '/hr/dashboard', 'Lecturer')).toBe(false);
   });
 });
