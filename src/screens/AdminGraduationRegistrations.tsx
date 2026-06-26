@@ -357,8 +357,8 @@ export default function AdminGraduationRegistrations() {
               <Detail label="Contact phone" value={selected.parentSponsorPhone} />
               <Detail label="P.7 school" value={selected.p7SchoolAttended || '—'} />
               <Detail label="S.4 school" value={selected.s4SchoolAttended || '—'} />
-              <Detail label="S.6 school" value={selected.s6SchoolAttended || '—'} className="md:col-span-2" />
-              <Detail label="Previous qualifications" value={selected.previousQualifications || '—'} className="md:col-span-2" />
+              <Detail label="S.6 or equivalent" value={selected.s6SchoolAttended || '—'} className="md:col-span-2" />
+              <Detail label="Other qualifications" value={selected.previousQualifications || '—'} className="md:col-span-2" />
               <Detail label="Bio" value={selected.briefBioNotes || '—'} className="md:col-span-2" />
               <div className="space-y-2 md:col-span-2 border-t pt-4">
                 <Label>Institutional clearance</Label>
