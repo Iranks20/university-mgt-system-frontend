@@ -4,13 +4,13 @@ import {
   ChevronRight,
   Download,
   Eye,
-  FileSpreadsheet,
   Loader2,
+  Pencil,
   Search,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -29,13 +29,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import AdminGraduationRegistrationDialog from '@/screens/AdminGraduationRegistrationDialog';
 import {
   graduationRegistrationService,
   type GraduationClearanceStatus,
@@ -69,10 +72,9 @@ export default function AdminGraduationRegistrations() {
     programNames: [] as string[],
   });
   const [selected, setSelected] = useState<GraduationRegistrationRow | null>(null);
-  const [editClearance, setEditClearance] = useState<GraduationClearanceStatus>('Pending');
-  const [editEscort, setEditEscort] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
+  const [dialogEditing, setDialogEditing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<GraduationRegistrationRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const pageSize = 20;
 
@@ -112,30 +114,6 @@ export default function AdminGraduationRegistrations() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-
-    if (!selected?.signaturePath) {
-      setSignaturePreviewUrl(null);
-      return;
-    }
-
-    graduationRegistrationService.fetchSignatureBlob(selected.id).then((blob) => {
-      if (cancelled || !blob) {
-        if (!cancelled) setSignaturePreviewUrl(null);
-        return;
-      }
-      objectUrl = URL.createObjectURL(blob);
-      setSignaturePreviewUrl(objectUrl);
-    });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [selected?.id, selected?.signaturePath]);
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const handleExport = async () => {
@@ -164,293 +142,239 @@ export default function AdminGraduationRegistrations() {
     }
   };
 
-  const openDetails = (row: GraduationRegistrationRow) => {
+  const openView = (row: GraduationRegistrationRow) => {
+    setDialogEditing(false);
     setSelected(row);
-    setEditClearance(row.institutionalClearance);
-    setEditEscort(row.staffEscortAssigned || '');
   };
 
-  const saveAdminFields = async () => {
-    if (!selected) return;
-    setSaving(true);
+  const openEdit = (row: GraduationRegistrationRow) => {
+    setDialogEditing(true);
+    setSelected(row);
+  };
+
+  const handleSaved = (updated: GraduationRegistrationRow) => {
+    setSelected(updated);
+    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  };
+
+  const handleDeleted = (id: string) => {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+    setTotal((prev) => Math.max(0, prev - 1));
+    setSelected(null);
+    setDeleteTarget(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      const updated = await graduationRegistrationService.update(selected.id, {
-        institutionalClearance: editClearance,
-        staffEscortAssigned: editEscort.trim() || null,
-      });
-      setSelected(updated);
-      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      toast.success('Registration updated.');
+      await graduationRegistrationService.remove(deleteTarget.id);
+      handleDeleted(deleteTarget.id);
+      toast.success('Registration deleted.');
     } catch {
-      toast.error('Update failed.');
+      toast.error('Delete failed.');
     } finally {
-      setSaving(false);
+      setDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Graduation registrations</h1>
-            <p className="text-sm text-muted-foreground">
-              Submissions from the public form at /graduation-registration
-            </p>
-          </div>
-          <Button onClick={handleExport} disabled={exporting} className="bg-[#015F2B] hover:bg-[#014a22]">
-            {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-            Export Excel
-          </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Graduation registrations</h1>
+          <p className="text-sm text-muted-foreground">
+            Submissions from the public form at /graduation-registration
+          </p>
         </div>
+        <Button onClick={handleExport} disabled={exporting} className="bg-[#015F2B] hover:bg-[#014a22]">
+          {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+          Export Excel
+        </Button>
+      </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="Search name, registration number, email…"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setPage(1);
-                      setSearch(searchInput.trim());
-                    }
-                  }}
-                />
-              </div>
-              <Button variant="outline" onClick={() => { setPage(1); setSearch(searchInput.trim()); }}>
-                Search
-              </Button>
-              <Select value={cohort} onValueChange={(v) => { setCohort(v); setPage(1); }}>
-                <SelectTrigger className="w-full lg:w-[180px]"><SelectValue placeholder="Cohort" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All cohorts</SelectItem>
-                  {filterOptions.graduationCohorts.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={school} onValueChange={(v) => { setSchool(v); setPage(1); }}>
-                <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="School" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All schools</SelectItem>
-                  {filterOptions.facultySchools.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={program} onValueChange={(v) => { setProgram(v); setPage(1); }}>
-                <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All programs</SelectItem>
-                  {filterOptions.programNames.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={rsvp} onValueChange={(v) => { setRsvp(v); setPage(1); }}>
-                <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="RSVP" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All RSVP</SelectItem>
-                  <SelectItem value="Attending">Attending</SelectItem>
-                  <SelectItem value="InAbsentia">In absentia</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={clearance} onValueChange={(v) => { setClearance(v); setPage(1); }}>
-                <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="Clearance" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All clearance</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="FullyCleared">Fully cleared</SelectItem>
-                </SelectContent>
-              </Select>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Search name, registration number, email…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setPage(1);
+                    setSearch(searchInput.trim());
+                  }
+                }}
+              />
             </div>
+            <Button variant="outline" onClick={() => { setPage(1); setSearch(searchInput.trim()); }}>
+              Search
+            </Button>
+            <Select value={cohort} onValueChange={(v) => { setCohort(v); setPage(1); }}>
+              <SelectTrigger className="w-full lg:w-[180px]"><SelectValue placeholder="Cohort" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All cohorts</SelectItem>
+                {filterOptions.graduationCohorts.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={school} onValueChange={(v) => { setSchool(v); setPage(1); }}>
+              <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="School" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All schools</SelectItem>
+                {filterOptions.facultySchools.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={program} onValueChange={(v) => { setProgram(v); setPage(1); }}>
+              <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All programs</SelectItem>
+                {filterOptions.programNames.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={rsvp} onValueChange={(v) => { setRsvp(v); setPage(1); }}>
+              <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="RSVP" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All RSVP</SelectItem>
+                <SelectItem value="Attending">Attending</SelectItem>
+                <SelectItem value="InAbsentia">In absentia</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={clearance} onValueChange={(v) => { setClearance(v); setPage(1); }}>
+              <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="Clearance" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All clearance</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="FullyCleared">Fully cleared</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="rounded-md border bg-white">
-              <Table>
-                <TableHeader>
+          <div className="rounded-md border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Registration number</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Program</TableHead>
+                  <TableHead>Cohort</TableHead>
+                  <TableHead>RSVP</TableHead>
+                  <TableHead>Clearance</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
                   <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Registration number</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Cohort</TableHead>
-                    <TableHead>RSVP</TableHead>
-                    <TableHead>Clearance</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableCell colSpan={8} className="py-12 text-center">
+                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-12 text-center">
-                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                ) : rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                      No registrations found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rows.map((row, idx) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{(page - 1) * pageSize + idx + 1}</TableCell>
+                      <TableCell>{row.studentId}</TableCell>
+                      <TableCell className="font-medium">{row.fullName}</TableCell>
+                      <TableCell>{row.programName}</TableCell>
+                      <TableCell>{row.graduationCohort}</TableCell>
+                      <TableCell>{rsvpLabel(row.rsvpStatus)}</TableCell>
+                      <TableCell>
+                        <Badge variant={row.institutionalClearance === 'FullyCleared' ? 'default' : 'secondary'}>
+                          {row.institutionalClearance === 'FullyCleared' ? 'Cleared' : 'Pending'}
+                        </Badge>
                       </TableCell>
-                    </TableRow>
-                  ) : rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
-                        No registrations found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.map((row, idx) => (
-                      <TableRow key={row.id}>
-                        <TableCell>{(page - 1) * pageSize + idx + 1}</TableCell>
-                        <TableCell>{row.studentId}</TableCell>
-                        <TableCell className="font-medium">{row.fullName}</TableCell>
-                        <TableCell>{row.programName}</TableCell>
-                        <TableCell>{row.graduationCohort}</TableCell>
-                        <TableCell>{rsvpLabel(row.rsvpStatus)}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.institutionalClearance === 'FullyCleared' ? 'default' : 'secondary'}>
-                            {row.institutionalClearance === 'FullyCleared' ? 'Cleared' : 'Pending'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openDetails(row)}>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openView(row)}>
                             <Eye className="mr-1 h-4 w-4" /> View
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{total} total</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm">Page {page} of {totalPages}</span>
-                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selected?.fullName}</DialogTitle>
-            <DialogDescription>{selected?.studentId} · {selected?.programName}</DialogDescription>
-          </DialogHeader>
-          {selected && (
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <Detail label="University email" value={selected.universityEmail} />
-              <Detail label="Personal email" value={selected.permanentContactEmail || '—'} />
-              <Detail label="Mobile" value={selected.personalMobilePhone || '—'} />
-              <Detail label="WhatsApp" value={selected.whatsAppNumber || '—'} />
-              <Detail label="National ID / passport" value={selected.nationalIdOrPassport || '—'} />
-              <Detail label="Name pronunciation" value={selected.namePronunciation || '—'} />
-              <Detail label="Date of birth" value={selected.dateOfBirth} />
-              <Detail label="Nationality" value={selected.nationality} />
-              <Detail label="Village (LC1)" value={selected.village || '—'} />
-              <Detail label="Parish (LC2)" value={selected.parish || '—'} />
-              <Detail label="Subcounty (LC3)" value={selected.subcounty || '—'} />
-              <Detail label="County (LC4)" value={selected.county || '—'} />
-              <Detail label="District (LC5)" value={selected.district || '—'} />
-              <Detail label="Region" value={selected.region || '—'} />
-              <Detail label="Country" value={selected.country || '—'} />
-              <Detail label="Plot / street" value={selected.homePlotStreet || '—'} className="md:col-span-2" />
-              <Detail label="P.O. Box" value={selected.poBoxNumber || '—'} />
-              <Detail label="Emergency contact" value={selected.emergencyContactName || '—'} />
-              <Detail label="Emergency phone" value={selected.emergencyContactPhone || '—'} />
-              <Detail label="School" value={selected.facultySchool} />
-              <Detail label="Clearance (self-reported)" value={selected.institutionalClearance === 'FullyCleared' ? 'Fully cleared' : 'Pending'} />
-              <Detail label="Employment at graduation" value={selected.employmentStatusAtGraduation || '—'} />
-              <Detail label="Post-graduation plan" value={selected.postGraduationPlan || '—'} />
-              <Detail label="Plan details" value={selected.postGraduationPlanDetail || '—'} className="md:col-span-2" />
-              <Detail label="Alumni consent" value={selected.alumniCommunicationConsent ? 'Yes' : 'No'} />
-              <Detail label="Award" value={selected.awardClassification} />
-              <Detail label="Cohort" value={selected.graduationCohort} />
-              <Detail label="RSVP" value={rsvpLabel(selected.rsvpStatus)} />
-              <Detail label="Gown size" value={selected.gownSize} />
-              <Detail label="Guests" value={String(selected.guestCount)} />
-              <Detail label="Accessibility needs" value={selected.accessibilityNeeds || '—'} className="md:col-span-2" />
-              <Detail label="Sponsor" value={selected.sponsorOrganization || '—'} />
-              <Detail label="Contact person" value={selected.parentGuardianName} />
-              <Detail label="Contact email" value={selected.parentGuardianEmail || '—'} />
-              <Detail label="Contact phone" value={selected.parentSponsorPhone} />
-              <Detail label="P.7 school" value={selected.p7SchoolAttended || '—'} />
-              <Detail label="S.4 school" value={selected.s4SchoolAttended || '—'} />
-              <Detail label="S.6 or equivalent" value={selected.s6SchoolAttended || '—'} className="md:col-span-2" />
-              <Detail label="Other qualifications" value={selected.previousQualifications || '—'} className="md:col-span-2" />
-              <Detail label="Bio" value={selected.briefBioNotes || '—'} className="md:col-span-2" />
-              <div className="space-y-2 md:col-span-2 border-t pt-4">
-                <Label>Declaration signature</Label>
-                {selected.signatureSignedName ? (
-                  <p className="text-sm">
-                    Signed by <span className="font-medium">{selected.signatureSignedName}</span>
-                    {selected.signedAt
-                      ? ` on ${new Date(selected.signedAt).toLocaleString('en-GB')}`
-                      : ''}
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No signature on file.</p>
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
+                            <Pencil className="mr-1 h-4 w-4" /> Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setDeleteTarget(row)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
-                {signaturePreviewUrl ? (
-                  <div className="rounded-md border bg-white p-2">
-                    <img
-                      src={signaturePreviewUrl}
-                      alt={`Signature of ${selected.signatureSignedName || selected.fullName}`}
-                      className="max-h-40 w-full object-contain"
-                    />
-                  </div>
-                ) : selected.signaturePath ? (
-                  <p className="text-sm text-muted-foreground">Loading signature…</p>
-                ) : null}
-              </div>
-              <div className="space-y-2 md:col-span-2 border-t pt-4">
-                <Label>Institutional clearance</Label>
-                <Select value={editClearance} onValueChange={(v) => setEditClearance(v as GraduationClearanceStatus)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pending">Pending</SelectItem>
-                    <SelectItem value="FullyCleared">Fully cleared</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Staff escort assigned</Label>
-                <Input value={editEscort} onChange={(e) => setEditEscort(e.target.value)} placeholder="Marshal or staff name" />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelected(null)}>Close</Button>
-            <Button onClick={saveAdminFields} disabled={saving} className="bg-[#015F2B] hover:bg-[#014a22]">
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}
-              Save changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+              </TableBody>
+            </Table>
+          </div>
 
-function Detail({
-  label,
-  value,
-  className = '',
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-0.5">{value}</p>
+          <div className="mt-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">{total} total</span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm">Page {page} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AdminGraduationRegistrationDialog
+        row={selected}
+        open={!!selected}
+        initialEditing={dialogEditing}
+        onClose={() => setSelected(null)}
+        onSaved={handleSaved}
+        onDeleted={handleDeleted}
+      />
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this registration?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget
+                ? `This will permanently remove the application for ${deleteTarget.fullName} (${deleteTarget.studentId}), including the stored signature.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete registration
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
