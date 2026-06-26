@@ -236,6 +236,28 @@ export const academicService = {
     }
   },
 
+  getAllCourses: async (params?: {
+    departmentId?: string;
+    programId?: string;
+    level?: number;
+    semester?: number;
+    unassigned?: boolean;
+  }): Promise<Course[]> => {
+    const pageSize = 200;
+    const all: Course[] = [];
+    let page = 1;
+    let total = 0;
+    do {
+      const res = await academicService.getCourses({ ...params, page, limit: pageSize });
+      const batch = res.data ?? [];
+      all.push(...batch);
+      total = res.total ?? all.length;
+      if (batch.length === 0) break;
+      page += 1;
+    } while (all.length < total);
+    return all;
+  },
+
   moveCourses: async (payload: { courseIds: string[]; targetProgramId?: string | null; targetDepartmentId: string; targetLevel: number; targetSemester: number }): Promise<{ moved: number }> => {
     try {
       const res = await api.post<{ data: { moved: number } }>('/academic/courses/move', payload);

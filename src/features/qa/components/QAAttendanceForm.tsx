@@ -97,8 +97,8 @@ export function QAAttendanceForm({ onSuccess, onCancel }: QAAttendanceFormProps)
   const loadCourses = async () => {
     setCoursesLoading(true);
     try {
-      const res = await academicService.getCourses({ limit: 50 });
-      setCourses((res.data ?? []).map((c: any) => ({ code: c.code || '', name: c.name || '' })));
+      const courses = await academicService.getAllCourses();
+      setCourses(courses.map((c: any) => ({ code: c.code || '', name: c.name || '' })));
     } catch (error) {
       console.error('Error loading courses:', error);
       toast.error('Failed to load courses');

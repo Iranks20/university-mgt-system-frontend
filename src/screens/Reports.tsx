@@ -290,8 +290,32 @@ export default function Reports() {
     academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
     academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
     academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
-    academicService.getCourses({ limit: 500 }).then((r) => setAttendCourses(r.data || [])).catch(() => setAttendCourses([]));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params: {
+      programId?: string;
+      level?: number;
+      semester?: number;
+    } = {};
+    if (attendSelectedProgramId !== ALL_VALUE) params.programId = attendSelectedProgramId;
+    if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
+    if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
+
+    academicService
+      .getAllCourses(params)
+      .then((courses) => {
+        if (!cancelled) setAttendCourses(courses);
+      })
+      .catch(() => {
+        if (!cancelled) setAttendCourses([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attendSelectedProgramId, attendSelectedYear, attendSelectedSemester]);
 
   const attendProgramToSchoolMap = useMemo(() => {
     const levelToSchool = new Map(attendLevels.map((l) => [l.id, l.schoolId]));
@@ -309,12 +333,26 @@ export default function Reports() {
     [attendFilteredPrograms]
   );
 
+  const attendDeptIdsInScope = useMemo(() => {
+    if (attendSelectedSchool === ALL_VALUE) return null;
+    const schoolLevelIds = new Set(
+      attendLevels.filter((l) => l.schoolId === attendSelectedSchool).map((l) => l.id)
+    );
+    return new Set(
+      attendDepartments.filter((d) => schoolLevelIds.has(d.levelId)).map((d) => d.id)
+    );
+  }, [attendSelectedSchool, attendLevels, attendDepartments]);
+
   const attendFilteredCourses = useMemo(() => {
     let list = attendCourses;
     if (attendSelectedProgramId !== ALL_VALUE) {
       list = list.filter((c) => c.programId === attendSelectedProgramId);
-    } else if (attendSelectedSchool !== ALL_VALUE) {
-      list = list.filter((c) => c.programId && attendProgramIdsInScope.has(c.programId));
+    } else if (attendSelectedSchool !== ALL_VALUE && attendDeptIdsInScope) {
+      list = list.filter(
+        (c) =>
+          attendDeptIdsInScope.has(c.departmentId) ||
+          (c.programId != null && attendProgramIdsInScope.has(c.programId))
+      );
     }
     if (attendSelectedYear !== ALL_VALUE) {
       list = list.filter((c) => c.level === Number(attendSelectedYear));
@@ -330,7 +368,18 @@ export default function Reports() {
     attendSelectedYear,
     attendSelectedSemester,
     attendProgramIdsInScope,
+    attendDeptIdsInScope,
   ]);
+
+  useEffect(() => {
+    if (
+      attendSelectedCourseId !== ALL_VALUE &&
+      !attendFilteredCourses.some((c) => c.id === attendSelectedCourseId)
+    ) {
+      setAttendSelectedCourseId(ALL_VALUE);
+      setAttendSelectedClassId(ALL_VALUE);
+    }
+  }, [attendFilteredCourses, attendSelectedCourseId]);
 
   useEffect(() => {
     if (attendSelectedCourseId === ALL_VALUE) {
