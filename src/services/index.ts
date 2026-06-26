@@ -17,3 +17,4 @@ export * from './timetable.service';
 export * from './cancellations.service';
 export * from './substitutions.service';
 export * from './clinical.service';
+export * from './graduation-registration.service';
