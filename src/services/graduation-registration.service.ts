@@ -66,7 +66,7 @@ export interface GraduationRegistrationRow {
   parentSponsorPhone: string;
   p7SchoolAttended: string;
   s4SchoolAttended: string;
-  s6SchoolAttended: string;
+  s6SchoolAttended: string | null;
   previousQualifications: string | null;
   facultySchool: string;
   schoolId: string | null;
@@ -117,7 +117,7 @@ export interface GraduationRegistrationSubmitPayload {
   parentSponsorPhone: string;
   p7SchoolAttended: string;
   s4SchoolAttended: string;
-  s6SchoolAttended: string;
+  s6SchoolAttended?: string;
   previousQualifications?: string;
   facultySchool: string;
   schoolId?: string;

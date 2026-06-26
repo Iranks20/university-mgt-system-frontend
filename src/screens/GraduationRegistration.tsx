@@ -181,7 +181,7 @@ export default function GraduationRegistration() {
         parentSponsorPhone: form.parentSponsorPhone.trim(),
         p7SchoolAttended: form.p7SchoolAttended.trim(),
         s4SchoolAttended: form.s4SchoolAttended.trim(),
-        s6SchoolAttended: form.s6SchoolAttended.trim(),
+        s6SchoolAttended: form.s6SchoolAttended.trim() || undefined,
         previousQualifications: form.previousQualifications.trim() || undefined,
         facultySchool,
         schoolId: form.schoolSelect !== OTHER_SCHOOL ? form.schoolSelect : undefined,
@@ -455,12 +455,26 @@ export default function GraduationRegistration() {
                   <Input id="s4SchoolAttended" required value={form.s4SchoolAttended} onChange={(e) => setField('s4SchoolAttended', e.target.value)} />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="s6SchoolAttended">S.6 school attended *</Label>
-                  <Input id="s6SchoolAttended" required value={form.s6SchoolAttended} onChange={(e) => setField('s6SchoolAttended', e.target.value)} />
+                  <Label htmlFor="s6SchoolAttended">S.6 or equivalent school</Label>
+                  <Input
+                    id="s6SchoolAttended"
+                    placeholder="e.g. UACE school, or certificate/entry programme if no S.6"
+                    value={form.s6SchoolAttended}
+                    onChange={(e) => setField('s6SchoolAttended', e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Leave blank if you entered via certificate or another pathway without S.6.
+                  </p>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="previousQualifications">Previous qualifications</Label>
-                  <Textarea id="previousQualifications" rows={2} value={form.previousQualifications} onChange={(e) => setField('previousQualifications', e.target.value)} />
+                  <Label htmlFor="previousQualifications">Other qualifications</Label>
+                  <Textarea
+                    id="previousQualifications"
+                    rows={2}
+                    placeholder="e.g. diploma, certificate, or other awards not covered above"
+                    value={form.previousQualifications}
+                    onChange={(e) => setField('previousQualifications', e.target.value)}
+                  />
                 </div>
               </CardContent>
             </Card>
