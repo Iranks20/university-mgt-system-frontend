@@ -72,6 +72,7 @@ export default function AdminGraduationRegistrations() {
   const [editClearance, setEditClearance] = useState<GraduationClearanceStatus>('Pending');
   const [editEscort, setEditEscort] = useState('');
   const [saving, setSaving] = useState(false);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
 
   const pageSize = 20;
 
@@ -110,6 +111,30 @@ export default function AdminGraduationRegistrations() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+
+    if (!selected?.signaturePath) {
+      setSignaturePreviewUrl(null);
+      return;
+    }
+
+    graduationRegistrationService.fetchSignatureBlob(selected.id).then((blob) => {
+      if (cancelled || !blob) {
+        if (!cancelled) setSignaturePreviewUrl(null);
+        return;
+      }
+      objectUrl = URL.createObjectURL(blob);
+      setSignaturePreviewUrl(objectUrl);
+    });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selected?.id, selected?.signaturePath]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -185,7 +210,7 @@ export default function AdminGraduationRegistrations() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-9"
-                  placeholder="Search name, ID, email…"
+                  placeholder="Search name, registration number, email…"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -249,7 +274,7 @@ export default function AdminGraduationRegistrations() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>
-                    <TableHead>Student ID</TableHead>
+                    <TableHead>Registration number</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Program</TableHead>
                     <TableHead>Cohort</TableHead>
@@ -360,6 +385,30 @@ export default function AdminGraduationRegistrations() {
               <Detail label="S.6 or equivalent" value={selected.s6SchoolAttended || '—'} className="md:col-span-2" />
               <Detail label="Other qualifications" value={selected.previousQualifications || '—'} className="md:col-span-2" />
               <Detail label="Bio" value={selected.briefBioNotes || '—'} className="md:col-span-2" />
+              <div className="space-y-2 md:col-span-2 border-t pt-4">
+                <Label>Declaration signature</Label>
+                {selected.signatureSignedName ? (
+                  <p className="text-sm">
+                    Signed by <span className="font-medium">{selected.signatureSignedName}</span>
+                    {selected.signedAt
+                      ? ` on ${new Date(selected.signedAt).toLocaleString('en-GB')}`
+                      : ''}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No signature on file.</p>
+                )}
+                {signaturePreviewUrl ? (
+                  <div className="rounded-md border bg-white p-2">
+                    <img
+                      src={signaturePreviewUrl}
+                      alt={`Signature of ${selected.signatureSignedName || selected.fullName}`}
+                      className="max-h-40 w-full object-contain"
+                    />
+                  </div>
+                ) : selected.signaturePath ? (
+                  <p className="text-sm text-muted-foreground">Loading signature…</p>
+                ) : null}
+              </div>
               <div className="space-y-2 md:col-span-2 border-t pt-4">
                 <Label>Institutional clearance</Label>
                 <Select value={editClearance} onValueChange={(v) => setEditClearance(v as GraduationClearanceStatus)}>
