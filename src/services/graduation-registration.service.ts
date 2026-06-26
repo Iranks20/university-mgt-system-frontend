@@ -84,6 +84,9 @@ export interface GraduationRegistrationRow {
   gownSize: string;
   guestCount: number;
   staffEscortAssigned: string | null;
+  signaturePath: string | null;
+  signatureSignedName: string | null;
+  signedAt: string | null;
   submittedAt: string;
   updatedAt: string;
 }
@@ -134,6 +137,9 @@ export interface GraduationRegistrationSubmitPayload {
   rsvpStatus: GraduationRsvpStatus;
   gownSize: string;
   guestCount: number;
+  declarationAccepted: true;
+  signatureSignedName: string;
+  signatureImage: string;
 }
 
 export interface GraduationListParams {
@@ -238,5 +244,14 @@ export const graduationRegistrationService = {
     const match = disposition.match(/filename="([^"]+)"/);
     const filename = match?.[1] || 'graduation_registrations.xlsx';
     return { blob, filename };
+  },
+
+  async fetchSignatureBlob(id: string): Promise<Blob | null> {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('kcu-token') : null;
+    const res = await fetch(`${API_BASE}/graduation-registrations/${id}/signature`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    return res.blob();
   },
 };

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
+import SignaturePad, { type SignaturePadHandle } from '@/components/SignaturePad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -84,6 +85,16 @@ export default function GraduationRegistration() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [signatureSignedName, setSignatureSignedName] = useState('');
+  const [signatureSignedNameTouched, setSignatureSignedNameTouched] = useState(false);
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
+  const signaturePadRef = useRef<SignaturePadHandle>(null);
+
+  useEffect(() => {
+    if (!signatureSignedNameTouched) {
+      setSignatureSignedName(form.fullName);
+    }
+  }, [form.fullName, signatureSignedNameTouched]);
 
   useEffect(() => {
     graduationRegistrationService
@@ -122,6 +133,18 @@ export default function GraduationRegistration() {
     }
     if (!form.alumniCommunicationConsent) {
       toast.error('Please consent to alumni communications to submit.');
+      return;
+    }
+    if (!declarationAccepted) {
+      toast.error('Please accept the declaration to submit.');
+      return;
+    }
+    if (!signatureSignedName.trim()) {
+      toast.error('Please enter your printed name for the signature.');
+      return;
+    }
+    if (!signaturePadRef.current || signaturePadRef.current.isEmpty()) {
+      toast.error('Please sign in the signature box.');
       return;
     }
 
@@ -201,6 +224,9 @@ export default function GraduationRegistration() {
         rsvpStatus: form.rsvpStatus,
         gownSize: form.gownSize,
         guestCount: Number(form.guestCount) || 0,
+        declarationAccepted: true,
+        signatureSignedName: signatureSignedName.trim(),
+        signatureImage: signaturePadRef.current.toDataURL(),
       });
       setSubmitted(true);
     } catch (err: unknown) {
@@ -259,8 +285,14 @@ export default function GraduationRegistration() {
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="studentId">Student ID *</Label>
-                  <Input id="studentId" required value={form.studentId} onChange={(e) => setField('studentId', e.target.value)} />
+                  <Label htmlFor="studentId">Registration number *</Label>
+                  <Input
+                    id="studentId"
+                    required
+                    placeholder="e.g. 2022AG/MBCHB/1104"
+                    value={form.studentId}
+                    onChange={(e) => setField('studentId', e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="fullName">Full name (as on certificate) *</Label>
@@ -668,6 +700,55 @@ export default function GraduationRegistration() {
                     placeholder="Wheelchair access, mobility support, etc. Leave blank if none."
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Declaration & signature</CardTitle>
+                <CardDescription>
+                  Sign with your finger on a phone or with your mouse on a computer.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  I confirm that the information provided in this graduation registration form is true
+                  and complete to the best of my knowledge.
+                </p>
+                <div className="flex items-start gap-3 rounded-md border p-4">
+                  <Checkbox
+                    id="declarationAccepted"
+                    checked={declarationAccepted}
+                    onCheckedChange={(checked) => setDeclarationAccepted(checked === true)}
+                  />
+                  <Label htmlFor="declarationAccepted" className="cursor-pointer leading-snug">
+                    I accept the declaration above *
+                  </Label>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signatureSignedName">Printed name *</Label>
+                  <Input
+                    id="signatureSignedName"
+                    required
+                    value={signatureSignedName}
+                    onChange={(e) => {
+                      setSignatureSignedNameTouched(true);
+                      setSignatureSignedName(e.target.value);
+                    }}
+                    placeholder="As it should appear under your signature"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Signature *</Label>
+                  <SignaturePad ref={signaturePadRef} height={180} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Date of signing: {new Date().toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </p>
               </CardContent>
             </Card>
 
