@@ -44,6 +44,8 @@ import ClinicalSessionsPage from './screens/clinical/pages/ClinicalSessionsPage'
 import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendancePage'
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
+import GraduationRegistration from './screens/GraduationRegistration'
+import AdminGraduationRegistrations from './screens/AdminGraduationRegistrations'
 import { homePathForRole } from './lib/clinical-access'
 import { routeGuardProps } from './lib/nav-permissions'
 
@@ -70,6 +72,7 @@ function AppRoutes() {
 					</PublicRoute>
 				} 
 			/>
+			<Route path="/graduation-registration" element={<GraduationRegistration />} />
 			
 			{/* Protected Routes - All users */}
 			<Route 
@@ -326,6 +329,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute {...routeGuardProps('/admin-audit-log')}>
 						<AdminAuditLog />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/admin-graduation-registrations" 
+				element={
+					<ProtectedRoute {...routeGuardProps('/admin-graduation-registrations')}>
+						<AdminGraduationRegistrations />
 					</ProtectedRoute>
 				} 
 			/>

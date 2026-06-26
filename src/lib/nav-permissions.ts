@@ -37,6 +37,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-venues': ['academic.venues'],
   '/admin-calendar': ['academic.write'],
   '/admin-strategic-goals': ['admin.console'],
+  '/admin-graduation-registrations': ['graduation.registrations'],
   '/admin-settings': ['settings.read'],
   '/timetable': [
     ['timetable.student_me'],
@@ -226,6 +227,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/admin-venues', label: 'Venues', permissions: NAV_PERMISSION['/admin-venues'] },
   { path: '/admin-calendar', label: 'Calendar', permissions: NAV_PERMISSION['/admin-calendar'] },
   { path: '/admin-strategic-goals', label: 'Strategic Goals', permissions: NAV_PERMISSION['/admin-strategic-goals'] },
+  { path: '/admin-graduation-registrations', label: 'Graduation registrations', permissions: NAV_PERMISSION['/admin-graduation-registrations'] },
   { path: '/admin-settings', label: 'Settings', permissions: NAV_PERMISSION['/admin-settings'] },
   { path: '/admin-students', label: 'Students (Users)', permissions: NAV_PERMISSION['/admin-students'] },
   { path: '/admin-lecturers', label: 'Lecturers (Users)', permissions: NAV_PERMISSION['/admin-lecturers'] },

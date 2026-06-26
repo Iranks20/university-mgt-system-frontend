@@ -116,6 +116,7 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Venues', path: '/admin-venues', icon: MapPin },
   { label: 'Calendar', path: '/admin-calendar', icon: Calendar },
   { label: 'Strategic Goals', path: '/admin-strategic-goals', icon: TrendingUp },
+  { label: 'Graduation registrations', path: '/admin-graduation-registrations', icon: GraduationCap },
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
