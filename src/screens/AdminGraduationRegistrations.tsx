@@ -323,6 +323,13 @@ export default function AdminGraduationRegistrations() {
               <Detail label="Email" value={selected.permanentContactEmail} />
               <Detail label="Date of birth" value={selected.dateOfBirth} />
               <Detail label="Nationality" value={selected.nationality} />
+              <Detail label="Village (LC1)" value={selected.village || '—'} />
+              <Detail label="Parish (LC2)" value={selected.parish || '—'} />
+              <Detail label="Subcounty (LC3)" value={selected.subcounty || '—'} />
+              <Detail label="County (LC4)" value={selected.county || '—'} />
+              <Detail label="District (LC5)" value={selected.district || '—'} />
+              <Detail label="Region" value={selected.region || '—'} />
+              <Detail label="Country" value={selected.country || '—'} />
               <Detail label="School" value={selected.facultySchool} />
               <Detail label="Award" value={selected.awardClassification} />
               <Detail label="Cohort" value={selected.graduationCohort} />

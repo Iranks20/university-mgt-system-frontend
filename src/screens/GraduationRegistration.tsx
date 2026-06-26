@@ -28,6 +28,13 @@ const emptyForm = {
   fullName: '',
   dateOfBirth: '',
   nationality: '',
+  village: '',
+  parish: '',
+  subcounty: '',
+  county: '',
+  district: '',
+  region: '',
+  country: 'Uganda',
   briefBioNotes: '',
   parentGuardianName: '',
   sponsorOrganization: '',
@@ -99,6 +106,13 @@ export default function GraduationRegistration() {
         fullName: form.fullName.trim(),
         dateOfBirth: form.dateOfBirth,
         nationality: form.nationality.trim(),
+        village: form.village.trim(),
+        parish: form.parish.trim(),
+        subcounty: form.subcounty.trim(),
+        county: form.county.trim(),
+        district: form.district.trim(),
+        region: form.region.trim(),
+        country: form.country.trim(),
         briefBioNotes: form.briefBioNotes.trim() || undefined,
         parentGuardianName: form.parentGuardianName.trim(),
         sponsorOrganization: form.sponsorOrganization.trim() || undefined,
@@ -194,6 +208,43 @@ export default function GraduationRegistration() {
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="briefBioNotes">Brief bio / achievements</Label>
                   <Textarea id="briefBioNotes" rows={3} value={form.briefBioNotes} onChange={(e) => setField('briefBioNotes', e.target.value)} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Home address</CardTitle>
+                <CardDescription>Local council levels LC1–LC5, region and country</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="village">Village (LC1) *</Label>
+                  <Input id="village" required value={form.village} onChange={(e) => setField('village', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="parish">Parish (LC2) *</Label>
+                  <Input id="parish" required value={form.parish} onChange={(e) => setField('parish', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="subcounty">Subcounty (LC3) *</Label>
+                  <Input id="subcounty" required value={form.subcounty} onChange={(e) => setField('subcounty', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="county">County (LC4) *</Label>
+                  <Input id="county" required value={form.county} onChange={(e) => setField('county', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="district">District (LC5) *</Label>
+                  <Input id="district" required value={form.district} onChange={(e) => setField('district', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="region">Region *</Label>
+                  <Input id="region" required value={form.region} onChange={(e) => setField('region', e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="country">Country *</Label>
+                  <Input id="country" required value={form.country} onChange={(e) => setField('country', e.target.value)} />
                 </div>
               </CardContent>
             </Card>
