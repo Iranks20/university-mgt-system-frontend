@@ -131,6 +131,14 @@ export type AppraisalFormTemplate = {
   competencies: string[];
   includesDevelopmentPlan: boolean;
   includesTrainingNeeds: boolean;
+  formCapture?: {
+    headerFields?: Array<{ id: string; label: string; fieldType: string; defaultValue?: string }>;
+    oseiRatingLevels?: Array<{ score: number | string; label: string; percentageRange?: string; definition: string }>;
+    supervisorNarrativeFields?: Array<{ id: string; label: string; fieldType: string }>;
+    staffAcknowledgementFields?: Array<{ id: string; label: string; fieldType: string }>;
+    hrFields?: Array<{ id: string; label: string; fieldType: string }>;
+    viceChancellorFields?: Array<{ id: string; label: string; fieldType: string }>;
+  };
 };
 
 export type AppraisalAssignmentRule =

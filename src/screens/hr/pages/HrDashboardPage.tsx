@@ -53,9 +53,9 @@ export default function HrDashboardPage() {
 
     getHrAppraisalDashboardSummary()
       .then((summary) => {
-        setStats((prev) => ({ ...prev, pendingAppraisals: summary.inProgressCount }));
-        setPendingAppraisals(summary.recentReviews.slice(0, 4));
-        setActiveCycleLabel(summary.activeCycle?.name ?? null);
+        setStats((prev) => ({ ...prev, pendingAppraisals: summary?.inProgressCount ?? 0 }));
+        setPendingAppraisals((summary?.recentReviews ?? []).slice(0, 4));
+        setActiveCycleLabel(summary?.activeCycle?.name ?? null);
       })
       .catch(() => {
         setPendingAppraisals([]);

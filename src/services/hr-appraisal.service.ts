@@ -19,15 +19,51 @@ export type CalibrationRow = {
   avgSupervisor: number | null;
 };
 
+export type HrAppraisalDashboardSummary = {
+  activeCycle: {
+    id: string;
+    name: string;
+    periodLabel: string;
+    endDate: string;
+    status: string;
+  } | null;
+  inProgressCount: number;
+  recentReviews: HrAppraisalReview[];
+};
+
+const emptyDashboardSummary: HrAppraisalDashboardSummary = {
+  activeCycle: null,
+  inProgressCount: 0,
+  recentReviews: [],
+};
+
+function asArray<T>(res: T[] | { data?: T[] } | null | undefined): T[] {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.data)) return res.data;
+  return [];
+}
+
+function asRecord<T extends object>(res: T | { data?: T } | null | undefined): T | null {
+  if (!res || typeof res !== 'object') return null;
+  if ('data' in res && (res as { data?: T }).data !== undefined) {
+    return (res as { data: T }).data;
+  }
+  return res as T;
+}
+
 export const hrAppraisalService = {
   getTemplates: async (): Promise<AppraisalFormTemplate[]> => {
-    const res = await api.get<{ data: AppraisalFormTemplate[] }>('/hr/appraisals/templates');
-    return res?.data ?? [];
+    const res = await api.get<AppraisalFormTemplate[] | { data: AppraisalFormTemplate[] }>(
+      '/hr/appraisals/templates'
+    );
+    return asArray(res);
   },
 
   getTemplate: async (id: string): Promise<AppraisalFormTemplate | null> => {
-    const res = await api.get<{ data: AppraisalFormTemplate }>(`/hr/appraisals/templates/${id}`);
-    return res?.data ?? null;
+    const res = await api.get<AppraisalFormTemplate | { data: AppraisalFormTemplate }>(
+      `/hr/appraisals/templates/${id}`
+    );
+    return asRecord(res);
   },
 
   saveTemplate: async (
@@ -42,20 +78,26 @@ export const hrAppraisalService = {
     id?: string
   ): Promise<AppraisalFormTemplate> => {
     if (id) {
-      const res = await api.put<{ data: AppraisalFormTemplate }>(`/hr/appraisals/templates/${id}`, payload);
-      return res.data;
+      const res = await api.put<AppraisalFormTemplate | { data: AppraisalFormTemplate }>(
+        `/hr/appraisals/templates/${id}`,
+        payload
+      );
+      return asRecord(res)!;
     }
-    const res = await api.post<{ data: AppraisalFormTemplate }>('/hr/appraisals/templates', payload);
-    return res.data;
+    const res = await api.post<AppraisalFormTemplate | { data: AppraisalFormTemplate }>(
+      '/hr/appraisals/templates',
+      payload
+    );
+    return asRecord(res)!;
   },
 
   getCycles: async (): Promise<HrAppraisalCycle[]> => {
-    const res = await api.get<{ data: HrAppraisalCycle[] }>('/hr/appraisals/cycles');
-    return res?.data ?? [];
+    const res = await api.get<HrAppraisalCycle[] | { data: HrAppraisalCycle[] }>('/hr/appraisals/cycles');
+    return asArray(res);
   },
 
   createCycle: async (input: CreateAppraisalCycleInput & { kind?: AppraisalCycleKind; launch?: boolean; formAssignments: AppraisalAssignmentRule[] }) => {
-    const res = await api.post<{ data: HrAppraisalCycle }>('/hr/appraisals/cycles', {
+    const res = await api.post<HrAppraisalCycle | { data: HrAppraisalCycle }>('/hr/appraisals/cycles', {
       name: input.name,
       periodLabel: input.periodLabel,
       kind: input.kind ?? 'Annual',
@@ -68,12 +110,15 @@ export const hrAppraisalService = {
       closePreviousOpen: input.closePreviousOpen,
       launch: true,
     });
-    return res.data;
+    return asRecord(res)!;
   },
 
   updateCycleStatus: async (id: string, status: HrAppraisalCycle['status']) => {
-    const res = await api.patch<{ data: HrAppraisalCycle }>(`/hr/appraisals/cycles/${id}`, { status });
-    return res.data;
+    const res = await api.patch<HrAppraisalCycle | { data: HrAppraisalCycle }>(
+      `/hr/appraisals/cycles/${id}`,
+      { status }
+    );
+    return asRecord(res)!;
   },
 
   getReviews: async (params?: {
@@ -94,13 +139,17 @@ export const hrAppraisalService = {
   },
 
   getReview: async (id: string): Promise<HrAppraisalReview | null> => {
-    const res = await api.get<{ data: HrAppraisalReview }>(`/hr/appraisals/reviews/${id}`);
-    return res?.data ?? null;
+    const res = await api.get<HrAppraisalReview | { data: HrAppraisalReview }>(
+      `/hr/appraisals/reviews/${id}`
+    );
+    return asRecord(res);
   },
 
   getMyReview: async (): Promise<HrAppraisalReview | null> => {
-    const res = await api.get<{ data: HrAppraisalReview | null }>('/hr/appraisals/reviews/mine');
-    return res?.data ?? null;
+    const res = await api.get<HrAppraisalReview | null | { data: HrAppraisalReview | null }>(
+      '/hr/appraisals/reviews/mine'
+    );
+    return asRecord(res);
   },
 
   updateReview: async (
@@ -116,37 +165,36 @@ export const hrAppraisalService = {
       action?: 'save' | 'submit_self' | 'submit_supervisor' | 'submit_hr' | 'complete' | 'advance_hr';
     }
   ): Promise<HrAppraisalReview> => {
-    const res = await api.patch<{ data: HrAppraisalReview }>(`/hr/appraisals/reviews/${id}`, payload);
-    return res.data;
+    const res = await api.patch<HrAppraisalReview | { data: HrAppraisalReview }>(
+      `/hr/appraisals/reviews/${id}`,
+      payload
+    );
+    return asRecord(res)!;
   },
 
   getCalibration: async (cycleId: string): Promise<CalibrationRow[]> => {
-    const res = await api.get<{ data: { departments: CalibrationRow[] } }>('/hr/appraisals/calibration', {
+    const res = await api.get<
+      { departments: CalibrationRow[] } | { data: { departments: CalibrationRow[] } }
+    >('/hr/appraisals/calibration', {
       cycleId,
     });
-    return res?.data?.departments ?? [];
+    const payload = asRecord(res);
+    return payload?.departments ?? [];
   },
 
-  getDashboardSummary: async () => {
-    const res = await api.get<{
-      data: {
-        activeCycle: {
-          id: string;
-          name: string;
-          periodLabel: string;
-          endDate: string;
-          status: string;
-        } | null;
-        inProgressCount: number;
-        recentReviews: HrAppraisalReview[];
-      };
-    }>('/hr/appraisals/dashboard-summary');
-    return res.data;
+  getDashboardSummary: async (): Promise<HrAppraisalDashboardSummary> => {
+    const res = await api.get<HrAppraisalDashboardSummary | { data: HrAppraisalDashboardSummary }>(
+      '/hr/appraisals/dashboard-summary'
+    );
+    const summary = asRecord(res);
+    return summary ?? emptyDashboardSummary;
   },
 
   getArchives: async (): Promise<HrAppraisalReview[]> => {
-    const res = await api.get<{ data: HrAppraisalReview[] }>('/hr/appraisals/archives');
-    return res?.data ?? [];
+    const res = await api.get<HrAppraisalReview[] | { data: HrAppraisalReview[] }>(
+      '/hr/appraisals/archives'
+    );
+    return asArray(res);
   },
 };
 
