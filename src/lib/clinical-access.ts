@@ -1,4 +1,5 @@
 import { CLINICAL_ROUTES, clinicalReportsPath, LEGACY_CLINICAL_TAB_PATH } from './clinical-routes';
+import { graduationHomePath } from './graduation-access';
 import { resolveHomePath } from './nav-permissions';
 
 export type ClinicalAccess = {
@@ -63,7 +64,10 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
   return '/dashboard';
 }
 
-export function homePathForRole(_role: string | null, permissions?: string[]): string {
+export function homePathForRole(role: string | null, permissions?: string[]): string {
+  if (role === 'Graduation') {
+    return graduationHomePath(permissions, role) ?? '/graduation/dashboard';
+  }
   if (permissions?.length) {
     const clinicalHome = homePathForPermissions(permissions);
     if (clinicalHome !== '/dashboard') return clinicalHome;

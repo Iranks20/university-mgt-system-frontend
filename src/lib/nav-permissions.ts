@@ -38,6 +38,22 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-calendar': ['academic.write'],
   '/admin-strategic-goals': ['admin.console'],
   '/admin-graduation-registrations': ['graduation.registrations'],
+  '/graduation/dashboard': [
+    ['graduation.access'],
+    ['graduation.registrations'],
+    ['graduation.committee'],
+    ['graduation.manage'],
+    ['admin.console'],
+  ],
+  '/graduation/event': [['graduation.manage'], ['admin.console']],
+  '/graduation/committees': [
+    ['graduation.access'],
+    ['graduation.committee'],
+    ['graduation.registrations'],
+    ['graduation.manage'],
+    ['admin.console'],
+  ],
+  '/graduation/registrations': [['graduation.registrations'], ['admin.console']],
   '/admin-settings': ['settings.read'],
   '/timetable': [
     ['timetable.student_me'],
@@ -228,6 +244,10 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/admin-calendar', label: 'Calendar', permissions: NAV_PERMISSION['/admin-calendar'] },
   { path: '/admin-strategic-goals', label: 'Strategic Goals', permissions: NAV_PERMISSION['/admin-strategic-goals'] },
   { path: '/admin-graduation-registrations', label: 'Graduation registrations', permissions: NAV_PERMISSION['/admin-graduation-registrations'] },
+  { path: '/graduation/dashboard', label: 'Graduation dashboard', permissions: NAV_PERMISSION['/graduation/dashboard'] },
+  { path: '/graduation/event', label: 'Graduation event', permissions: NAV_PERMISSION['/graduation/event'] },
+  { path: '/graduation/committees', label: 'Graduation committees', permissions: NAV_PERMISSION['/graduation/committees'] },
+  { path: '/graduation/registrations', label: 'Graduand registrations', permissions: NAV_PERMISSION['/graduation/registrations'] },
   { path: '/admin-settings', label: 'Settings', permissions: NAV_PERMISSION['/admin-settings'] },
   { path: '/admin-students', label: 'Students (Users)', permissions: NAV_PERMISSION['/admin-students'] },
   { path: '/admin-lecturers', label: 'Lecturers (Users)', permissions: NAV_PERMISSION['/admin-lecturers'] },
@@ -245,6 +265,13 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
 ];
 
 export function navAllowed(userPermissions: string[], path: string): boolean {
+  return routeAllowed(userPermissions, path);
+}
+
+export function graduationNavAllowed(userPermissions: string[], path: string, role?: string | null): boolean {
+  if (role === 'Graduation' || role === 'Admin') {
+    if (path.startsWith('/graduation')) return true;
+  }
   return routeAllowed(userPermissions, path);
 }
 

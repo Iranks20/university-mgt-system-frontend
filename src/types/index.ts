@@ -12,7 +12,8 @@ export type UserRole =
   | 'Student'
   | 'Staff'
   | 'Management'
-  | 'Admin';
+  | 'Admin'
+  | 'Graduation';
 
 export interface User {
   id: string;

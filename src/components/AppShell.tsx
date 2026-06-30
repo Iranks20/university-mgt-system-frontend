@@ -24,14 +24,35 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { navAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
+import { navAllowed, graduationNavAllowed, shouldNestClinicalNavItems } from '@/lib/nav-permissions';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
   if (r === 'QAClinicals') return 'QA Clinicals';
   if (r === 'ClinicalCoordinator') return 'Clinical Coordinator';
   if (r === 'Staff') return 'Non-Teaching Staff';
+  if (r === 'Graduation') return 'Graduation Management';
   return r;
+}
+
+const GRADUATION_NAV_CHILDREN: SidebarChild[] = [
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/graduation/dashboard' },
+  { label: 'Event setup', icon: Calendar, path: '/graduation/event' },
+  { label: 'Committees', icon: ClipboardList, path: '/graduation/committees' },
+  { label: 'Registrations', icon: GraduationCap, path: '/graduation/registrations' },
+];
+
+function buildGraduationOnlyNav(): SidebarItem[] {
+  return GRADUATION_NAV_CHILDREN.map((child) => ({
+    type: 'single' as const,
+    label: child.label,
+    path: child.path,
+    icon: child.icon,
+  }));
+}
+
+function isPathUnderGraduationSection(pathname: string): boolean {
+  return pathname === '/graduation' || pathname.startsWith('/graduation/');
 }
 
 const ADMIN_USERS_CHILD_PATHS = [
@@ -116,12 +137,18 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Venues', path: '/admin-venues', icon: MapPin },
   { label: 'Calendar', path: '/admin-calendar', icon: Calendar },
   { label: 'Strategic Goals', path: '/admin-strategic-goals', icon: TrendingUp },
-  { label: 'Graduation registrations', path: '/admin-graduation-registrations', icon: GraduationCap },
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
 function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
-  const allow = (path: string) => navAllowed(userPermissions, path);
+  if (role === 'Graduation') {
+    return buildGraduationOnlyNav();
+  }
+
+  const allow = (path: string) =>
+    path.startsWith('/graduation')
+      ? graduationNavAllowed(userPermissions, path, role)
+      : navAllowed(userPermissions, path);
   const items: SidebarItem[] = [
     { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   ];
@@ -142,6 +169,32 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
         items.push({ type: 'single', label: child.label, icon: child.icon, path: child.path });
       }
     }
+  }
+
+  const graduationChildren = GRADUATION_NAV_CHILDREN.filter((c) => {
+    if (!allow(c.path)) return false;
+    const have = new Set(userPermissions);
+    if (c.path === '/graduation/event') {
+      return role === 'Admin' || have.has('graduation.manage') || have.has('admin.console');
+    }
+    if (c.path === '/graduation/registrations') {
+      return (
+        role === 'Admin' ||
+        role === 'Graduation' ||
+        have.has('graduation.registrations') ||
+        have.has('admin.console')
+      );
+    }
+    return true;
+  });
+  if (graduationChildren.length > 0) {
+    items.push({
+      type: 'folder',
+      id: 'graduation',
+      label: 'Graduation',
+      icon: GraduationCap,
+      children: graduationChildren,
+    });
   }
 
   for (const entry of FLAT_NAV_CANDIDATES) {
