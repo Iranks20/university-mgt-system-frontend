@@ -45,7 +45,11 @@ import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendanceP
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
 import GraduationRegistration from './screens/GraduationRegistration'
-import AdminGraduationRegistrations from './screens/AdminGraduationRegistrations'
+import GraduationDashboardPage from './screens/graduation/pages/GraduationDashboardPage'
+import GraduationEventPage from './screens/graduation/pages/GraduationEventPage'
+import GraduationCommitteesPage, { GraduationCommitteeSlugRedirect } from './screens/graduation/pages/GraduationCommitteesPage'
+import GraduationRegistrationsPage from './screens/graduation/pages/GraduationRegistrationsPage'
+import GraduationProtectedRoute from './components/graduation/GraduationProtectedRoute'
 import { homePathForRole } from './lib/clinical-access'
 import { routeGuardProps } from './lib/nav-permissions'
 
@@ -58,6 +62,22 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 	}
 	
 	return <>{children}</>
+}
+
+function GraduationDashboardGate() {
+	const { userRole } = useAuth()
+	if (userRole === 'Graduation') {
+		return <Navigate to="/graduation/dashboard" replace />
+	}
+	return <Dashboard />
+}
+
+function DefaultRedirect() {
+	const { isAuthenticated, userRole, user } = useAuth()
+	if (!isAuthenticated) {
+		return <Navigate to="/login" replace />
+	}
+	return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
 }
 
 function AppRoutes() {
@@ -79,7 +99,7 @@ function AppRoutes() {
 				path="/dashboard" 
 				element={
 					<ProtectedRoute {...routeGuardProps('/dashboard')}>
-						<Dashboard />
+						<GraduationDashboardGate />
 					</ProtectedRoute>
 				} 
 			/>
@@ -334,11 +354,49 @@ function AppRoutes() {
 			/>
 			<Route 
 				path="/admin-graduation-registrations" 
+				element={<Navigate to="/graduation/registrations" replace />}
+			/>
+
+			<Route path="/graduation" element={<Navigate to="/graduation/dashboard" replace />} />
+			<Route
+				path="/graduation/dashboard"
 				element={
-					<ProtectedRoute {...routeGuardProps('/admin-graduation-registrations')}>
-						<AdminGraduationRegistrations />
-					</ProtectedRoute>
-				} 
+					<GraduationProtectedRoute path="/graduation/dashboard">
+						<GraduationDashboardPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/event"
+				element={
+					<GraduationProtectedRoute path="/graduation/event" requireManage>
+						<GraduationEventPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/committees"
+				element={
+					<GraduationProtectedRoute path="/graduation/committees">
+						<GraduationCommitteesPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/committees/:slug"
+				element={
+					<GraduationProtectedRoute path="/graduation/committees">
+						<GraduationCommitteeSlugRedirect />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/registrations"
+				element={
+					<GraduationProtectedRoute path="/graduation/registrations" requireRegistrations>
+						<GraduationRegistrationsPage />
+					</GraduationProtectedRoute>
+				}
 			/>
 			
 			{/* QA Routes */}
@@ -363,7 +421,7 @@ function AppRoutes() {
 			<Route path="/" element={<Navigate to="/login" replace />} />
 			
 			{/* Catch all - redirect to dashboard if authenticated, otherwise login */}
-			<Route path="*" element={<Navigate to="/dashboard" replace />} />
+			<Route path="*" element={<DefaultRedirect />} />
 		</Routes>
 	)
 }

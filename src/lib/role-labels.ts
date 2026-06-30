@@ -5,6 +5,7 @@ export const SYSTEM_ACCOUNT_ROLES = [
   'Staff',
   'Management',
   'Admin',
+  'Graduation',
 ] as const;
 
 export type SystemAccountRole = (typeof SYSTEM_ACCOUNT_ROLES)[number];
@@ -23,6 +24,8 @@ export function formatRoleLabel(role: string): string {
       return 'Admin';
     case 'Staff':
       return 'Staff';
+    case 'Graduation':
+      return 'Graduation Management';
     case 'Lecturer':
       return 'Lecturer';
     case 'Student':

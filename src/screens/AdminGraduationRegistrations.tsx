@@ -53,7 +53,7 @@ function rsvpLabel(status: GraduationRsvpStatus) {
   return status === 'InAbsentia' ? 'In absentia' : 'Attending';
 }
 
-export default function AdminGraduationRegistrations() {
+export default function AdminGraduationRegistrations({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<GraduationRegistrationRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -179,7 +179,7 @@ export default function AdminGraduationRegistrations() {
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className={embedded ? 'space-y-6' : 'space-y-6 p-4 md:p-6'}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Graduation registrations</h1>

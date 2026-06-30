@@ -1,25 +1,26 @@
-/**
- * QA Lecturer Summary Component
- * Matches 2.csv format: LECTURER'S NAME, CLASS, COURSE UNIT, NO. TAUGHT, NO. MISSED BY LECTURERS, COMMENT IF ANY
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
-import { exportLecturerSummaryReport } from '@/utils/excel';
-import type { QALecturerSummaryReport } from '@/types/qa';
+import { exportLecturerSummaryReports } from '@/utils/excel';
+import type { QALecturerSummary, QALecturerSummaryReport } from '@/types/qa';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
+type LecturerTableRow = QALecturerSummary & { school: string };
+
+const PAGE_SIZE = 20;
+
 export function QALecturerSummary() {
   const [reports, setReports] = useState<QALecturerSummaryReport[]>([]);
+  const [schoolOptions, setSchoolOptions] = useState<string[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<string>('All');
   const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
     const now = new Date();
@@ -38,8 +39,16 @@ export function QALecturerSummary() {
   };
 
   useEffect(() => {
+    qaService.getSchools().then((schools) => setSchoolOptions(schools));
+  }, []);
+
+  useEffect(() => {
     loadReports();
   }, [selectedSchool, dateRangeKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedSchool, dateRangeKey, reports]);
 
   const loadReports = async () => {
     setIsLoading(true);
@@ -55,15 +64,30 @@ export function QALecturerSummary() {
     }
   };
 
-  const filteredReports = selectedSchool === 'All' 
-    ? reports 
-    : reports.filter(r => r.school === selectedSchool);
+  const schoolFilterOptions = useMemo(() => {
+    const fromReports = reports.map((report) => report.school);
+    return Array.from(new Set([...schoolOptions, ...fromReports])).sort();
+  }, [schoolOptions, reports]);
 
-  const uniqueSchools = Array.from(new Set(reports.map(r => r.school))).sort();
+  const tableRows: LecturerTableRow[] = useMemo(
+    () =>
+      reports.flatMap((report) =>
+        report.lecturers.map((lecturer) => ({ ...lecturer, school: report.school }))
+      ),
+    [reports]
+  );
 
-  const handleExport = (report: QALecturerSummaryReport) => {
-    exportLecturerSummaryReport(report);
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return tableRows.slice(start, start + PAGE_SIZE);
+  }, [tableRows, page]);
+
+  const handleExport = () => {
+    exportLecturerSummaryReports(reports);
   };
+
+  const showSchoolColumn = selectedSchool === 'All';
 
   return (
     <div className="space-y-6">
@@ -89,82 +113,85 @@ export function QALecturerSummary() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="All">All Schools</SelectItem>
-              {uniqueSchools.map(school => (
-                <SelectItem key={school} value={school}>{school}</SelectItem>
+              {schoolFilterOptions.map((school) => (
+                <SelectItem key={school} value={school}>
+                  {school}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={handleExport} disabled={tableRows.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Export Excel
+          </Button>
         </div>
       </div>
 
-      {isLoading ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            Loading lecturer summaries...
-          </CardContent>
-        </Card>
-      ) : filteredReports.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-500">
-            No lecturer summary reports available.
-          </CardContent>
-        </Card>
-      ) : (
-        filteredReports.map((report, reportIndex) => (
-          <Card key={reportIndex}>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>{report.school}</CardTitle>
-                  <CardDescription>
-                    {report.lecturers.length} lecturers
-                  </CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => handleExport(report)}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Excel
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>LECTURER'S NAME</TableHead>
-                      <TableHead>CLASS</TableHead>
-                      <TableHead>COURSE UNIT</TableHead>
-                      <TableHead className="text-right">NO. TAUGHT</TableHead>
-                      <TableHead className="text-right">NO. MISSED BY LECTURERS</TableHead>
-                      <TableHead>COMMENT IF ANY</TableHead>
+      <Card>
+        <CardHeader>
+          <CardTitle>Lecturer Summary</CardTitle>
+          <CardDescription>
+            {selectedSchool === 'All'
+              ? 'Lecturer teaching summary across all schools'
+              : `Lecturer teaching summary for ${selectedSchool}`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="py-8 text-center text-gray-500">Loading lecturer summaries...</div>
+          ) : tableRows.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">No lecturer summary reports available.</div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {showSchoolColumn && <TableHead>SCHOOL</TableHead>}
+                    <TableHead>LECTURER&apos;S NAME</TableHead>
+                    <TableHead>CLASS</TableHead>
+                    <TableHead>COURSE UNIT</TableHead>
+                    <TableHead className="text-right">NO. TAUGHT</TableHead>
+                    <TableHead className="text-right">NO. MISSED BY LECTURERS</TableHead>
+                    <TableHead>COMMENT IF ANY</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedRows.map((row, index) => (
+                    <TableRow key={`${row.school}-${row.lecturerName}-${row.class}-${row.courseUnit}-${index}`}>
+                      {showSchoolColumn && <TableCell className="font-medium">{row.school}</TableCell>}
+                      <TableCell className="font-medium">{row.lecturerName}</TableCell>
+                      <TableCell>{row.class}</TableCell>
+                      <TableCell className="max-w-xs truncate">{row.courseUnit}</TableCell>
+                      <TableCell className="text-right">{row.noTaught}</TableCell>
+                      <TableCell className="text-right">{row.noMissedByLecturers}</TableCell>
+                      <TableCell>{row.commentIfAny || ''}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.lecturers.map((lecturer, index) => (
-                      <React.Fragment key={index}>
-                        <TableRow>
-                          <TableCell className="font-medium">{lecturer.lecturerName}</TableCell>
-                          <TableCell>{lecturer.class}</TableCell>
-                          <TableCell className="max-w-xs truncate">{lecturer.courseUnit}</TableCell>
-                          <TableCell className="text-right">{lecturer.noTaught}</TableCell>
-                          <TableCell className="text-right">{lecturer.noMissedByLecturers}</TableCell>
-                          <TableCell>{lecturer.commentIfAny || ''}</TableCell>
-                        </TableRow>
-                        {/* Add blank row after each lecturer (except the last one) */}
-                        {index < report.lecturers.length - 1 && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="h-2"></TableCell>
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="flex items-center justify-between border-t px-4 py-2">
+                <span className="text-sm text-muted-foreground">{tableRows.length} total</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        ))
-      )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

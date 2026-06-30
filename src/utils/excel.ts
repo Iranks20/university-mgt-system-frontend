@@ -457,6 +457,63 @@ export function exportLecturerSummaryReport(
   saveAs(blob, finalFilename);
 }
 
+export function exportLecturerSummaryReports(
+  reports: QALecturerSummaryReport[],
+  filename?: string
+): void {
+  if (reports.length === 0) return;
+  if (reports.length === 1) {
+    exportLecturerSummaryReport(reports[0], filename);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  reports.forEach((report) => {
+    const data: (string | number)[][] = [
+      [report.school],
+      [
+        'LECTURER\'S NAME',
+        'CLASS',
+        'COURSE UNIT',
+        'NO. TAUGHT',
+        'NO. MISSED BY LECTURERS',
+        'COMMENT IF ANY',
+      ],
+    ];
+
+    report.lecturers.forEach((lecturer, index) => {
+      data.push([
+        lecturer.lecturerName,
+        lecturer.class,
+        lecturer.courseUnit,
+        lecturer.noTaught,
+        lecturer.noMissedByLecturers,
+        lecturer.commentIfAny || '',
+      ]);
+      if (index < report.lecturers.length - 1) {
+        data.push(['', '', '', '', '', '']);
+      }
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 12 },
+      { wch: 25 },
+      { wch: 20 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, report.school.substring(0, 31));
+  });
+
+  const defaultFilename = `QA_Lecturer_Summary_${formatDate(new Date())}.xlsx`;
+  const finalFilename = filename || defaultFilename;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, finalFilename);
+}
+
 /**
  * Export School Summary Report to CSV/Excel (matches 1.csv format exactly)
  * Columns: SCHOOL, TOTAL NO. TAUGHT, NO. UNTAIGHT (preserving typo)
