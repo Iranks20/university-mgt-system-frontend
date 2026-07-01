@@ -215,6 +215,7 @@ export const analyticsService = {
     taughtCount: number;
     untaughtCount: number;
     cancelledCount: number;
+    missedOtherProgramsHolidaysCount?: number;
     substitutedCount: number;
     conductedCount: number;
     teachingRateFromScheduled: number | null;

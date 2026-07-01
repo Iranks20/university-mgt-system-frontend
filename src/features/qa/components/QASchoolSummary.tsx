@@ -57,17 +57,14 @@ export function QASchoolSummary() {
     exportSchoolSummaryReport(summaries);
   };
 
-  const totalTaught = summaries.reduce((sum, s) => sum + s.totalNoTaught, 0);
-  const totalUntaught = summaries.reduce((sum, s) => sum + s.noUntaught, 0);
-  const totalCancelled = summaries.reduce((sum, s) => sum + (s.noCancelled ?? 0), 0);
-  const totalSubstituted = summaries.reduce((sum, s) => sum + (s.noSubstituted ?? 0), 0);
+  const sum = (pick: (s: QASchoolSummary) => number) => summaries.reduce((acc, s) => acc + pick(s), 0);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">School Summary Report</h2>
-          <p className="text-gray-500">Summary by school (matching 1.csv format)</p>
+          <p className="text-gray-500">Summary by school with untaught breakdown</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
@@ -91,7 +88,7 @@ export function QASchoolSummary() {
         <CardHeader>
           <CardTitle>School Summary</CardTitle>
           <CardDescription>
-            Total lectures taught vs untaught by school
+            Total lectures taught vs untaught (rollup) by school, with reason breakdown
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,14 +97,18 @@ export function QASchoolSummary() {
               Loading school summaries...
             </div>
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>SCHOOL</TableHead>
                     <TableHead className="text-right">TOTAL NO. TAUGHT</TableHead>
                     <TableHead className="text-right">NO. UNTAIGHT</TableHead>
-                    <TableHead className="text-right">CANCELLED</TableHead>
+                    <TableHead className="text-right">MISSED BY LECTURER</TableHead>
+                    <TableHead className="text-right">MISSED BY STUDENTS</TableHead>
+                    <TableHead className="text-right">OTHER PROG. & HOLIDAYS</TableHead>
+                    <TableHead className="text-right">ASSIGNMENT</TableHead>
+                    <TableHead className="text-right">SDL</TableHead>
                     <TableHead className="text-right">SUBSTITUTED</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -117,16 +118,24 @@ export function QASchoolSummary() {
                       <TableCell className="font-medium">{summary.school}</TableCell>
                       <TableCell className="text-right">{summary.totalNoTaught}</TableCell>
                       <TableCell className="text-right">{summary.noUntaught}</TableCell>
-                      <TableCell className="text-right">{summary.noCancelled ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.missedByLecturer ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.missedByStudents ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.missedOtherProgramsHolidays ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.assignment ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.noSdl ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.noSubstituted ?? 0}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-gray-50">
                     <TableCell>TOTAL</TableCell>
-                    <TableCell className="text-right">{totalTaught}</TableCell>
-                    <TableCell className="text-right">{totalUntaught}</TableCell>
-                    <TableCell className="text-right">{totalCancelled}</TableCell>
-                    <TableCell className="text-right">{totalSubstituted}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.totalNoTaught)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.noUntaught)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.missedByLecturer ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.missedByStudents ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.missedOtherProgramsHolidays ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.assignment ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.noSdl ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.noSubstituted ?? 0)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

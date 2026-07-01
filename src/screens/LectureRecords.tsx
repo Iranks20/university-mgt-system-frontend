@@ -38,18 +38,20 @@ import { exportLectureRecordsToCSV, importLectureRecordsFromCSV, downloadLecture
 import { toast } from 'sonner';
 import type { QALectureRecord } from '@/types/qa';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  LECTURE_COMMENT_LABELS,
+  RECORDABLE_LECTURE_COMMENT_OPTIONS,
+  normalizeLectureComment,
+  lectureCommentLabel,
+} from '@/lib/lecture-outcome';
+import {
+  DELIVERY_MODE_OPTIONS,
+  deliveryModeLabel,
+  normalizeDeliveryMode,
+  type DeliveryMode,
+} from '@/lib/delivery-mode';
 
-const COMMENT_FILTER_LABELS: Record<string, string> = {
-  PENDING: 'Pending (awaiting QA)',
-  TAUGHT: 'TAUGHT',
-  UNTAUGHT: 'UNTAUGHT',
-  CANCELLED: 'CANCELLED',
-  SUBSTITUTED: 'SUBSTITUTED',
-  COMPENSATION: 'COMPENSATION',
-  MEETING: 'MEETING',
-  SDL: 'SDL',
-  STUDENTS_ORIENTATION: 'STUDENTS ORIENTATION',
-};
+const COMMENT_FILTER_LABELS = LECTURE_COMMENT_LABELS;
 
 export default function LectureRecords() {
   const { user } = useAuth();
@@ -82,17 +84,7 @@ export default function LectureRecords() {
   const [selectedLecturerName, setSelectedLecturerName] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
-  const commentOptions = [
-    'PENDING',
-    'TAUGHT',
-    'UNTAUGHT',
-    'CANCELLED',
-    'SUBSTITUTED',
-    'COMPENSATION',
-    'MEETING',
-    'SDL',
-    'STUDENTS_ORIENTATION',
-  ];
+  const commentOptions = [...RECORDABLE_LECTURE_COMMENT_OPTIONS];
   const [timetableSeedDate, setTimetableSeedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [timetableSeedLoading, setTimetableSeedLoading] = useState(false);
   const [sessionAttendanceOpen, setSessionAttendanceOpen] = useState(false);
@@ -123,13 +115,14 @@ export default function LectureRecords() {
   const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
   const [selectedLecturerId, setSelectedLecturerId] = useState('');
   const [selectedComment, setSelectedComment] = useState<string>('TAUGHT');
+  const [selectedDeliveryMode, setSelectedDeliveryMode] = useState<DeliveryMode>('InPerson');
   const [selectedSubstituteId, setSelectedSubstituteId] = useState<string>('');
   const [selectedSubstituteName, setSelectedSubstituteName] = useState<string>('');
   const [selectedDepartmentName, setSelectedDepartmentName] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [lecturerAssignments, setLecturerAssignments] = useState<{
     lecturerId: string;
-    departments: Array<{ id: string; name: string; classes: Array<{ id: string; label: string; className: string; courseUnit: string }> }>;
+    departments: Array<{ id: string; name: string; classes: Array<{ id: string; label: string; className: string; courseUnit: string; deliveryMode?: DeliveryMode }> }>;
   } | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -138,7 +131,6 @@ export default function LectureRecords() {
     taughtCount: number;
     untaughtCount: number;
     pendingCount: number;
-    cancelledCount: number;
     onTimeCount: number;
     onTimeRatePct: number;
     hasFilters: boolean;
@@ -463,7 +455,7 @@ export default function LectureRecords() {
     if (lecturerFilter !== 'All') {
       filter.lecturerName = lecturerFilter;
     } else if (debouncedSearchTerm.trim()) {
-      filter.lecturerName = debouncedSearchTerm.trim();
+      filter.search = debouncedSearchTerm.trim();
     }
     if (classFilter !== 'All') filter.class = classFilter;
     if (commentFilter !== 'All') filter.comment = commentFilter;
@@ -656,8 +648,13 @@ export default function LectureRecords() {
       return;
     }
     
+    const deliveryModeValue = normalizeDeliveryMode(
+      (formData.get('deliveryMode') as string) || selectedDeliveryMode
+    );
+
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
+      lecturerId: selectedLecturerId || undefined,
       lecturerName: selectedLecturerName.trim(),
       class: selectedClassName.trim() || (formData.get('class') as string),
       classId: selectedClassId || undefined,
@@ -667,6 +664,7 @@ export default function LectureRecords() {
       timeOutForEnding: endTime,
       duration: duration,
       timeLost: '0',
+      deliveryMode: deliveryModeValue,
       comment: commentValue,
       remarks: remarksRaw ? remarksRaw : null,
       substituteLecturerId:
@@ -691,6 +689,7 @@ export default function LectureRecords() {
       setSelectedSubstituteId('');
       setSelectedSubstituteName('');
       setSelectedComment('TAUGHT');
+      setSelectedDeliveryMode('InPerson');
     } catch (error) {
       console.error('Error saving record:', error);
       toast.error('Failed to save record. Please try again.');
@@ -727,6 +726,7 @@ export default function LectureRecords() {
     setSelectedDepartmentName(recordDeptName);
     setSelectedClassName(record.class || '');
     setSelectedComment(record.comment || 'TAUGHT');
+    setSelectedDeliveryMode(normalizeDeliveryMode(record.deliveryMode));
     const subIdFromRecord = (record.substituteLecturerId || '').trim();
     setSelectedSubstituteId(subIdFromRecord);
     if (subIdFromRecord) {
@@ -862,6 +862,7 @@ export default function LectureRecords() {
     setSelectedClassName('');
     setLecturerAssignments(null);
     setSelectedComment('TAUGHT');
+    setSelectedDeliveryMode('InPerson');
     setSelectedSubstituteId('');
     setSelectedSubstituteName('');
     setIsDialogOpen(true);
@@ -914,7 +915,8 @@ export default function LectureRecords() {
         timeOutForEnding: r.timeOutForEnding || '10:00:00',
         duration: r.duration || '00:00:00',
         timeLost: r.timeLost || '0',
-        comment: (r.comment || 'TAUGHT').replace(/\s+/g, '_') as 'TAUGHT' | 'UNTAUGHT' | 'COMPENSATION' | 'MEETING' | 'SDL' | 'STUDENTS_ORIENTATION',
+        comment: normalizeLectureComment(r.comment || 'TAUGHT'),
+        deliveryMode: normalizeDeliveryMode((r as { deliveryMode?: string }).deliveryMode),
       }));
       await qaService.importLectureRecords(mapped);
       toast.success(`Imported ${mapped.length} lecture record(s).`);
@@ -958,20 +960,21 @@ export default function LectureRecords() {
   };
 
   const getCommentBadgeVariant = (comment: string) => {
-    switch (comment.toUpperCase()) {
+    const normalized = normalizeLectureComment(comment);
+    switch (normalized) {
       case 'TAUGHT':
         return 'default';
-      case 'UNTAUGHT':
-      case 'CANCELLED':
+      case 'MISSED_BY_LECTURER':
         return 'destructive';
       case 'PENDING':
         return 'secondary';
       case 'SUBSTITUTED':
       case 'COMPENSATION':
         return 'secondary';
-      case 'MEETING':
+      case 'MISSED_BY_STUDENTS':
+      case 'MISSED_OTHER_PROGRAMS_HOLIDAYS':
+      case 'ASSIGNMENT':
       case 'SDL':
-      case 'STUDENTS ORIENTATION':
         return 'outline';
       default:
         return 'outline';
@@ -1197,6 +1200,7 @@ export default function LectureRecords() {
                   <TableHead>LECTURER&apos;S NAME</TableHead>
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
+                  <TableHead>DELIVERY</TableHead>
                   <TableHead className="whitespace-nowrap">TIME LOST</TableHead>
                   <TableHead>ATTENDANCE</TableHead>
                   <TableHead>STATUS</TableHead>
@@ -1206,13 +1210,13 @@ export default function LectureRecords() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center">
+                    <TableCell colSpan={9} className="h-24 text-center">
                       Loading records...
                     </TableCell>
                   </TableRow>
                 ) : filteredRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center">
+                    <TableCell colSpan={9} className="h-24 text-center">
                       No records found.
                     </TableCell>
                   </TableRow>
@@ -1230,6 +1234,9 @@ export default function LectureRecords() {
                       </TableCell>
                       <TableCell className="max-w-[220px] truncate" title={record.courseUnit}>
                         {record.courseUnit}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {deliveryModeLabel(record.deliveryMode)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm">{record.timeLost}</TableCell>
                       <TableCell>
@@ -1252,7 +1259,7 @@ export default function LectureRecords() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                         <Badge variant={getCommentBadgeVariant(record.comment)}>
-                            {COMMENT_FILTER_LABELS[(record.comment || '').toUpperCase()] ?? record.comment}
+                            {lectureCommentLabel(record.comment)}
                         </Badge>
                           {record.comment === 'SUBSTITUTED' && (record.substituteLecturerName || record.substituteLecturerId) && (
                             <span className="text-xs text-muted-foreground">
@@ -1333,7 +1340,7 @@ export default function LectureRecords() {
               EarlyDeparture: { label: 'Early Departure', className: 'bg-blue-100 text-blue-800 border-blue-200' },
             };
             const statusCfg = statusConfig[status] || statusConfig.OnTime;
-            const commentLabel = COMMENT_FILTER_LABELS[(detailsRecord.comment || '').toUpperCase()] ?? detailsRecord.comment;
+            const commentLabel = lectureCommentLabel(detailsRecord.comment);
             return (
               <div className="space-y-5 py-2">
                 <section className="space-y-2">
@@ -1358,6 +1365,10 @@ export default function LectureRecords() {
                     <div className="sm:col-span-2">
                       <p className="text-xs text-muted-foreground">Course unit</p>
                       <p className="font-medium text-gray-900">{detailsRecord.courseUnit || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Mode of delivery</p>
+                      <p className="font-medium text-gray-900">{deliveryModeLabel(detailsRecord.deliveryMode)}</p>
                     </div>
                   </div>
                 </section>
@@ -1781,8 +1792,11 @@ export default function LectureRecords() {
                         onValueChange={(value) => {
                           setSelectedClassId(value);
                           const dept = lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId);
-                          const cls = dept?.classes.find((c: { id: string; label: string }) => c.id === value);
+                          const cls = dept?.classes.find((c) => c.id === value);
                           setSelectedClassName(cls?.label || '');
+                          if (cls?.deliveryMode) {
+                            setSelectedDeliveryMode(normalizeDeliveryMode(cls.deliveryMode));
+                          }
                         }}
                       required
                     >
@@ -1807,6 +1821,31 @@ export default function LectureRecords() {
                   )}
                 </div>
               </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="deliveryMode">MODE OF DELIVERY *</Label>
+                    <Select
+                      name="deliveryMode"
+                      value={selectedDeliveryMode}
+                      onValueChange={(value) => setSelectedDeliveryMode(value as DeliveryMode)}
+                    >
+                      <SelectTrigger id="deliveryMode">
+                        <SelectValue placeholder="Select delivery mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DELIVERY_MODE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </section>
 
               <section className="space-y-3">

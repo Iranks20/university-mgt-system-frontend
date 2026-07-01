@@ -44,7 +44,7 @@ describe('qaService.getMyLectureRecords', () => {
         timeOutForEnding: '10:00:00',
         duration: '00:50:00',
         timeLost: '0',
-        comment: 'UNTAUGHT',
+        comment: 'MISSED_BY_LECTURER',
       },
     ];
 
