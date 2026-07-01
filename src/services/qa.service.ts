@@ -1,5 +1,7 @@
 import api from '@/lib/api';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord } from '@/types/qa';
+import { isLectureTaught, isLectureUntaught, mapImportStatusToComment } from '@/lib/lecture-outcome';
+import type { DeliveryMode } from '@/lib/delivery-mode';
 
 export const qaService = {
   /**
@@ -19,6 +21,7 @@ export const qaService = {
         if (filter.lecturerName) params.lecturerName = filter.lecturerName;
         if (filter.courseCode) params.courseCode = filter.courseCode;
         if (filter.class) params.class = filter.class;
+        if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
         if (filter.page) params.page = filter.page;
@@ -39,12 +42,13 @@ export const qaService = {
     taughtCount: number;
     untaughtCount: number;
     pendingCount: number;
-    cancelledCount: number;
     substitutedCount: number;
     compensationCount: number;
-    meetingCount: number;
+    missedByLecturerCount: number;
+    missedByStudentsCount: number;
+    missedOtherProgramsHolidaysCount: number;
+    assignmentCount: number;
     sdlCount: number;
-    orientationCount: number;
     onTimeCount: number;
     lateCount: number;
     lecturerAbsentCount: number;
@@ -65,6 +69,7 @@ export const qaService = {
         if (filter.lecturerName) params.lecturerName = filter.lecturerName;
         if (filter.courseCode) params.courseCode = filter.courseCode;
         if (filter.class) params.class = filter.class;
+        if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
       }
@@ -75,12 +80,13 @@ export const qaService = {
         taughtCount: Number(data?.taughtCount ?? 0),
         untaughtCount: Number(data?.untaughtCount ?? 0),
         pendingCount: Number(data?.pendingCount ?? 0),
-        cancelledCount: Number(data?.cancelledCount ?? 0),
         substitutedCount: Number(data?.substitutedCount ?? 0),
         compensationCount: Number(data?.compensationCount ?? 0),
-        meetingCount: Number(data?.meetingCount ?? 0),
+        missedByLecturerCount: Number(data?.missedByLecturerCount ?? 0),
+        missedByStudentsCount: Number(data?.missedByStudentsCount ?? 0),
+        missedOtherProgramsHolidaysCount: Number(data?.missedOtherProgramsHolidaysCount ?? 0),
+        assignmentCount: Number(data?.assignmentCount ?? 0),
         sdlCount: Number(data?.sdlCount ?? 0),
-        orientationCount: Number(data?.orientationCount ?? 0),
         onTimeCount: Number(data?.onTimeCount ?? 0),
         lateCount: Number(data?.lateCount ?? 0),
         lecturerAbsentCount: Number(data?.lecturerAbsentCount ?? 0),
@@ -95,12 +101,13 @@ export const qaService = {
         taughtCount: 0,
         untaughtCount: 0,
         pendingCount: 0,
-        cancelledCount: 0,
         substitutedCount: 0,
         compensationCount: 0,
-        meetingCount: 0,
+        missedByLecturerCount: 0,
+        missedByStudentsCount: 0,
+        missedOtherProgramsHolidaysCount: 0,
+        assignmentCount: 0,
         sdlCount: 0,
-        orientationCount: 0,
         onTimeCount: 0,
         lateCount: 0,
         lecturerAbsentCount: 0,
@@ -320,18 +327,7 @@ export const qaService = {
     }
     
     // Map status to comment
-    const statusToComment: Record<string, string> = {
-      'Present': 'TAUGHT',
-      'Absent': 'UNTAUGHT',
-      'Late': 'TAUGHT',
-      'Cancelled': 'UNTAUGHT',
-      'TAUGHT': 'TAUGHT',
-      'UNTAUGHT': 'UNTAUGHT',
-      'COMPENSATION': 'COMPENSATION',
-      'MEETING': 'MEETING',
-      'SDL': 'SDL',
-      'STUDENTS ORIENTATION': 'STUDENTS ORIENTATION',
-    };
+    const statusToComment = mapImportStatusToComment;
     
     // Format check-in/check-out times
     const formatTime = (date?: Date): string | undefined => {
@@ -351,7 +347,7 @@ export const qaService = {
       timeOutForEnding: endTime,
       duration: duration,
       timeLost: '0',
-      comment: statusToComment[record.status] || 'TAUGHT',
+      comment: statusToComment(record.status),
       checkInTime: formatTime(record.actualStartTime),
       checkOutTime: formatTime(record.actualEndTime),
       checkInTimestamp: record.actualStartTime,
@@ -415,7 +411,7 @@ export const qaService = {
     departments: Array<{
       id: string;
       name: string;
-      classes: Array<{ id: string; label: string; className: string; courseUnit: string; courseId: string | null }>;
+      classes: Array<{ id: string; label: string; className: string; courseUnit: string; courseId: string | null; deliveryMode?: DeliveryMode }>;
     }>;
   } | null> => {
     try {
@@ -439,8 +435,8 @@ export const qaService = {
     totalTimeLost: string;
   }> => {
     const totalRecords = records.length;
-    const totalTaught = records.filter(r => r.comment === 'TAUGHT').length;
-    const totalUntaught = records.filter(r => r.comment === 'UNTAUGHT').length;
+    const totalTaught = records.filter((r) => isLectureTaught(r.comment)).length;
+    const totalUntaught = records.filter((r) => isLectureUntaught(r.comment)).length;
     const totalCompensation = records.filter(r => r.comment === 'COMPENSATION').length;
     
     // Calculate total time lost (sum of TIME LOST column)

@@ -6,7 +6,7 @@ import {
 import { 
   FileText, Download, Filter, Calendar, Users, Building, 
   TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw,
-  ArrowUp, ArrowDown, Loader2,
+  ArrowUp, ArrowDown, Loader2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -35,6 +35,36 @@ import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+const REPORT_TABLE_PAGE_SIZE = 20;
+
+function ReportTablePagination({
+  total,
+  page,
+  onPageChange,
+}: {
+  total: number;
+  page: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total === 0) return null;
+  const totalPages = Math.max(1, Math.ceil(total / REPORT_TABLE_PAGE_SIZE));
+  return (
+    <div className="flex items-center justify-between border-t px-4 py-2">
+      <span className="text-sm text-muted-foreground">{total} total</span>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          <ChevronLeft className="h-4 w-4" /> Previous
+        </Button>
+        <span className="text-sm">
+          Page {page} of {totalPages}
+        </span>
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Next <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function Reports() {
   const { user } = useAuth();
@@ -105,6 +135,8 @@ export default function Reports() {
   const [exportAllLoading, setExportAllLoading] = useState(false);
   const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
+  const [lecturerPage, setLecturerPage] = useState(1);
+  const [courseWisePage, setCourseWisePage] = useState(1);
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
   >([]);
@@ -445,6 +477,36 @@ export default function Reports() {
     return sortCourseWiseAttendanceRows(courseWiseReport.rows, courseWiseNameSort);
   }, [courseWiseReport, courseWiseNameSort]);
 
+  const filteredLecturers = useMemo(
+    () =>
+      lecturerTableData.filter((lecturer) => {
+        const matchesSearch =
+          lecturerSearch === '' || lecturer.name.toLowerCase().includes(lecturerSearch.toLowerCase());
+        const matchesFilter =
+          schoolFilter === 'all' || lecturer.school.toLowerCase().includes(schoolFilter.toLowerCase());
+        return matchesSearch && matchesFilter;
+      }),
+    [lecturerTableData, lecturerSearch, schoolFilter]
+  );
+
+  const paginatedLecturers = useMemo(() => {
+    const start = (lecturerPage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return filteredLecturers.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [filteredLecturers, lecturerPage]);
+
+  const paginatedCourseWiseRows = useMemo(() => {
+    const start = (courseWisePage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return courseWiseSortedRows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [courseWiseSortedRows, courseWisePage]);
+
+  useEffect(() => {
+    setLecturerPage(1);
+  }, [lecturerSearch, schoolFilter, lecturerDateRange, lecturerTableData]);
+
+  useEffect(() => {
+    setCourseWisePage(1);
+  }, [courseWiseReport, courseWiseNameSort]);
+
   const toggleCourseWiseNameSort = () => {
     setCourseWiseNameSort((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
@@ -505,6 +567,7 @@ export default function Reports() {
       }
       setCourseWiseReport(report);
       setCourseWiseNameSort('asc');
+      setCourseWisePage(1);
       if (report.rows.length === 0) {
         toast.info('No enrolled course units found for the selected scope.');
       }
@@ -1203,6 +1266,7 @@ export default function Reports() {
                   <CardDescription>Top performing staff teaching records and attendance rates.</CardDescription>
                </CardHeader>
                <CardContent>
+                 <div className="rounded-md border">
                  <Table>
                    <TableHeader>
                      <TableRow>
@@ -1217,16 +1281,10 @@ export default function Reports() {
                    <TableBody>
                      {lecturersLoading ? (
                        <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-                     ) : lecturerTableData.length === 0 ? (
+                     ) : filteredLecturers.length === 0 ? (
                        <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">No lecturer data yet.</TableCell></TableRow>
                      ) : (
-                       lecturerTableData
-                         .filter(lecturer => {
-                           const matchesSearch = lecturerSearch === '' || lecturer.name.toLowerCase().includes(lecturerSearch.toLowerCase());
-                           const matchesFilter = schoolFilter === 'all' || lecturer.school.toLowerCase().includes(schoolFilter.toLowerCase());
-                           return matchesSearch && matchesFilter;
-                         })
-                         .map((lecturer) => (
+                       paginatedLecturers.map((lecturer) => (
                          <TableRow key={lecturer.id}>
                            <TableCell className="font-medium">{lecturer.name}</TableCell>
                            <TableCell>{lecturer.school}</TableCell>
@@ -1255,6 +1313,12 @@ export default function Reports() {
                      )}
                    </TableBody>
                  </Table>
+                 <ReportTablePagination
+                   total={filteredLecturers.length}
+                   page={lecturerPage}
+                   onPageChange={setLecturerPage}
+                 />
+                 </div>
                </CardContent>
              </Card>
           </TabsContent>
@@ -1607,8 +1671,8 @@ export default function Reports() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        courseWiseSortedRows.map((row) => (
-                          <TableRow key={`${row.registrationNumber}-${row.courseId}`}>
+                        paginatedCourseWiseRows.map((row) => (
+                          <TableRow key={`${row.registrationNumber}-${row.courseId}-${row.serialNo}`}>
                             <TableCell className="text-muted-foreground">{row.serialNo}</TableCell>
                             <TableCell>{row.registrationNumber}</TableCell>
                             <TableCell className="font-medium">{row.studentName}</TableCell>
@@ -1627,6 +1691,11 @@ export default function Reports() {
                       )}
                     </TableBody>
                   </Table>
+                  <ReportTablePagination
+                    total={courseWiseSortedRows.length}
+                    page={courseWisePage}
+                    onPageChange={setCourseWisePage}
+                  />
                 </div>
               </CardContent>
             </Card>

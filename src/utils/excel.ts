@@ -10,6 +10,8 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord } from '@/types/qa';
+import { mapImportStatusToComment } from '@/lib/lecture-outcome';
+import { deliveryModeLabel } from '@/lib/delivery-mode';
 import type {
   ProgramAttendanceData,
   StudentAttendanceReport,
@@ -40,6 +42,7 @@ export function exportLectureRecordsToCSV(
       'DURATION',
       'LESSON TIMEOUT',
       'TIME LOST',
+      'MODE OF DELIVERY',
       'STATUS',
       'COMMENT',
       'SUBSTITUTE LECTURER',
@@ -56,6 +59,7 @@ export function exportLectureRecordsToCSV(
       record.duration,
       record.lessonTimeout || record.duration,
       record.timeLost,
+      deliveryModeLabel(record.deliveryMode),
       record.comment,
       record.remarks || '',
       record.substituteLecturerName || '',
@@ -76,6 +80,7 @@ export function exportLectureRecordsToCSV(
     { wch: 12 },
     { wch: 15 },
     { wch: 12 },
+    { wch: 18 },
     { wch: 20 },
     { wch: 40 },
     { wch: 25 },
@@ -523,33 +528,53 @@ export function exportSchoolSummaryReport(
   filename?: string
 ): void {
   const data = [
-    // Header row - exact match to 1.csv (preserving typo)
     [
       'SCHOOL',
       'TOTAL NO. TAUGHT',
       'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROGRAMS & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
     ],
-    // Data rows
-    ...summaries.map(summary => [
+    ...summaries.map((summary) => [
       summary.school,
       summary.totalNoTaught,
       summary.noUntaught,
+      summary.missedByLecturer ?? 0,
+      summary.missedByStudents ?? 0,
+      summary.missedOtherProgramsHolidays ?? 0,
+      summary.assignment ?? 0,
+      summary.noSdl ?? 0,
+      summary.noSubstituted ?? 0,
     ]),
-    // Total row
     [
       'TOTAL',
       summaries.reduce((sum, s) => sum + s.totalNoTaught, 0),
       summaries.reduce((sum, s) => sum + s.noUntaught, 0),
+      summaries.reduce((sum, s) => sum + (s.missedByLecturer ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedByStudents ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedOtherProgramsHolidays ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.assignment ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSdl ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSubstituted ?? 0), 0),
     ],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
+
   ws['!cols'] = [
-    { wch: 25 }, // SCHOOL
-    { wch: 18 }, // TOTAL NO. TAUGHT
-    { wch: 15 }, // NO. UNTAIGHT
+    { wch: 25 },
+    { wch: 18 },
+    { wch: 15 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 14 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -784,18 +809,7 @@ export function exportQARecords(
     const duration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
     
     // Map status to comment
-    const statusToComment: Record<string, string> = {
-      'Present': 'TAUGHT',
-      'Absent': 'UNTAUGHT',
-      'Late': 'TAUGHT',
-      'Cancelled': 'UNTAUGHT',
-      'TAUGHT': 'TAUGHT',
-      'UNTAUGHT': 'UNTAUGHT',
-      'COMPENSATION': 'COMPENSATION',
-      'MEETING': 'MEETING',
-      'SDL': 'SDL',
-      'STUDENTS ORIENTATION': 'STUDENTS ORIENTATION',
-    };
+    const statusToComment = mapImportStatusToComment;
     
     return {
       date: record.scheduledDate,
@@ -806,7 +820,7 @@ export function exportQARecords(
       timeOutForEnding: endTime,
       duration: duration,
       timeLost: '0',
-      comment: statusToComment[record.status] || 'TAUGHT',
+      comment: statusToComment(record.status),
     };
   });
   
