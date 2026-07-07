@@ -20,6 +20,7 @@ import type {
   CourseWiseAttendanceSummaryReport,
   WeeklyAttendanceMatrixReport,
 } from '@/types/student';
+import { UNIVERSITY_NAME } from '@/lib/institution';
 
 /**
  * Export Lecture Records to CSV/Excel (matches 3.csv format exactly)
@@ -166,6 +167,7 @@ export function exportClassAttendanceSummaryReport(
   filterParts.push(`Generated: ${formatReportDateLabel(report.generatedAt.slice(0, 10))}`);
 
   const data: (string | number)[][] = [
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [filterParts.join(' | ')],
     [],
@@ -198,6 +200,7 @@ export function exportClassAttendanceSummaryReport(
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -259,7 +262,7 @@ export function exportWeeklyAttendanceMatrixReport(
   courseHeaderRow.push('TOTALS', 'EXPECTED');
 
   const data: (string | number)[][] = [
-    [report.universityName || 'Kampala Christian University'],
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [`Cohort: ${report.programIntakeLabel} | Week: ${report.weekRangeLabel}`],
     [],
@@ -338,7 +341,7 @@ export function exportCourseWiseAttendanceSummaryReport(
   const generatedAt = formatReportDateTime(report.generatedAt);
 
   const data: (string | number)[][] = [
-    [report.universityName || 'Kampala Christian University'],
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [filterParts.join(' | ')],
     [],
