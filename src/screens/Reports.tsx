@@ -29,6 +29,7 @@ import {
   sortCourseWiseAttendanceRows,
   type CourseWiseRowSortDirection,
 } from '@/lib/attendance-metrics';
+import { UNIVERSITY_NAME } from '@/lib/institution';
 import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } from '@/types/student';
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
@@ -136,6 +137,7 @@ export default function Reports() {
   const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
   const [lecturerPage, setLecturerPage] = useState(1);
+  const [classAttendPage, setClassAttendPage] = useState(1);
   const [courseWisePage, setCourseWisePage] = useState(1);
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
@@ -499,6 +501,12 @@ export default function Reports() {
     return courseWiseSortedRows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
   }, [courseWiseSortedRows, courseWisePage]);
 
+  const paginatedClassAttendRows = useMemo(() => {
+    const rows = classAttendReport?.students ?? [];
+    const start = (classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return rows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [classAttendReport, classAttendPage]);
+
   useEffect(() => {
     setLecturerPage(1);
   }, [lecturerSearch, schoolFilter, lecturerDateRange, lecturerTableData]);
@@ -506,6 +514,10 @@ export default function Reports() {
   useEffect(() => {
     setCourseWisePage(1);
   }, [courseWiseReport, courseWiseNameSort]);
+
+  useEffect(() => {
+    setClassAttendPage(1);
+  }, [classAttendReport]);
 
   const toggleCourseWiseNameSort = () => {
     setCourseWiseNameSort((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -525,6 +537,7 @@ export default function Reports() {
         return;
       }
       setClassAttendReport(report);
+      setClassAttendPage(1);
       if (report.students.length === 0) {
         toast.info('No enrolled students found for the selected scope.');
       }
@@ -1327,6 +1340,9 @@ export default function Reports() {
               <Card>
                 <CardHeader>
                   <CardTitle>{classAttendReport?.title ?? 'Class / course attendance summary'}</CardTitle>
+                  {classAttendReport ? (
+                    <CardDescription>{classAttendReport.universityName || UNIVERSITY_NAME}</CardDescription>
+                  ) : null}
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
@@ -1474,9 +1490,11 @@ export default function Reports() {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          classAttendReport.students.map((row, idx) => (
+                          paginatedClassAttendRows.map((row, idx) => (
                             <TableRow key={row.studentId}>
-                              <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {(classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE + idx + 1}
+                              </TableCell>
                               <TableCell className="font-medium">{row.studentName}</TableCell>
                               <TableCell>{row.registrationNumber}</TableCell>
                               <TableCell className="text-right">
@@ -1495,6 +1513,11 @@ export default function Reports() {
                         )}
                       </TableBody>
                     </Table>
+                    <ReportTablePagination
+                      total={classAttendReport?.students.length ?? 0}
+                      page={classAttendPage}
+                      onPageChange={setClassAttendPage}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -1504,6 +1527,9 @@ export default function Reports() {
             <Card>
               <CardHeader>
                 <CardTitle>{courseWiseReport?.title ?? 'Course-wise student attendance summary'}</CardTitle>
+                {courseWiseReport ? (
+                  <CardDescription>{courseWiseReport.universityName || UNIVERSITY_NAME}</CardDescription>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">

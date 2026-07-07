@@ -134,6 +134,7 @@ export interface ClassAttendanceSummaryRow {
 export interface ClassAttendanceSummaryReport {
   title: string;
   reportName: string;
+  universityName: string;
   generatedAt: string;
   filters: {
     schoolId: string | null;
