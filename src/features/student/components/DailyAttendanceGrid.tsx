@@ -12,6 +12,7 @@ import {
 } from '@/components/AttendanceStatusSelect';
 import { studentService } from '@/services';
 import type { AttendanceStatus } from '@/lib/attendance-metrics';
+import type { AttendanceStatusOrUnset } from '@/components/AttendanceStatusSelect';
 import {
   sortDailyGridStudents,
   type StudentSortDirection,
@@ -56,11 +57,13 @@ export default function DailyAttendanceGrid({
   const [grid, setGrid] = useState<DailyMarkingGrid | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [cellMap, setCellMap] = useState<Record<string, AttendanceStatus>>({});
+  const [cellMap, setCellMap] = useState<Record<string, AttendanceStatusOrUnset>>({});
   const [studentSortField, setStudentSortField] = useState<StudentSortField>('studentName');
   const [studentSortDirection, setStudentSortDirection] = useState<StudentSortDirection>('asc');
 
   const cellKey = (studentId: string, classId: string) => `${studentId}|${classId}`;
+  const slotAllowsAttendance = (slot: DailyMarkingGrid['slots'][number]) =>
+    slot.attendanceAllowed !== false;
 
   const loadGrid = useCallback(async () => {
     if (!intakeScope.isComplete) {
@@ -82,7 +85,7 @@ export default function DailyAttendanceGrid({
       setGrid(data);
       setStudentSortField('studentName');
       setStudentSortDirection('asc');
-      const next: Record<string, AttendanceStatus> = {};
+      const next: Record<string, AttendanceStatusOrUnset> = {};
       for (const student of data.students) {
         for (const slot of data.slots) {
           const key = cellKey(student.studentId, slot.classId);
@@ -92,6 +95,8 @@ export default function DailyAttendanceGrid({
       setCellMap(next);
       if (data.slots.length === 0) {
         toast.info(`No course units scheduled for ${data.dayName} in this cohort.`);
+      } else if (data.slots.every((slot) => slot.attendanceAllowed === false)) {
+        toast.info('No lectures are marked Taught/Substituted/Compensation for this day yet.');
       }
     } catch (e: any) {
       setGrid(null);
@@ -141,6 +146,7 @@ export default function DailyAttendanceGrid({
     setCellMap((prev) => {
       const next = { ...prev };
       for (const slot of grid.slots) {
+        if (!slotAllowsAttendance(slot)) continue;
         next[cellKey(studentId, slot.classId)] = value;
       }
       return next;
@@ -149,6 +155,11 @@ export default function DailyAttendanceGrid({
 
   const setColumnAll = (classId: string, value: AttendanceStatus) => {
     if (!grid) return;
+    const slot = grid.slots.find((s) => s.classId === classId);
+    if (slot && !slotAllowsAttendance(slot)) {
+      toast.error('This lecture must be marked Taught, Substituted, or Compensation first.');
+      return;
+    }
     setCellMap((prev) => {
       const next = { ...prev };
       for (const student of grid.students) {
@@ -163,7 +174,9 @@ export default function DailyAttendanceGrid({
     const records: Array<{ studentId: string; classId: string; status: string }> = [];
     for (const student of grid.students) {
       for (const slot of grid.slots) {
-        const value = cellMap[cellKey(student.studentId, slot.classId)] ?? 'Absent';
+        if (!slotAllowsAttendance(slot)) continue;
+        const value = cellMap[cellKey(student.studentId, slot.classId)];
+        if (!value) continue;
         records.push({
           studentId: student.studentId,
           classId: slot.classId,
@@ -172,7 +185,7 @@ export default function DailyAttendanceGrid({
       }
     }
     if (records.length === 0) {
-      toast.warning('Nothing to save.');
+      toast.warning('Mark at least one student before saving. Unmarked cells are not saved as Absent.');
       return;
     }
     setSaving(true);
@@ -194,7 +207,7 @@ export default function DailyAttendanceGrid({
       toast.error(
         busy
           ? 'System is busy saving attendance. Please wait a moment and try again.'
-          : 'Failed to save attendance. Please try again.'
+          : msg || 'Failed to save attendance. Please try again.'
       );
     } finally {
       setSaving(false);
@@ -225,8 +238,8 @@ export default function DailyAttendanceGrid({
 
   const sortLabel =
     studentSortField === 'studentName'
-      ? `Student name (${studentSortDirection === 'asc' ? 'A‚ÄìZ' : 'Z‚ÄìA'})`
-      : `Reg. no. (${studentSortDirection === 'asc' ? 'A‚ÄìZ' : 'Z‚ÄìA'})`;
+      ? `Student name (${studentSortDirection === 'asc' ? 'AùZ' : 'ZùA'})`
+      : `Reg. no. (${studentSortDirection === 'asc' ? 'AùZ' : 'ZùA'})`;
 
   return (
     <Card className="border-[#015F2B]/20">
@@ -236,7 +249,8 @@ export default function DailyAttendanceGrid({
           Daily bulk attendance
         </CardTitle>
         <CardDescription>
-          Mark all students for every course unit on the selected day. Use Present, Absent, or Late for each cell.
+          Mark students only for lectures already recorded as Taught, Substituted, or Compensation.
+          Unmarked cells are not saved as Absent.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -265,10 +279,10 @@ export default function DailyAttendanceGrid({
           <>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-gray-900">{grid.programIntakeLabel}</span>
-              {' ¬∑ '}
+              {' ù '}
               {grid.dayName} ({grid.date})
-              {' ¬∑ '}
-              {grid.students.length} students ¬∑ {grid.slots.length} course units ¬∑ {sortLabel}
+              {' ù '}
+              {grid.students.length} students ù {grid.slots.length} course units ù {sortLabel}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -330,16 +344,20 @@ export default function DailyAttendanceGrid({
                         <div className="space-y-1.5">
                           <span className="text-[10px] uppercase text-muted-foreground block">{slot.dayShort}</span>
                           <span className="text-xs font-medium leading-tight block">{slot.courseName}</span>
-                          <Select onValueChange={(v) => setColumnAll(slot.classId, v as AttendanceStatus)}>
-                            <SelectTrigger className="h-7 w-full text-[10px] mx-auto">
-                              <SelectValue placeholder="Set all" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {BULK_STATUSES.map((s) => (
-                                <SelectItem key={s} value={s}>All {s}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {slotAllowsAttendance(slot) ? (
+                            <Select onValueChange={(v) => setColumnAll(slot.classId, v as AttendanceStatus)}>
+                              <SelectTrigger className="h-7 w-full text-[10px] mx-auto">
+                                <SelectValue placeholder="Set all" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {BULK_STATUSES.map((s) => (
+                                  <SelectItem key={s} value={s}>All {s}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-[10px] text-amber-700 block">Not taught yet</span>
+                          )}
                         </div>
                       </TableHead>
                     ))}
@@ -361,7 +379,9 @@ export default function DailyAttendanceGrid({
                       {grid.slots.map((slot) => (
                         <TableCell key={slot.classId} className="text-center p-1.5">
                           <AttendanceStatusSelect
-                            value={cellMap[cellKey(student.studentId, slot.classId)] ?? 'Absent'}
+                            value={cellMap[cellKey(student.studentId, slot.classId)] ?? null}
+                            allowUnset
+                            disabled={!slotAllowsAttendance(slot)}
                             onValueChange={(v) => setCell(student.studentId, slot.classId, v)}
                           />
                         </TableCell>

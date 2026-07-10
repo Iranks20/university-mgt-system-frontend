@@ -17,10 +17,13 @@ const TRIGGER_STYLES: Record<AttendanceStatus, string> = {
   Excused: 'border-blue-200 bg-blue-50 text-blue-800',
 };
 
+export type AttendanceStatusOrUnset = AttendanceStatus | null;
+
 export interface AttendanceStatusSelectProps {
-  value: AttendanceStatus;
+  value: AttendanceStatusOrUnset;
   onValueChange: (value: AttendanceStatus) => void;
   includeExcused?: boolean;
+  allowUnset?: boolean;
   disabled?: boolean;
   className?: string;
   triggerClassName?: string;
@@ -30,6 +33,7 @@ export function AttendanceStatusSelect({
   value,
   onValueChange,
   includeExcused = false,
+  allowUnset = false,
   disabled = false,
   className,
   triggerClassName,
@@ -37,23 +41,23 @@ export function AttendanceStatusSelect({
   const options = includeExcused
     ? STATUS_OPTIONS
     : STATUS_OPTIONS.filter((s) => s !== 'Excused');
-  const safeValue = options.includes(value) ? value : 'Absent';
+  const hasValue = value != null && options.includes(value);
 
   return (
     <Select
-      value={safeValue}
+      value={hasValue ? value : undefined}
       onValueChange={(v) => onValueChange(v as AttendanceStatus)}
       disabled={disabled}
     >
       <SelectTrigger
         className={cn(
           'h-8 w-[112px] text-xs font-medium',
-          TRIGGER_STYLES[safeValue],
+          hasValue ? TRIGGER_STYLES[value] : 'border-dashed text-muted-foreground',
           triggerClassName,
           className
         )}
       >
-        <SelectValue />
+        <SelectValue placeholder={allowUnset || !hasValue ? 'Not marked' : 'Select'} />
       </SelectTrigger>
       <SelectContent>
         {options.map((status) => (
@@ -69,8 +73,8 @@ export function AttendanceStatusSelect({
 export function parseAttendanceStatus(
   raw: string | null | undefined,
   includeExcused = false
-): AttendanceStatus {
+): AttendanceStatusOrUnset {
   if (raw === 'Present' || raw === 'Absent' || raw === 'Late') return raw;
   if (includeExcused && raw === 'Excused') return 'Excused';
-  return 'Absent';
+  return null;
 }
