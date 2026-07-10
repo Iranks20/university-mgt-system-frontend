@@ -43,6 +43,7 @@ import {
   RECORDABLE_LECTURE_COMMENT_OPTIONS,
   normalizeLectureComment,
   lectureCommentLabel,
+  isLectureTaught,
 } from '@/lib/lecture-outcome';
 import {
   DELIVERY_MODE_OPTIONS,
@@ -114,7 +115,7 @@ export default function LectureRecords() {
   const [selectedClassName, setSelectedClassName] = useState('');
   const [lecturerOptions, setLecturerOptions] = useState<{ id: string; name: string; departmentName?: string }[]>([]);
   const [selectedLecturerId, setSelectedLecturerId] = useState('');
-  const [selectedComment, setSelectedComment] = useState<string>('TAUGHT');
+  const [selectedComment, setSelectedComment] = useState<string>('PENDING');
   const [selectedDeliveryMode, setSelectedDeliveryMode] = useState<DeliveryMode>('InPerson');
   const [selectedSubstituteId, setSelectedSubstituteId] = useState<string>('');
   const [selectedSubstituteName, setSelectedSubstituteName] = useState<string>('');
@@ -228,6 +229,10 @@ export default function LectureRecords() {
   ]);
 
   const openSessionAttendance = async (record: QALectureRecord & { classId?: string | null; courseId?: string | null }) => {
+    if (!isLectureTaught(record.comment)) {
+      toast.error('Mark this lecture as Taught, Substituted, or Compensation before recording student attendance.');
+      return;
+    }
     const classId = (record as any).classId;
     if (!classId) {
       toast.error('No class is linked to this lecture, so attendance cannot be recorded.');
@@ -342,12 +347,18 @@ export default function LectureRecords() {
 
   const handleSessionAttendanceSubmit = async () => {
     if (!sessionRecord || sessionEnrollments.length === 0) return;
+    const payload = sessionEnrollments
+      .filter((e) => Boolean(sessionStatusMap[e.studentId]))
+      .map((e) => ({
+        studentId: e.studentId,
+        status: sessionStatusMap[e.studentId],
+      }));
+    if (payload.length === 0) {
+      toast.warning('Mark at least one student before saving. Unmarked students are not saved as Absent.');
+      return;
+    }
     setSessionSaving(true);
     try {
-      const payload = sessionEnrollments.map(e => ({
-        studentId: e.studentId,
-        status: sessionStatusMap[e.studentId] || 'Absent',
-      }));
       const result = await studentService.createSessionAttendance({
         classId: sessionRecord.classId,
         classIds: selectedSessionClassIds,
@@ -1286,8 +1297,16 @@ export default function LectureRecords() {
                             <DropdownMenuItem onClick={() => record.id && openEdit(record.id)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
-                            {(record as any).classId && (
+                            {(record as any).classId && isLectureTaught(record.comment) && (
                               <DropdownMenuItem onClick={() => openSessionAttendance(record)}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Record student attendance
+                              </DropdownMenuItem>
+                            )}
+                            {(record as any).classId && !isLectureTaught(record.comment) && (
+                              <DropdownMenuItem
+                                disabled
+                                title="Mark lecture Taught, Substituted, or Compensation first"
+                              >
                                 <UserCheck className="mr-2 h-4 w-4" /> Record student attendance
                               </DropdownMenuItem>
                             )}
@@ -1484,6 +1503,7 @@ export default function LectureRecords() {
             <DialogTitle>Record student attendance</DialogTitle>
             <DialogDescription>
               {sessionRecord ? `${sessionRecord.className} — ${sessionRecord.date}` : ''}
+              {' · '}Only explicitly marked students are saved. Unmarked students are not recorded as Absent.
             </DialogDescription>
           </DialogHeader>
           {sessionLoading ? (
@@ -1613,7 +1633,14 @@ export default function LectureRecords() {
                       sortedSessionEnrollments.map((enr: any, idx: number) => {
                         const name = sessionEnrollmentStudentName(enr);
                         const num = enr.student?.studentNumber || '—';
-                        const status = sessionStatusMap[enr.studentId] || 'Absent';
+                        const rawStatus = sessionStatusMap[enr.studentId];
+                        const status: 'Present' | 'Absent' | 'Late' | 'Excused' | null =
+                          rawStatus === 'Present' ||
+                          rawStatus === 'Absent' ||
+                          rawStatus === 'Late' ||
+                          rawStatus === 'Excused'
+                            ? rawStatus
+                            : null;
                         return (
                           <TableRow key={enr.studentId}>
                             <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
@@ -1621,14 +1648,8 @@ export default function LectureRecords() {
                             <TableCell className="text-muted-foreground">{num}</TableCell>
                             <TableCell>
                               <AttendanceStatusSelect
-                                value={
-                                  status === 'Present' ||
-                                  status === 'Absent' ||
-                                  status === 'Late' ||
-                                  status === 'Excused'
-                                    ? status
-                                    : 'Absent'
-                                }
+                                value={status}
+                                allowUnset
                                 includeExcused
                                 onValueChange={(v) => setSessionStudentStatus(enr.studentId, v)}
                                 triggerClassName="w-full"

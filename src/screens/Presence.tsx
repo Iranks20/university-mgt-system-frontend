@@ -351,6 +351,11 @@ function PresenceContent() {
           setAttendanceRecorded(true);
           setAttendanceWasAlreadyRecorded(true);
           toast.info('Attendance was already marked for this class today.');
+        } else if (code === 'LECTURE_NOT_TAUGHT') {
+          toast.error(
+            error?.message ||
+              'You can only mark attendance after the lecture is recorded as Taught, Substituted, or Compensation.'
+          );
         } else {
           toast.error(error?.message || 'Failed to mark attendance');
         }
