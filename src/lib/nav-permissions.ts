@@ -40,7 +40,6 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-graduation-registrations': ['graduation.registrations'],
   '/graduation/dashboard': [
     ['graduation.access'],
-    ['graduation.registrations'],
     ['graduation.committee'],
     ['graduation.manage'],
     ['admin.console'],
@@ -49,7 +48,6 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/graduation/committees': [
     ['graduation.access'],
     ['graduation.committee'],
-    ['graduation.registrations'],
     ['graduation.manage'],
     ['admin.console'],
   ],
@@ -60,7 +58,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['academic.personal_schedule', 'qa.lecturer_portal'],
     ['timetable.ops'],
   ],
-  '/timetable-builder': [['academic.write'], ['timetable.ops'], ['qa.seed_timetable']],
+  '/timetable-builder': [['academic.write'], ['timetable.admin'], ['qa.seed_timetable']],
   '/clinical-rotations': [
     ['clinical.sessions.record'],
     ['clinical.reports.view'],
@@ -70,7 +68,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['clinical.instructors.manage'],
     ['clinical.rotations.manage'],
   ],
-  '/clinical/sites': [['clinical.sites.manage'], ['clinical.reports.view']],
+  '/clinical/sites': [['clinical.sites.manage']],
   '/clinical/site-team': [['clinical.assignments.manage']],
   '/clinical/instructors': [
     ['clinical.instructors.manage'],
@@ -101,6 +99,8 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['timetable.ops'],
   ],
   '/management-overview': [['analytics.mgmt_overview']],
+  '/management-risk': [['analytics.mgmt_overview', 'analytics.ops']],
+  '/management-enrolment': [['analytics.mgmt_overview', 'students.read']],
   '/management-departments': [['academic.read', 'academic.mgmt_read']],
   '/management-staff-performance': [['staff.read', 'reports.access']],
   '/management-lecturer-performance': [
@@ -116,6 +116,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/management-student-details': [
     ['students.read', 'students.attendance_staff'],
     ['students.read', 'analytics.ops'],
+    ['students.read', 'analytics.mgmt_overview'],
   ],
   '/cancellations': [
     ['cancellations.lecturer', 'timetable.lecturer_me'],
@@ -166,6 +167,7 @@ export const ROUTE_PERMISSION: Record<string, PermissionRequirement> = {
 };
 
 const HOME_PATH_CANDIDATES = [
+  '/management-overview',
   '/dashboard',
   '/clinical/sites',
   '/clinical/sessions',
@@ -231,6 +233,8 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/student-classes', label: 'My Classes', permissions: NAV_PERMISSION['/student-classes'] },
   { path: '/student-history', label: 'Attendance History', permissions: NAV_PERMISSION['/student-history'] },
   { path: '/management-overview', label: 'University Overview', permissions: NAV_PERMISSION['/management-overview'] },
+  { path: '/management-risk', label: 'Risk Register', permissions: NAV_PERMISSION['/management-risk'] },
+  { path: '/management-enrolment', label: 'Enrolment Health', permissions: NAV_PERMISSION['/management-enrolment'] },
   { path: '/management-departments', label: 'Department Stats', permissions: NAV_PERMISSION['/management-departments'] },
   { path: '/management-staff-performance', label: 'Staff Performance', permissions: NAV_PERMISSION['/management-staff-performance'] },
   { path: '/management-lecturer-performance', label: 'Lecturer Performance', permissions: NAV_PERMISSION['/management-lecturer-performance'] },

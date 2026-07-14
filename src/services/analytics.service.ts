@@ -162,6 +162,28 @@ export const analyticsService = {
     }
   },
 
+  getManagementRiskPack: async (limit: number = 10): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await api.get<unknown>('/analytics/management-risk-pack', { limit: String(limit) });
+      const r = response as { data?: unknown } | null;
+      return ((r as { data?: unknown })?.data ?? r) as Record<string, unknown> | null;
+    } catch (error) {
+      console.error('Error fetching management risk pack:', error);
+      return null;
+    }
+  },
+
+  getManagementEnrolmentHealth: async (): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await api.get<unknown>('/analytics/management-enrolment-health');
+      const r = response as { data?: unknown } | null;
+      return ((r as { data?: unknown })?.data ?? r) as Record<string, unknown> | null;
+    } catch (error) {
+      console.error('Error fetching management enrolment health:', error);
+      return null;
+    }
+  },
+
   getTopPerformingStaff: async (limit: number = 10, dateFrom?: string, dateTo?: string) => {
     try {
       const params: Record<string, string> = { limit: String(limit) };

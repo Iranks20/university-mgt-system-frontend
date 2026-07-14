@@ -749,18 +749,18 @@ export default function Reports() {
     setExportAllLoading(true);
     try {
       const result = await reportService.exportReport('all', 'xlsx');
-      if (result.downloadUrl) {
-        const link = document.createElement('a');
-        link.href = result.downloadUrl;
+                if (result.downloadUrl) {
+                  const link = document.createElement('a');
+                  link.href = result.downloadUrl;
         link.download = result.filename.endsWith('.xlsx') ? result.filename : `${result.filename}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
         toast.success('Excel report downloaded.');
-      }
-    } catch (error: any) {
-      console.error('Error exporting reports:', error);
-      toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
+                }
+              } catch (error: any) {
+                console.error('Error exporting reports:', error);
+                toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
     } finally {
       setExportAllLoading(false);
     }
@@ -769,21 +769,21 @@ export default function Reports() {
   const handleNewReport = async () => {
     if (headerReportActionBusy) return;
     setNewReportLoading(true);
-    try {
-      const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
+              try {
+                const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
       await reportService.downloadReport(report.id, 'xlsx');
       toast.success('Report saved and downloaded as Excel.');
-      const reports = await reportService.getReports();
-      const reportList = Array.isArray(reports) ? reports : [];
-      setRecentReports(reportList.map((r: any) => ({
-        id: r.id,
-        name: r.title || `${r.type || 'Report'}`,
-        date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
-        type: r.type || '—',
-      })));
-    } catch (error: any) {
-      console.error('Error generating report:', error);
-      toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
+                const reports = await reportService.getReports();
+                const reportList = Array.isArray(reports) ? reports : [];
+                setRecentReports(reportList.map((r: any) => ({
+                  id: r.id,
+                  name: r.title || `${r.type || 'Report'}`,
+                  date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
+                  type: r.type || '—',
+                })));
+              } catch (error: any) {
+                console.error('Error generating report:', error);
+                toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
     } finally {
       setNewReportLoading(false);
     }
