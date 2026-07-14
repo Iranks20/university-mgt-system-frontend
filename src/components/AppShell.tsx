@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound,
-  ChevronDown,
+  ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
@@ -129,6 +129,8 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Staff Performance', path: '/management-staff-performance', icon: Users },
   { label: 'Lecturer Performance', path: '/management-lecturer-performance', icon: UserCheck },
   { label: 'Student Performance', path: '/management-student-performance', icon: GraduationCap },
+  { label: 'Risk Register', path: '/management-risk', icon: AlertTriangle },
+  { label: 'Enrolment Health', path: '/management-enrolment', icon: Users },
   { label: 'Reports', path: '/reports', icon: FileText },
   { label: 'Courses', path: '/admin-courses', icon: BookOpen },
   { label: 'Classes', path: '/admin-classes', icon: School },
@@ -140,9 +142,113 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
+function pushFolderIfAny(
+  items: SidebarItem[],
+  id: string,
+  label: string,
+  icon: LucideIcon,
+  children: SidebarChild[]
+) {
+  if (children.length === 1) {
+    const only = children[0];
+    items.push({ type: 'single', label: only.label, icon: only.icon, path: only.path });
+  } else if (children.length > 1) {
+    items.push({ type: 'folder', id, label, icon, children });
+  }
+}
+
+function buildManagementNav(userPermissions: string[], role: string): SidebarItem[] {
+  const allow = (path: string) =>
+    path.startsWith('/graduation')
+      ? graduationNavAllowed(userPermissions, path, role)
+      : navAllowed(userPermissions, path);
+
+  const items: SidebarItem[] = [];
+
+  if (allow('/management-overview')) {
+    items.push({
+      type: 'single',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      path: '/management-overview',
+    });
+  }
+
+  pushFolderIfAny(
+    items,
+    'performance',
+    'Performance',
+    BarChart,
+    [
+      { label: 'Student Performance', path: '/management-student-performance', icon: GraduationCap },
+      { label: 'Lecturer Performance', path: '/management-lecturer-performance', icon: UserCheck },
+      { label: 'Staff Performance', path: '/management-staff-performance', icon: Users },
+      { label: 'Risk Register', path: '/management-risk', icon: AlertTriangle },
+    ].filter((c) => allow(c.path))
+  );
+
+  pushFolderIfAny(
+    items,
+    'academic-oversight',
+    'Academic oversight',
+    School,
+    [
+      { label: 'Departments', path: '/management-departments', icon: School },
+      { label: 'Enrolment Health', path: '/management-enrolment', icon: Users },
+      { label: 'Student Records', path: '/student-records', icon: Users },
+      { label: 'Curriculum', path: '/curriculum-management', icon: ClipboardList },
+      { label: 'Timetable', path: '/timetable', icon: Calendar },
+      { label: 'Venues', path: '/admin-venues', icon: MapPin },
+    ].filter((c) => allow(c.path))
+  );
+
+  if (allow('/reports')) {
+    items.push({ type: 'single', label: 'Reports', icon: FileText, path: '/reports' });
+  }
+
+  pushFolderIfAny(
+    items,
+    'teaching-disruptions',
+    'Teaching disruptions',
+    CalendarX,
+    [
+      { label: 'Cancellations & Substitutions', path: '/cancellations', icon: CalendarX },
+      { label: 'Lecture Records', path: '/lecture-records', icon: BookOpen },
+    ].filter((c) => allow(c.path))
+  );
+
+  if (allow('/graduation/registrations')) {
+    items.push({
+      type: 'single',
+      label: 'Graduation registrations',
+      icon: GraduationCap,
+      path: '/graduation/registrations',
+    });
+  }
+
+  if (allow('/clinical/reports')) {
+    items.push({
+      type: 'single',
+      label: 'Clinical reports',
+      icon: Briefcase,
+      path: '/clinical/reports',
+    });
+  }
+
+  if (allow('/admin-settings')) {
+    items.push({ type: 'single', label: 'Settings', icon: Settings, path: '/admin-settings' });
+  }
+
+  return items;
+}
+
 function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
   if (role === 'Graduation') {
     return buildGraduationOnlyNav();
+  }
+
+  if (role === 'Management') {
+    return buildManagementNav(userPermissions, role);
   }
 
   const allow = (path: string) =>

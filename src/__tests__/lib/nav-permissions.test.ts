@@ -17,6 +17,32 @@ const campusQaPerms = [
   'settings.read',
 ];
 
+const managementOversightPerms = [
+  'academic.read',
+  'academic.mgmt_read',
+  'academic.venues',
+  'academic.program_intakes',
+  'students.read',
+  'staff.read',
+  'enrollment.read',
+  'enrollment.preview',
+  'enrollment.class_read',
+  'timetable.ops',
+  'timetable.student_view',
+  'qa.review',
+  'cancellations.queue',
+  'substitutions.queue',
+  'analytics.mgmt_overview',
+  'analytics.ops',
+  'analytics.core_dashboard',
+  'analytics.lecturer_shared',
+  'reports.access',
+  'graduation.registrations',
+  'clinical.reports.view',
+  'settings.read',
+  'notifications.self',
+];
+
 describe('nav-permissions route alignment', () => {
   it('allows campus QA dashboard and reports with qa.review only', () => {
     expect(routeAllowed(campusQaPerms, '/dashboard')).toBe(true);
@@ -34,6 +60,12 @@ describe('nav-permissions route alignment', () => {
     expect(navAllowed(campusQaPerms, '/timetable')).toBe(true);
   });
 
+  it('hides timetable builder when only timetable.ops is present', () => {
+    expect(navAllowed(['timetable.ops'], '/timetable-builder')).toBe(false);
+    expect(navAllowed(['timetable.admin'], '/timetable-builder')).toBe(true);
+    expect(navAllowed(['qa.seed_timetable'], '/timetable-builder')).toBe(true);
+  });
+
   it('hides admin users folder entries without admin.console', () => {
     expect(navAllowed(campusQaPerms, '/admin-users')).toBe(false);
     expect(navAllowed(campusQaPerms, '/admin-students')).toBe(false);
@@ -41,6 +73,24 @@ describe('nav-permissions route alignment', () => {
 
   it('resolves a home path for campus QA', () => {
     expect(resolveHomePath(campusQaPerms)).toBe('/dashboard');
+  });
+
+  it('allows Management oversight routes and hides clinical ops', () => {
+    expect(navAllowed(managementOversightPerms, '/management-overview')).toBe(true);
+    expect(navAllowed(managementOversightPerms, '/management-risk')).toBe(true);
+    expect(navAllowed(managementOversightPerms, '/management-enrolment')).toBe(true);
+    expect(navAllowed(managementOversightPerms, '/clinical/reports')).toBe(true);
+    expect(navAllowed(managementOversightPerms, '/clinical/sites')).toBe(false);
+    expect(navAllowed(managementOversightPerms, '/timetable-builder')).toBe(false);
+    expect(navAllowed(managementOversightPerms, '/admin-courses')).toBe(false);
+    expect(resolveHomePath(managementOversightPerms)).toBe('/management-overview');
+  });
+
+  it('limits registration-only graduation access to registrations page', () => {
+    expect(navAllowed(managementOversightPerms, '/graduation/registrations')).toBe(true);
+    expect(navAllowed(managementOversightPerms, '/graduation/dashboard')).toBe(false);
+    expect(navAllowed(managementOversightPerms, '/graduation/committees')).toBe(false);
+    expect(navAllowed(managementOversightPerms, '/graduation/event')).toBe(false);
   });
 });
 

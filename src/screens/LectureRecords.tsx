@@ -662,7 +662,7 @@ export default function LectureRecords() {
     const deliveryModeValue = normalizeDeliveryMode(
       (formData.get('deliveryMode') as string) || selectedDeliveryMode
     );
-
+    
     const newRecord: QALectureRecord = {
       date: formData.get('date') as string,
       lecturerId: selectedLecturerId || undefined,
@@ -1847,7 +1847,7 @@ export default function LectureRecords() {
               <section className="space-y-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="space-y-2">
                     <Label htmlFor="deliveryMode">MODE OF DELIVERY *</Label>
                     <Select
                       name="deliveryMode"
@@ -1865,8 +1865,8 @@ export default function LectureRecords() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
                 </div>
+              </div>
               </section>
 
               <section className="space-y-3">

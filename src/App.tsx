@@ -12,6 +12,8 @@ import ManagementLecturerPerformance from './screens/ManagementLecturerPerforman
 import ManagementStudentDetails from './screens/ManagementStudentDetails'
 import ManagementDepartments from './screens/ManagementDepartments'
 import ManagementOverview from './screens/ManagementOverview'
+import ManagementRiskRegister from './screens/ManagementRiskRegister'
+import ManagementEnrolmentHealth from './screens/ManagementEnrolmentHealth'
 import StudentClasses from './screens/StudentClasses'
 import LecturerPerformance from './screens/LecturerPerformance'
 import LecturerCourseAttendance from './screens/LecturerCourseAttendance'
@@ -180,6 +182,22 @@ function AppRoutes() {
 						<ManagementOverview />
 					</ProtectedRoute>
 				} 
+			/>
+			<Route
+				path="/management-risk"
+				element={
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-risk')}>
+						<ManagementRiskRegister />
+					</ProtectedRoute>
+				}
+			/>
+			<Route
+				path="/management-enrolment"
+				element={
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-enrolment')}>
+						<ManagementEnrolmentHealth />
+					</ProtectedRoute>
+				}
 			/>
 			<Route 
 				path="/management-departments" 

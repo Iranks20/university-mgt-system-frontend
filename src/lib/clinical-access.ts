@@ -40,7 +40,7 @@ export function buildClinicalAccess(permissions: string[] | undefined): Clinical
     canRecordSessions,
     canVerifySessions,
     canViewReports,
-    canViewSites: canManageSites || canViewReports,
+    canViewSites: canManageSites,
     canViewInstructors: canManageInstructors || canRecordSessions || canVerifySessions,
     canViewRotations: canManageRotations || canRecordSessions || canVerifySessions,
     canViewSessions: canRecordSessions || canVerifySessions,
@@ -67,6 +67,10 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
 export function homePathForRole(role: string | null, permissions?: string[]): string {
   if (role === 'Graduation') {
     return graduationHomePath(permissions, role) ?? '/graduation/dashboard';
+  }
+  if (role === 'Management') {
+    if (permissions?.includes('analytics.mgmt_overview')) return '/management-overview';
+    return resolveHomePath(permissions || []) ?? '/management-overview';
   }
   if (permissions?.length) {
     const clinicalHome = homePathForPermissions(permissions);
