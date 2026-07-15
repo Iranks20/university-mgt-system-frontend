@@ -604,6 +604,10 @@ export default function LectureRecords() {
       toast.error('Please select a lecturer.');
       return;
     }
+    if (!selectedClassId?.trim()) {
+      toast.error('Please select a class so student attendance and rankings can use this session.');
+      return;
+    }
     const formData = new FormData(e.target as HTMLFormElement);
     
     const startTime = formData.get('timeForStarting') as string;

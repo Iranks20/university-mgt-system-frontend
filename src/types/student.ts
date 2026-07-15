@@ -211,12 +211,29 @@ export interface DailyMarkingGrid {
 }
 
 export type DailyMarkingCoverageStatus =
+  | 'awaiting_lecture'
   | 'not_started'
   | 'partial'
   | 'complete'
-  | 'no_students';
+  | 'no_students'
+  | 'sdl'
+  | 'assignment'
+  | 'missed_by_lecturer'
+  | 'missed_by_students'
+  | 'missed_other_programs_holidays';
 
-export type DailyMarkingCoverageFilter = 'all' | 'pending' | 'not_started' | 'partial' | 'complete';
+export type DailyMarkingCoverageFilter =
+  | 'all'
+  | 'pending'
+  | 'awaiting_lecture'
+  | 'not_started'
+  | 'partial'
+  | 'complete'
+  | 'sdl'
+  | 'assignment'
+  | 'missed_by_lecturer'
+  | 'missed_by_students'
+  | 'missed_other_programs_holidays';
 
 export interface DailyMarkingCoverageItem {
   programIntakeId: string;
@@ -238,6 +255,9 @@ export interface DailyMarkingCoverageItem {
   endTime: string | null;
   expectedStudents: number;
   markedStudents: number;
+  lectureTaught?: boolean;
+  lectureComment?: string | null;
+  attendanceAllowed?: boolean;
   status: DailyMarkingCoverageStatus;
 }
 
@@ -246,7 +266,9 @@ export interface DailyMarkingCoverageSummary {
   complete: number;
   partial: number;
   notStarted: number;
+  awaitingLecture?: number;
   noStudents: number;
+  lectureOutcomes?: number;
   pending: number;
 }
 
