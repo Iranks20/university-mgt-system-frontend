@@ -74,7 +74,7 @@ export default function StudentRecords() {
   const [bulkPrefill, setBulkPrefill] = useState<DailyBulkPrefill | null>(null);
   const [coverageRefreshToken, setCoverageRefreshToken] = useState(0);
   const coverageInitialDate = resolveCoverageDateParam(searchParams.get('date'));
-  const coverageInitialStatus = (searchParams.get('status') as DailyMarkingCoverageFilter | null) ?? 'pending';
+  const coverageInitialStatus = (searchParams.get('status') as DailyMarkingCoverageFilter | null) ?? 'all';
 
   const [records, setRecords] = useState<AttendanceRecordRow[]>([]);
   const [total, setTotal] = useState(0);
