@@ -356,6 +356,40 @@ export const academicService = {
     }
   },
 
+  getTimetableBuilderScope: async (programIntakeId: string): Promise<{
+    intake: {
+      id: string;
+      programId: string;
+      year: number;
+      semester: number;
+      intakeType: string;
+      program: { id: string; name: string; code: string };
+    };
+    courses: Array<{ id: string; code: string; name: string; source: 'program' | 'combined' }>;
+    classesByCourseId: Record<
+      string,
+      {
+        classId: string;
+        className: string;
+        lecturerId: string | null;
+        venueId: string | null;
+        deliveryMode: string;
+        meetingUrl: string | null;
+        dayOfWeek: number | null;
+        startTime: string | null;
+        endTime: string | null;
+        capacity: number;
+        isSharedSchedule: boolean;
+        cohortProgramIntakeIds: string[];
+      }
+    >;
+  }> => {
+    const res = await api.get<{ data: any }>(
+      `/academic/program-intakes/${programIntakeId}/timetable-builder-scope`
+    );
+    return (res as { data?: any })?.data ?? res;
+  },
+
   getClassesRelatedForAttendance: async (
     classId: string
   ): Promise<{
