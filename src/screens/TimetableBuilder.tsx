@@ -321,6 +321,9 @@ export default function TimetableBuilder() {
       if (errors.length > 0) {
         toast.warning(`Some items were not copied: ${errors.slice(0, 2).join(' · ')}${errors.length > 2 ? ' …' : ''}`);
       }
+      if (created > 0) {
+        window.dispatchEvent(new CustomEvent('class-updated'));
+      }
 
       if (intakeType === duplicateTargetIntake) {
         setProgramIntakeId(targetIntakeId);
@@ -354,21 +357,31 @@ export default function TimetableBuilder() {
       toast.error('Day, start time and end time are required');
       return;
     }
+    const payload = {
+      name: d.className.trim(),
+      courseId: d.courseId,
+      programIntakeId,
+      lecturerId: d.lecturerId || null,
+      venueId: d.deliveryMode === 'Online' ? null : (d.venueId || null),
+      dayOfWeek: parseInt(d.dayOfWeek, 10),
+      startTime: d.startTime,
+      endTime: d.endTime,
+      capacity: parseInt(d.capacity, 10) || 50,
+      deliveryMode: d.deliveryMode,
+      meetingUrl: d.meetingUrl?.trim() ? d.meetingUrl.trim() : null,
+    };
     try {
-      await academicService.createClass({
-        name: d.className.trim(),
-        courseId: d.courseId,
-        programIntakeId,
-        lecturerId: d.lecturerId || null,
-        venueId: d.deliveryMode === 'Online' ? null : (d.venueId || null),
-        dayOfWeek: parseInt(d.dayOfWeek, 10),
-        startTime: d.startTime,
-        endTime: d.endTime,
-        capacity: parseInt(d.capacity, 10) || 50,
-        deliveryMode: d.deliveryMode,
-        meetingUrl: d.meetingUrl?.trim() ? d.meetingUrl.trim() : null,
-      } as any);
-      toast.success('Class saved');
+      if (d.existingClassId) {
+        await academicService.updateClass(d.existingClassId, payload as any);
+        toast.success('Class updated');
+      } else {
+        const created = await academicService.createClass(payload as any);
+        if (created?.id) {
+          updateDraft(courseId, { existingClassId: created.id });
+        }
+        toast.success('Class saved');
+      }
+      window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save class');
     }
