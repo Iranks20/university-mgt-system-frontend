@@ -19,7 +19,7 @@ Use **Sync system roles** on `/admin-roles` to reset these to the standard matri
 
 | Role code | Who it is for | University QA scope | Clinical scope |
 |-----------|---------------|---------------------|----------------|
-| **Admin** | IT / full administrators | Full access including user admin | Full clinical access |
+| **Admin** | IT / full administrators | Organised admin sidebar (oversight, academic write, attendance/QA, users, system); home `/management-overview` | Full clinical access |
 | **Management** | Deans, registry leadership | Organised oversight sidebar (overview, performance, academic read, reports, disruption queues, graduation view, clinical reports) | Clinical reports only (`clinical.reports.view`) |
 | **QA** | University quality assurance | Lecture records, timetables, cancellations queue, student records (read), reports | **No** `clinical.*` permissions |
 | **QAClinicals** | Hospital / clinical QA | Read students & academic catalog only | Record sessions, instructors, rotations, clinical reports |
@@ -236,6 +236,21 @@ Management login uses a dedicated sidebar (not the flat Admin menu):
 8. **Settings**
 
 After deploying matrix changes, run `npm run db:apply-management-oversight` (or `npm run db:sync-rbac`) on the backend and ask Management users to sign out/in.
+
+### Admin organised sidebar
+
+Admin login uses a dedicated sectioned sidebar (not the flat permission dump). Home is `/management-overview`. Top-level menus:
+
+1. **Dashboard** → `/management-overview`
+2. **Oversight** → student / lecturer / staff performance, risk register, department stats, enrolment health, reports
+3. **Academic** → schools, courses, classes, curriculum, venues, calendar, timetable builder, timetables (admin)
+4. **Attendance & QA** → student records, lecture records, cancellations & substitutions
+5. **Clinicals** → full clinical ops (sites through reports)
+6. **Graduation** → event setup, committees, registrations (no graduation dashboard)
+7. **Users & access** → students, lecturers, system accounts, roles & permissions, audit log
+8. **System** → settings, strategic goals
+
+Admin menu **does not** show lecturer/student portals (Mark Presence, My Classes, Attendance History, lecturer-only Performance), the ops timetable view (`/timetable`), course attendance, or graduation dashboard. Admin still has full matrix permissions (`Admin: ALL`); this is a navigation UX change only.
 
 ---
 
