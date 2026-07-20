@@ -78,7 +78,7 @@ function PresenceContent() {
           });
         } else {
           setCurrentClass(null);
-          setCurrentClassError('No class is currently in session. Attendance can only be marked during scheduled class times.');
+          setCurrentClassError('No class is currently in session. You can check in from 15 minutes before the scheduled start until 15 minutes after it ends.');
         }
       } catch (error) {
         console.error('Error loading current class:', error);
@@ -226,6 +226,10 @@ function PresenceContent() {
             syncLecturerStateFromRecord(record);
             if (record.checkOutTime) {
               toast.info('You have already checked out for this class today. Check-in is no longer available.');
+            } else if (record.checkInTime) {
+              toast.info('You are already checked in for this class.');
+            } else {
+              toast.error(msg);
             }
           } else {
             toast.error(msg);
@@ -254,9 +258,12 @@ function PresenceContent() {
     if (role === 'Lecturer' && currentClass?.id) {
       setCheckInOutLoading(true);
       try {
+        const hhmm = (() => {
+          const now = new Date();
+          return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        })();
         if (lectureRecordId) {
-          const timeStr = formatTime(new Date());
-          await qaService.updateCheckOut(lectureRecordId, timeStr);
+          await qaService.updateCheckOut(lectureRecordId, hhmm);
         } else {
           await qaService.checkOut(currentClass.id);
         }
@@ -555,7 +562,7 @@ function PresenceContent() {
                       )}
                     </Button>
                     <p className="text-xs text-center text-muted-foreground mt-2">
-                      Location will be verified automatically when you mark attendance.
+                      Requires campus GPS and a lecture marked Taught, Substituted, or Compensation (lecturer check-in or QA).
                     </p>
                   </div>
                 )}
@@ -599,7 +606,7 @@ function PresenceContent() {
         </Card>
         
         <p className="text-center text-xs text-gray-400 mt-8">
-          KCU ERP System v1.0 • GPS verification (Kampala zone)
+          KCU ERP System v1.0 • GPS verification uses the campus geofence from Admin Settings
         </p>
       </div>
   );

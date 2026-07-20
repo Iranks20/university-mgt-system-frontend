@@ -1,24 +1,29 @@
-/**
- * Kampala, Uganda - city center coordinates (for geofence verification).
- * You can later restrict to university by changing center + radius.
- */
-export const KAMPALA_CENTER = {
-  lat: 0.3476,
-  lng: 32.5825,
-};
-/** Radius in meters. 15km allows verification anywhere in Kampala; reduce for campus-only. */
-export const GEOFENCE_RADIUS_METERS = 15_000;
+import api from '@/lib/api';
 
-/**
- * Haversine distance in meters between two lat/lng points.
- */
+export type GeofenceConfig = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+};
+
+export const DEFAULT_GEOFENCE: GeofenceConfig = {
+  name: 'Main Campus',
+  latitude: 0.3476,
+  longitude: 32.5825,
+  radiusMeters: 500,
+};
+
+let cachedGeofence: GeofenceConfig | null = null;
+let geofencePromise: Promise<GeofenceConfig> | null = null;
+
 export function distanceMeters(
   lat1: number,
   lng1: number,
   lat2: number,
   lng2: number
 ): number {
-  const R = 6_371_000; // Earth radius in meters
+  const R = 6_371_000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -31,8 +36,22 @@ export function distanceMeters(
   return R * c;
 }
 
+export function isWithinGeofence(
+  lat: number,
+  lng: number,
+  geofence: GeofenceConfig = cachedGeofence ?? DEFAULT_GEOFENCE
+): boolean {
+  return distanceMeters(lat, lng, geofence.latitude, geofence.longitude) <= geofence.radiusMeters;
+}
+
+export const KAMPALA_CENTER = {
+  lat: DEFAULT_GEOFENCE.latitude,
+  lng: DEFAULT_GEOFENCE.longitude,
+};
+export const GEOFENCE_RADIUS_METERS = DEFAULT_GEOFENCE.radiusMeters;
+
 export function isWithinKampala(lat: number, lng: number): boolean {
-  return distanceMeters(lat, lng, KAMPALA_CENTER.lat, KAMPALA_CENTER.lng) <= GEOFENCE_RADIUS_METERS;
+  return isWithinGeofence(lat, lng, DEFAULT_GEOFENCE);
 }
 
 export interface GeoResult {
@@ -42,12 +61,49 @@ export interface GeoResult {
   accuracyMeters?: number;
   distanceMeters?: number;
   withinZone: boolean;
+  geofence?: GeofenceConfig;
   error?: string;
 }
 
-/**
- * Get current position and check if within Kampala geofence.
- */
+export async function loadGeofenceConfig(force = false): Promise<GeofenceConfig> {
+  if (!force && cachedGeofence) return cachedGeofence;
+  if (!force && geofencePromise) return geofencePromise;
+
+  geofencePromise = (async () => {
+    try {
+      const response = await api.get<{ data: GeofenceConfig } | GeofenceConfig>('/settings/geofence');
+      const data = (response as { data?: GeofenceConfig })?.data ?? (response as GeofenceConfig);
+      if (
+        data &&
+        typeof data.latitude === 'number' &&
+        typeof data.longitude === 'number' &&
+        typeof data.radiusMeters === 'number'
+      ) {
+        cachedGeofence = {
+          name: data.name || DEFAULT_GEOFENCE.name,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          radiusMeters: data.radiusMeters > 0 ? data.radiusMeters : DEFAULT_GEOFENCE.radiusMeters,
+        };
+        return cachedGeofence;
+      }
+    } catch {
+      // fall through to defaults
+    } finally {
+      geofencePromise = null;
+    }
+    cachedGeofence = DEFAULT_GEOFENCE;
+    return cachedGeofence;
+  })();
+
+  return geofencePromise;
+}
+
+export function clearGeofenceCache() {
+  cachedGeofence = null;
+  geofencePromise = null;
+}
+
 export function verifyLocation(): Promise<GeoResult> {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
@@ -60,12 +116,13 @@ export function verifyLocation(): Promise<GeoResult> {
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         const accuracy = position.coords.accuracy ?? undefined;
-        const dist = distanceMeters(lat, lng, KAMPALA_CENTER.lat, KAMPALA_CENTER.lng);
-        const within = dist <= GEOFENCE_RADIUS_METERS;
+        const geofence = await loadGeofenceConfig();
+        const dist = distanceMeters(lat, lng, geofence.latitude, geofence.longitude);
+        const within = dist <= geofence.radiusMeters;
         resolve({
           success: true,
           lat,
@@ -73,6 +130,7 @@ export function verifyLocation(): Promise<GeoResult> {
           accuracyMeters: accuracy,
           distanceMeters: Math.round(dist),
           withinZone: within,
+          geofence,
         });
       },
       (err) => {

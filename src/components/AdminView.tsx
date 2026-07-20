@@ -3556,7 +3556,6 @@ function VenuesTab({
 // SUB-COMPONENT: Settings / Config Tab
 // -----------------------------------------------------------------------------
 function SettingsTab() {
-  const [settings, setSettings] = useState<Record<string, Record<string, string>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -3567,6 +3566,16 @@ function SettingsTab() {
     lateThreshold: '15',
     minAttendance: '75',
     autoMarkAbsent: 'true',
+    studentExcellent: '80',
+    studentGood: '70',
+    studentWarning: '60',
+    studentCritical: '50',
+    lecturerExcellent: '90',
+    lecturerGood: '80',
+    lecturerWarning: '70',
+    lecturerCritical: '60',
+    attendancePresent: '75',
+    attendanceAtRisk: '0',
   });
 
   useEffect(() => {
@@ -3577,8 +3586,6 @@ function SettingsTab() {
     setLoading(true);
     try {
       const data = await adminService.getSettings();
-      setSettings(data);
-      // Populate form from settings
       if (data.Geofence) {
         setForm(f => ({
           ...f,
@@ -3591,29 +3598,68 @@ function SettingsTab() {
       if (data.Attendance) {
         setForm(f => ({
           ...f,
-          lateThreshold: data.Attendance['attendance.lateThreshold'] || f.lateThreshold,
+          lateThreshold:
+            data.Attendance['attendance.lateThreshold'] ||
+            data.Attendance['attendance_late_minutes'] ||
+            f.lateThreshold,
           minAttendance: data.Attendance['attendance.minAttendance'] || f.minAttendance,
           autoMarkAbsent: data.Attendance['attendance.autoMarkAbsent'] || f.autoMarkAbsent,
         }));
       }
+      if (data.Performance) {
+        setForm(f => ({
+          ...f,
+          studentExcellent: data.Performance['thresholds.student.excellent'] || f.studentExcellent,
+          studentGood: data.Performance['thresholds.student.good'] || f.studentGood,
+          studentWarning: data.Performance['thresholds.student.warning'] || f.studentWarning,
+          studentCritical: data.Performance['thresholds.student.critical'] || f.studentCritical,
+          lecturerExcellent: data.Performance['thresholds.lecturer.excellent'] || f.lecturerExcellent,
+          lecturerGood: data.Performance['thresholds.lecturer.good'] || f.lecturerGood,
+          lecturerWarning: data.Performance['thresholds.lecturer.warning'] || f.lecturerWarning,
+          lecturerCritical: data.Performance['thresholds.lecturer.critical'] || f.lecturerCritical,
+          attendancePresent: data.Performance['thresholds.attendance.present'] || f.attendancePresent,
+          attendanceAtRisk: data.Performance['thresholds.attendance.atRisk'] || f.attendanceAtRisk,
+        }));
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
+      toast.error('Failed to load settings');
     } finally {
       setLoading(false);
     }
   };
 
   const saveGeofence = async () => {
+    const lat = Number(form.geofenceLat);
+    const lng = Number(form.geofenceLng);
+    const radius = Number(form.geofenceRadius);
+    if (!form.geofenceName.trim()) {
+      toast.error('Campus zone name is required');
+      return;
+    }
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      toast.error('Latitude must be a number between -90 and 90');
+      return;
+    }
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+      toast.error('Longitude must be a number between -180 and 180');
+      return;
+    }
+    if (!Number.isFinite(radius) || radius <= 0) {
+      toast.error('Radius must be a positive number of meters');
+      return;
+    }
+
     setSaving(true);
     try {
       await adminService.updateSettings({
-        'geofence.name': form.geofenceName,
-        'geofence.latitude': form.geofenceLat,
-        'geofence.longitude': form.geofenceLng,
-        'geofence.radius': form.geofenceRadius,
+        'geofence.name': form.geofenceName.trim(),
+        'geofence.latitude': String(lat),
+        'geofence.longitude': String(lng),
+        'geofence.radius': String(radius),
       });
       await loadSettings();
-      toast.success('Geofence settings saved');
+      toast.success('Geofence settings saved — check-in now uses this zone');
     } catch (error) {
       console.error('Error saving geofence:', error);
       toast.error('Failed to save geofence settings');
@@ -3623,11 +3669,23 @@ function SettingsTab() {
   };
 
   const saveAttendanceRules = async () => {
+    const late = Number(form.lateThreshold);
+    const minAtt = Number(form.minAttendance);
+    if (!Number.isFinite(late) || late < 0) {
+      toast.error('Late threshold must be 0 or more minutes');
+      return;
+    }
+    if (!Number.isFinite(minAtt) || minAtt < 0 || minAtt > 100) {
+      toast.error('Minimum attendance must be between 0 and 100');
+      return;
+    }
+
     setSaving(true);
     try {
       await adminService.updateSettings({
-        'attendance.lateThreshold': form.lateThreshold,
-        'attendance.minAttendance': form.minAttendance,
+        'attendance.lateThreshold': String(late),
+        attendance_late_minutes: String(late),
+        'attendance.minAttendance': String(minAtt),
         'attendance.autoMarkAbsent': form.autoMarkAbsent,
       });
       await loadSettings();
@@ -3640,12 +3698,64 @@ function SettingsTab() {
     }
   };
 
+  const savePerformanceThresholds = async () => {
+    const values = [
+      form.studentExcellent,
+      form.studentGood,
+      form.studentWarning,
+      form.studentCritical,
+      form.lecturerExcellent,
+      form.lecturerGood,
+      form.lecturerWarning,
+      form.lecturerCritical,
+      form.attendancePresent,
+      form.attendanceAtRisk,
+    ].map(Number);
+    if (values.some((n) => !Number.isFinite(n) || n < 0 || n > 100)) {
+      toast.error('All performance thresholds must be numbers between 0 and 100');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await adminService.updateSettings({
+        'thresholds.student.excellent': form.studentExcellent,
+        'thresholds.student.good': form.studentGood,
+        'thresholds.student.warning': form.studentWarning,
+        'thresholds.student.critical': form.studentCritical,
+        'thresholds.lecturer.excellent': form.lecturerExcellent,
+        'thresholds.lecturer.good': form.lecturerGood,
+        'thresholds.lecturer.warning': form.lecturerWarning,
+        'thresholds.lecturer.critical': form.lecturerCritical,
+        'thresholds.attendance.present': form.attendancePresent,
+        'thresholds.attendance.atRisk': form.attendanceAtRisk,
+      });
+      const { settingsService } = await import('@/services/settings.service');
+      settingsService.clearCache();
+      await loadSettings();
+      toast.success('Performance thresholds saved');
+    } catch (error) {
+      console.error('Error saving performance thresholds:', error);
+      toast.error('Failed to save performance thresholds');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const radiusLabel = (() => {
+    const n = Number(form.geofenceRadius);
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    return n >= 1000 ? `${(n / 1000).toFixed(1)} km` : `${Math.round(n)} m`;
+  })();
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Card>
         <CardHeader>
           <CardTitle>Geofence Configuration</CardTitle>
-          <CardDescription>Set the campus boundaries for location verification.</CardDescription>
+          <CardDescription>
+            Campus boundary used for lecturer and student check-in location verification.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? (
@@ -3670,10 +3780,19 @@ function SettingsTab() {
               </div>
               <div className="space-y-2">
                 <Label>Radius (meters)</Label>
-                <Input type="number" value={form.geofenceRadius} onChange={e => setForm(f => ({ ...f, geofenceRadius: e.target.value }))} />
+                <Input type="number" min={1} value={form.geofenceRadius} onChange={e => setForm(f => ({ ...f, geofenceRadius: e.target.value }))} />
               </div>
-              <div className="h-32 bg-gray-100/50 rounded flex items-center justify-center text-gray-400 border border-dashed">
-                <MapPin className="mr-2" /> Map Preview
+              <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+                <div className="flex items-center gap-2 font-medium">
+                  <MapPin className="h-4 w-4 text-[#015F2B]" />
+                  Active zone
+                </div>
+                <p className="text-muted-foreground">
+                  {form.geofenceName || 'Unnamed'} · {form.geofenceLat}, {form.geofenceLng} · radius {radiusLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Presence and student check-in validate against these saved coordinates.
+                </p>
               </div>
               <Button className="w-full bg-[#015F2B]" onClick={saveGeofence} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Save Zone
@@ -3723,6 +3842,74 @@ function SettingsTab() {
           )}
         </CardContent>
       </Card>
+
+      <Card className="md:col-span-2">
+        <CardHeader>
+          <CardTitle>Performance Thresholds</CardTitle>
+          <CardDescription>
+            Cut-offs used by oversight dashboards and reports for student and lecturer performance bands.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Student excellent %</Label>
+                  <Input type="number" value={form.studentExcellent} onChange={e => setForm(f => ({ ...f, studentExcellent: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Student good %</Label>
+                  <Input type="number" value={form.studentGood} onChange={e => setForm(f => ({ ...f, studentGood: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Student warning %</Label>
+                  <Input type="number" value={form.studentWarning} onChange={e => setForm(f => ({ ...f, studentWarning: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Student critical %</Label>
+                  <Input type="number" value={form.studentCritical} onChange={e => setForm(f => ({ ...f, studentCritical: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Lecturer excellent %</Label>
+                  <Input type="number" value={form.lecturerExcellent} onChange={e => setForm(f => ({ ...f, lecturerExcellent: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Lecturer good %</Label>
+                  <Input type="number" value={form.lecturerGood} onChange={e => setForm(f => ({ ...f, lecturerGood: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Lecturer warning %</Label>
+                  <Input type="number" value={form.lecturerWarning} onChange={e => setForm(f => ({ ...f, lecturerWarning: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Lecturer critical %</Label>
+                  <Input type="number" value={form.lecturerCritical} onChange={e => setForm(f => ({ ...f, lecturerCritical: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Attendance present %</Label>
+                  <Input type="number" value={form.attendancePresent} onChange={e => setForm(f => ({ ...f, attendancePresent: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Attendance at-risk %</Label>
+                  <Input type="number" value={form.attendanceAtRisk} onChange={e => setForm(f => ({ ...f, attendanceAtRisk: e.target.value }))} />
+                </div>
+              </div>
+              <Button className="bg-[#015F2B]" onClick={savePerformanceThresholds} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Save thresholds
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
       
       <Card className="md:col-span-2">
         <CardHeader>
@@ -3735,14 +3922,24 @@ function SettingsTab() {
                <h4 className="font-medium">Database Backup</h4>
                <p className="text-sm text-gray-500">Create a full backup of student and attendance data.</p>
              </div>
-             <Button variant="outline">Run Backup Now</Button>
+             <Button
+               variant="outline"
+               onClick={() => toast.info('Database backup is not available in-app yet. Use your server backup process.')}
+             >
+               Run Backup Now
+             </Button>
            </div>
            <div className="flex items-center justify-between pt-2">
              <div>
                <h4 className="font-medium text-red-600">Danger Zone</h4>
                <p className="text-sm text-gray-500">Reset academic year or archive old data.</p>
              </div>
-             <Button variant="destructive">Archive Data</Button>
+             <Button
+               variant="destructive"
+               onClick={() => toast.info('Archive is not available in-app yet.')}
+             >
+               Archive Data
+             </Button>
            </div>
         </CardContent>
       </Card>
