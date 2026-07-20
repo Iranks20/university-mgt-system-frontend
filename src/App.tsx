@@ -67,9 +67,12 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function GraduationDashboardGate() {
-	const { userRole } = useAuth()
+	const { userRole, user } = useAuth()
 	if (userRole === 'Graduation') {
 		return <Navigate to="/graduation/dashboard" replace />
+	}
+	if (userRole === 'Admin') {
+		return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
 	}
 	return <Dashboard />
 }

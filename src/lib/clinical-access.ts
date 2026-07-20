@@ -72,6 +72,10 @@ export function homePathForRole(role: string | null, permissions?: string[]): st
     if (permissions?.includes('analytics.mgmt_overview')) return '/management-overview';
     return resolveHomePath(permissions || []) ?? '/management-overview';
   }
+  if (role === 'Admin') {
+    if (permissions?.includes('analytics.mgmt_overview')) return '/management-overview';
+    return resolveHomePath(permissions || []) ?? '/management-overview';
+  }
   if (permissions?.length) {
     const clinicalHome = homePathForPermissions(permissions);
     if (clinicalHome !== '/dashboard') return clinicalHome;
