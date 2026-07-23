@@ -402,56 +402,62 @@ export function exportCourseWiseAttendanceSummaryReport(
 }
 
 /**
- * Export Lecturer Summary Report to CSV/Excel (matches 2.csv format exactly)
- * First row: School name
- * Second row: Headers - LECTURER'S NAME, CLASS, COURSE UNIT, NO. TAUGHT, NO. MISSED BY LECTURERS, COMMENT IF ANY
- * Data rows with blank rows between lecturers
+ * Export Lecturer Summary Report to Excel
+ * School name row, then headers aligned with School Summary breakdown fields
  */
 export function exportLecturerSummaryReport(
   report: QALecturerSummaryReport,
   filename?: string
 ): void {
-  const data: (string | number)[][] = [
-    // First row: School name
-    [report.school],
-    // Second row: Headers
-    [
-      'LECTURER\'S NAME',
-      'CLASS',
-      'COURSE UNIT',
-      'NO. TAUGHT',
-      'NO. MISSED BY LECTURERS',
-      'COMMENT IF ANY',
-    ],
+  const headers = [
+    "LECTURER'S NAME",
+    'CLASS',
+    'COURSE UNIT',
+    'NO. TAUGHT',
+    'NO. UNTAIGHT',
+    'MISSED BY LECTURER',
+    'MISSED BY STUDENTS',
+    'OTHER PROG. & HOLIDAYS',
+    'ASSIGNMENT',
+    'SDL',
+    'SUBSTITUTED',
   ];
+  const data: (string | number)[][] = [[report.school], headers];
 
-  // Add data rows with blank rows between lecturers
   report.lecturers.forEach((lecturer, index) => {
     data.push([
       lecturer.lecturerName,
       lecturer.class,
       lecturer.courseUnit,
       lecturer.noTaught,
-      lecturer.noMissedByLecturers,
-      lecturer.commentIfAny || '',
+      lecturer.noUntaught ?? 0,
+      lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+      lecturer.missedByStudents ?? 0,
+      lecturer.missedOtherProgramsHolidays ?? 0,
+      lecturer.assignment ?? 0,
+      lecturer.noSdl ?? 0,
+      lecturer.noSubstituted ?? 0,
     ]);
-    
-    // Add blank row after each lecturer (except the last one)
+
     if (index < report.lecturers.length - 1) {
-      data.push(['', '', '', '', '', '']);
+      data.push(Array(headers.length).fill(''));
     }
   });
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
+
   ws['!cols'] = [
-    { wch: 25 }, // LECTURER'S NAME
-    { wch: 30 }, // CLASS
-    { wch: 35 }, // COURSE UNIT
-    { wch: 12 }, // NO. TAUGHT
-    { wch: 25 }, // NO. MISSED BY LECTURERS
-    { wch: 20 }, // COMMENT IF ANY
+    { wch: 25 },
+    { wch: 30 },
+    { wch: 35 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 12 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -477,16 +483,22 @@ export function exportLecturerSummaryReports(
 
   const wb = XLSX.utils.book_new();
   reports.forEach((report) => {
+    const headers = [
+      "LECTURER'S NAME",
+      'CLASS',
+      'COURSE UNIT',
+      'NO. TAUGHT',
+      'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROG. & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
+    ];
     const data: (string | number)[][] = [
       [report.school],
-      [
-        'LECTURER\'S NAME',
-        'CLASS',
-        'COURSE UNIT',
-        'NO. TAUGHT',
-        'NO. MISSED BY LECTURERS',
-        'COMMENT IF ANY',
-      ],
+      headers,
     ];
 
     report.lecturers.forEach((lecturer, index) => {
@@ -495,11 +507,16 @@ export function exportLecturerSummaryReports(
         lecturer.class,
         lecturer.courseUnit,
         lecturer.noTaught,
-        lecturer.noMissedByLecturers,
-        lecturer.commentIfAny || '',
+        lecturer.noUntaught ?? 0,
+        lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+        lecturer.missedByStudents ?? 0,
+        lecturer.missedOtherProgramsHolidays ?? 0,
+        lecturer.assignment ?? 0,
+        lecturer.noSdl ?? 0,
+        lecturer.noSubstituted ?? 0,
       ]);
       if (index < report.lecturers.length - 1) {
-        data.push(['', '', '', '', '', '']);
+        data.push(Array(headers.length).fill(''));
       }
     });
 
@@ -509,8 +526,13 @@ export function exportLecturerSummaryReports(
       { wch: 30 },
       { wch: 35 },
       { wch: 12 },
-      { wch: 25 },
-      { wch: 20 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 12 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, report.school.substring(0, 31));
   });
@@ -613,11 +635,24 @@ export function exportAllQAReports(
   schoolSheet['!cols'] = [{ wch: 25 }, { wch: 18 }, { wch: 15 }];
   XLSX.utils.book_append_sheet(wb, schoolSheet, 'School Summary');
 
-  // Sheet 2: Lecturer Summary (2.csv format) - one sheet per school
+  // Sheet 2: Lecturer Summary - one sheet per school
   lecturerReports.forEach(report => {
+    const headers = [
+      "LECTURER'S NAME",
+      'CLASS',
+      'COURSE UNIT',
+      'NO. TAUGHT',
+      'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROG. & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
+    ];
     const lecturerData: (string | number)[][] = [
       [report.school],
-      ['LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'NO. TAUGHT', 'NO. MISSED BY LECTURERS', 'COMMENT IF ANY'],
+      headers,
     ];
     
     report.lecturers.forEach((lecturer, index) => {
@@ -626,16 +661,33 @@ export function exportAllQAReports(
         lecturer.class,
         lecturer.courseUnit,
         lecturer.noTaught,
-        lecturer.noMissedByLecturers,
-        lecturer.commentIfAny || '',
+        lecturer.noUntaught ?? 0,
+        lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+        lecturer.missedByStudents ?? 0,
+        lecturer.missedOtherProgramsHolidays ?? 0,
+        lecturer.assignment ?? 0,
+        lecturer.noSdl ?? 0,
+        lecturer.noSubstituted ?? 0,
       ]);
       if (index < report.lecturers.length - 1) {
-        lecturerData.push(['', '', '', '', '', '']);
+        lecturerData.push(Array(headers.length).fill(''));
       }
     });
     
     const lecturerSheet = XLSX.utils.aoa_to_sheet(lecturerData);
-    lecturerSheet['!cols'] = [{ wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 12 }, { wch: 25 }, { wch: 20 }];
+    lecturerSheet['!cols'] = [
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 12 },
+    ];
     XLSX.utils.book_append_sheet(wb, lecturerSheet, report.school.substring(0, 31)); // Excel sheet name limit
   });
 
