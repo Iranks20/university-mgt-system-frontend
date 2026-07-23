@@ -177,11 +177,24 @@ export const qaService = {
     }
   },
 
-  getLecturerSummaryReport: async (school?: string, params?: { dateFrom?: string; dateTo?: string }): Promise<QALecturerSummaryReport[]> => {
+  getLecturerSummaryReport: async (
+    school?: string,
+    params?: {
+      dateFrom?: string;
+      dateTo?: string;
+      className?: string;
+      courseUnit?: string;
+      lecturerName?: string;
+    }
+  ): Promise<QALecturerSummaryReport[]> => {
     try {
-      const query: Record<string, string> = school ? { school } : {};
+      const query: Record<string, string> = {};
+      if (school) query.school = school;
       if (params?.dateFrom) query.dateFrom = params.dateFrom;
       if (params?.dateTo) query.dateTo = params.dateTo;
+      if (params?.className) query.className = params.className;
+      if (params?.courseUnit) query.courseUnit = params.courseUnit;
+      if (params?.lecturerName) query.lecturerName = params.lecturerName;
       const response = await api.get<QALecturerSummaryReport[]>('/qa/lecturer-summary-report', query);
       return Array.isArray(response) ? response : (response as { data?: QALecturerSummaryReport[] })?.data ?? [];
     } catch (error) {

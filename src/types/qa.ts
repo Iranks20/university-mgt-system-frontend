@@ -40,16 +40,22 @@ export interface QALectureRecord {
 }
 
 /**
- * Lecturer Summary Record (matches 2.csv format)
- * LECTURER'S NAME, CLASS, COURSE UNIT, NO. TAUGHT, NO. MISSED BY LECTURERS, COMMENT IF ANY
+ * Lecturer Summary Record
+ * Lecturer / class / course unit with the same teaching breakdown as School Summary
  */
 export interface QALecturerSummary {
-  lecturerName: string; // "LECTURER'S NAME"
-  class: string; // "CLASS"
-  courseUnit: string; // "COURSE UNIT"
-  noTaught: number; // "NO. TAUGHT"
-  noMissedByLecturers: number; // "NO. MISSED BY LECTURERS"
-  commentIfAny?: string; // "COMMENT IF ANY"
+  lecturerName: string;
+  class: string;
+  courseUnit: string;
+  noTaught: number;
+  noUntaught?: number;
+  noMissedByLecturers: number;
+  missedByLecturer?: number;
+  missedByStudents?: number;
+  missedOtherProgramsHolidays?: number;
+  assignment?: number;
+  noSdl?: number;
+  noSubstituted?: number;
 }
 
 /**
