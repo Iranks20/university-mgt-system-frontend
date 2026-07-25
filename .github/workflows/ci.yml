@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, staging]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, staging]
   workflow_dispatch:
 
 env:
@@ -41,13 +41,38 @@ jobs:
       - name: Unit tests
         run: npm test
 
-  deploy:
+  deploy-staging:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    steps:
+      - name: SSH deploy (staging)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_DEPLOY_HOST }}
+          username: ${{ secrets.STAGING_DEPLOY_USER }}
+          key: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          port: ${{ secrets.STAGING_DEPLOY_PORT }}
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd "$HOME/university-mgt-system-frontend"
+            git fetch origin
+            git checkout staging
+            git pull --ff-only origin staging
+            npm ci
+            npm run build
+            rsync -a --delete dist/ /var/www/kcu-mgt-frontend/
+
+  deploy-production:
     needs: build-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     steps:
-      - name: SSH deploy
+      - name: SSH deploy (production)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
