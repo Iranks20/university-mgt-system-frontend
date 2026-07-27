@@ -69,8 +69,6 @@ function StudentsTab({
   setStudents,
   classes,
   setClasses,
-  enrollmentsByClassId,
-  setEnrollmentsByClassId,
   studentsPage,
   studentsTotal,
   pageSize,
@@ -80,8 +78,6 @@ function StudentsTab({
   setStudents: React.Dispatch<React.SetStateAction<StudentRow[]>>;
   classes: ClassRow[];
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
-  enrollmentsByClassId: Record<string, string[]>;
-  setEnrollmentsByClassId: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   studentsPage: number;
   studentsTotal: number;
   pageSize: number;
@@ -421,17 +417,6 @@ function StudentsTab({
       
       await loadStudents(1);
 
-      // Refresh enrollments
-      const allEnrollments: Record<string, string[]> = {};
-      for (const cls of classes) {
-        const clsEnrollments = await enrollmentService.getClassEnrollments(cls.id);
-        const clsEnrollmentsData = (clsEnrollments as any)?.data || clsEnrollments;
-        allEnrollments[cls.id] = Array.isArray(clsEnrollmentsData) 
-          ? clsEnrollmentsData.map((e: any) => e.studentId || e.student?.id).filter(Boolean)
-          : [];
-      }
-      setEnrollmentsByClassId(allEnrollments);
-      
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
@@ -1310,17 +1295,6 @@ function StudentsTab({
 
               await loadStudents(1);
 
-              // Refresh enrollments
-              const allEnrollments: Record<string, string[]> = {};
-              for (const cls of classes) {
-                const clsEnrollments = await enrollmentService.getClassEnrollments(cls.id);
-                const clsEnrollmentsData = (clsEnrollments as any)?.data || clsEnrollments;
-                allEnrollments[cls.id] = Array.isArray(clsEnrollmentsData) 
-                  ? clsEnrollmentsData.map((e: any) => e.studentId || e.student?.id).filter(Boolean)
-                  : [];
-              }
-              setEnrollmentsByClassId(allEnrollments);
-              
               setEditOpen(false);
               setEditingStudent(null);
               setPreviewCourses([]);
@@ -5358,8 +5332,6 @@ function ClassesTab({
   setClasses,
   students,
   staff,
-  enrollmentsByClassId,
-  setEnrollmentsByClassId,
   classesPage,
   classesTotal,
   pageSize,
@@ -5371,8 +5343,6 @@ function ClassesTab({
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
   students: StudentRow[];
   staff: StaffRow[];
-  enrollmentsByClassId: Record<string, string[]>;
-  setEnrollmentsByClassId: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   classesPage: number;
   classesTotal: number;
   pageSize: number;
@@ -5780,7 +5750,6 @@ function ClassesTab({
         toast.warning('This class has no intake scope. Link it to a program intake in Timetable Builder first.');
       }
       setEnrollCandidates(candidates);
-      setEnrollmentsByClassId((prev) => ({ ...prev, [cls.id]: enrolledIds }));
     } catch (error) {
       console.error('Error loading enrollments:', error);
       setSelectedStudentIds([]);
@@ -5821,7 +5790,6 @@ function ClassesTab({
       const refreshed = await enrollmentService.getClassEnrollments(enrollClass.id);
       const finalIds = extractEnrolledStudentIdsFromClassEnrollments(refreshed);
 
-      setEnrollmentsByClassId((prev) => ({ ...prev, [enrollClass.id]: finalIds }));
       setClasses((prev) =>
         prev.map((c) => (c.id === enrollClass.id ? { ...c, students: finalIds.length } : c))
       );
@@ -5992,11 +5960,6 @@ function ClassesTab({
                         try {
                           await academicService.deleteClass(cls.id);
                           await refreshClassData();
-                          setEnrollmentsByClassId(prev => {
-                            const next = { ...prev };
-                            delete next[cls.id];
-                            return next;
-                          });
                           window.dispatchEvent(new CustomEvent('class-updated'));
                         } catch (error: any) {
                           const code = error?.response?.data?.code;
@@ -7867,7 +7830,6 @@ export default function AdminView({
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [schools, setSchools] = useState<SchoolRow[]>([]);
   const [venues, setVenues] = useState<VenueRow[]>([]);
-  const [enrollmentsByClassId, setEnrollmentsByClassId] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const loadStudents = async (
@@ -8069,21 +8031,6 @@ export default function AdminView({
 
       await loadStudents(1);
       await loadStaff(1);
-
-      let enrollmentsPage = 1;
-      const enrollmentsMap: Record<string, string[]> = {};
-      while (true) {
-        const res = await enrollmentService.getEnrollments({ page: enrollmentsPage, limit: LIST_PAGE_SIZE });
-        const enrollmentsData = (res as any)?.data || res;
-        const arr = Array.isArray(enrollmentsData) ? enrollmentsData : [];
-        arr.forEach((e: any) => {
-        if (!enrollmentsMap[e.classId]) enrollmentsMap[e.classId] = [];
-        enrollmentsMap[e.classId].push(e.studentId);
-      });
-        if (arr.length < LIST_PAGE_SIZE) break;
-        enrollmentsPage++;
-      }
-      setEnrollmentsByClassId(enrollmentsMap);
     } catch (error) {
       console.error('Error loading admin data:', error);
     } finally {
@@ -8107,7 +8054,7 @@ export default function AdminView({
 
       <Tabs value={currentTab} className="space-y-6">
         <TabsContent value="students" className="mt-0">
-          <StudentsTab students={students} setStudents={setStudents} classes={classes} setClasses={setClasses} enrollmentsByClassId={enrollmentsByClassId} setEnrollmentsByClassId={setEnrollmentsByClassId} studentsPage={studentsPage} studentsTotal={studentsTotal} pageSize={LIST_PAGE_SIZE} loadStudents={loadStudents} />
+          <StudentsTab students={students} setStudents={setStudents} classes={classes} setClasses={setClasses} studentsPage={studentsPage} studentsTotal={studentsTotal} pageSize={LIST_PAGE_SIZE} loadStudents={loadStudents} />
         </TabsContent>
         
         <TabsContent value="staff" className="mt-0">
@@ -8136,8 +8083,6 @@ export default function AdminView({
             setClasses={setClasses}
             students={students}
             staff={staff}
-            enrollmentsByClassId={enrollmentsByClassId}
-            setEnrollmentsByClassId={setEnrollmentsByClassId}
             classesPage={classesPage}
             classesTotal={classesTotal}
             pageSize={LIST_PAGE_SIZE}

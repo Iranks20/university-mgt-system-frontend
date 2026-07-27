@@ -47,6 +47,8 @@ import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendanceP
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
 import GraduationRegistration from './screens/GraduationRegistration'
+import StudentInfoCorrection from './screens/StudentInfoCorrection'
+import AdminStudentInfoForms from './screens/AdminStudentInfoForms'
 import GraduationDashboardPage from './screens/graduation/pages/GraduationDashboardPage'
 import GraduationEventPage from './screens/graduation/pages/GraduationEventPage'
 import GraduationCommitteesPage, { GraduationCommitteeSlugRedirect } from './screens/graduation/pages/GraduationCommitteesPage'
@@ -98,6 +100,7 @@ function AppRoutes() {
 				} 
 			/>
 			<Route path="/graduation-registration" element={<GraduationRegistration />} />
+			<Route path="/student-info-correction" element={<StudentInfoCorrection />} />
 			
 			{/* Protected Routes - All users */}
 			<Route 
@@ -274,6 +277,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute {...routeGuardProps('/admin-students')}>
 						<AdminStudents />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/admin-student-info-forms" 
+				element={
+					<ProtectedRoute {...routeGuardProps('/admin-student-info-forms')}>
+						<AdminStudentInfoForms />
 					</ProtectedRoute>
 				} 
 			/>

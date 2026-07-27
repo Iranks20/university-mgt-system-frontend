@@ -17,3 +17,8 @@ alwaysApply: false
 - **Error handling**: Show user-friendly errors (toast or inline). Log errors for debugging but don't expose internals. Handle loading states (skeletons/spinners) and empty states.
 - **Performance**: Memoize expensive computations (`useMemo`). Avoid unnecessary re-renders (`React.memo` for pure components). Lazy load routes if needed.
 - **New feature**: Add types in `types/{domain}.ts`, service in `services/{domain}.service.ts`, components in `features/{domain}/components/`, screen in `screens/`, route in `App.tsx`. Follow existing patterns.
+- **UI copy**: Keep screens uncluttered and professional. Prefer a clear title + field labels over repeated helper text.
+  - Do not stack a page intro, `CardDescription`, status banners, and toasts that say the same thing.
+  - Omit `CardDescription` unless it adds information the title and labels do not already convey.
+  - Avoid filler such as “Complete all required fields below”, “Matching results come from the system as you type”, or “Selected existing student” when the selected value is already visible in the field.
+  - One short instruction at page level is enough when needed; section cards should usually be title-only.
