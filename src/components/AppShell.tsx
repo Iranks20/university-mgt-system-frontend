@@ -57,6 +57,7 @@ function isPathUnderGraduationSection(pathname: string): boolean {
 
 const ADMIN_USERS_CHILD_PATHS = [
   '/admin-students',
+  '/admin-student-info-forms',
   '/admin-lecturers',
   '/admin-users',
   '/admin-roles',
@@ -151,6 +152,7 @@ const ADMIN_CLINICAL_NAV_CHILDREN: SidebarChild[] = [
 
 const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Students', icon: Users, path: '/admin-students' },
+  { label: 'Student info forms', icon: ClipboardList, path: '/admin-student-info-forms' },
   { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
   { label: 'System accounts', icon: UserCog, path: '/admin-users' },
   { label: 'Roles & Permissions', icon: KeyRound, path: '/admin-roles' },
