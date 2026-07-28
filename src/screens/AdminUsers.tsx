@@ -39,7 +39,7 @@ export default function AdminUsers() {
   const [editOpen, setEditOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
-  const [addForm, setAddForm] = useState({ email: '', password: '', name: '', role: 'QA' });
+  const [addForm, setAddForm] = useState({ email: '', password: '', name: '', role: 'Graduation' });
   const [editForm, setEditForm] = useState({ name: '', role: 'QA', isActive: true });
   const [resetPassword, setResetPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);

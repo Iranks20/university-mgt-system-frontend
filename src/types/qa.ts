@@ -4,6 +4,8 @@
  * Matching exact format from QA_Attendance_CSVs folder
  */
 
+import type { DeliveryMode } from '@/lib/delivery-mode';
+
 /**
  * Detailed Lecture Record (matches 3.csv format)
  * DATE, LECTURER'S NAME, CLASS, COURSE UNIT, TIME FOR STARTING, TIME OUT FOR ENDING, DURATION, TIME LOST, COMMENT
@@ -23,11 +25,12 @@ export interface QALectureRecord {
   timeForStarting: string; // "TIME FOR STARTING" - Scheduled start time e.g., "09:10:00"
   timeOutForEnding: string; // "TIME OUT FOR ENDING" - Scheduled end time e.g., "10:00:00"
   duration: string; // "DURATION" - Calculated from check-in to check-out e.g., "00:50:00", "02:00:00"
-  timeLost: string; // "TIME LOST" - e.g., "00:50:00", "0", "02:00:00"
-  comment: string; // Lecture status enum: "TAUGHT", "UNTAUGHT", "COMPENSATION", "MEETING", "SDL", "STUDENTS ORIENTATION", "SUBSTITUTED"
+  timeLost: string;
+  deliveryMode?: DeliveryMode;
+  comment: string;
   remarks?: string | null; // QA free-text comment explaining the chosen status
-  substituteLecturerId?: string | null; // Staff id of the lecturer who actually taught when comment === 'SUBSTITUTED'
-  substituteLecturerName?: string | null; // Resolved display name for the substitute lecturer
+  substituteLecturerId?: string | null;
+  substituteLecturerName?: string | null;
   checkInTime?: string;
   checkOutTime?: string;
   checkInTimestamp?: Date;
@@ -37,16 +40,22 @@ export interface QALectureRecord {
 }
 
 /**
- * Lecturer Summary Record (matches 2.csv format)
- * LECTURER'S NAME, CLASS, COURSE UNIT, NO. TAUGHT, NO. MISSED BY LECTURERS, COMMENT IF ANY
+ * Lecturer Summary Record
+ * Lecturer / class / course unit with the same teaching breakdown as School Summary
  */
 export interface QALecturerSummary {
-  lecturerName: string; // "LECTURER'S NAME"
-  class: string; // "CLASS"
-  courseUnit: string; // "COURSE UNIT"
-  noTaught: number; // "NO. TAUGHT"
-  noMissedByLecturers: number; // "NO. MISSED BY LECTURERS"
-  commentIfAny?: string; // "COMMENT IF ANY"
+  lecturerName: string;
+  class: string;
+  courseUnit: string;
+  noTaught: number;
+  noUntaught?: number;
+  noMissedByLecturers: number;
+  missedByLecturer?: number;
+  missedByStudents?: number;
+  missedOtherProgramsHolidays?: number;
+  assignment?: number;
+  noSdl?: number;
+  noSubstituted?: number;
 }
 
 /**
@@ -57,7 +66,11 @@ export interface QASchoolSummary {
   school: string;
   totalNoTaught: number;
   noUntaught: number;
-  noCancelled?: number;
+  missedByLecturer?: number;
+  missedByStudents?: number;
+  missedOtherProgramsHolidays?: number;
+  assignment?: number;
+  noSdl?: number;
   noSubstituted?: number;
 }
 
@@ -122,6 +135,7 @@ export interface QAFilter {
   lecturerName?: string;
   courseCode?: string;
   class?: string;
+  search?: string;
   comment?: string;
   checkInStatus?: string;
   page?: number;

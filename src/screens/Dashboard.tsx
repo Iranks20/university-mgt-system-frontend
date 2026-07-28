@@ -19,6 +19,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import WorstPerformers from '@/components/WorstPerformers';
+import { isLectureMissedByLecturer } from '@/lib/lecture-outcome';
 import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 import { qaService } from '@/services/qa.service';
 import { studentService } from '@/services/student.service';
@@ -102,6 +103,7 @@ function QADashboard() {
     taughtCount: number;
     untaughtCount: number;
     cancelledCount: number;
+    missedOtherProgramsHolidaysCount?: number;
     substitutedCount: number;
     conductedCount: number;
     teachingRateFromScheduled: number | null;
@@ -202,7 +204,7 @@ function QADashboard() {
         <StatsCard icon={Calendar} label={`Scheduled (${rangeLabel[teachingRange]})`} value={teachingStatsByRange != null ? String(teachingStatsByRange.scheduledCount) : '—'} color="text-gray-700" />
         <StatsCard icon={CheckCircle} label={`Taught (${rangeLabel[teachingRange]})`} value={teachingStatsByRange != null ? String(teachingStatsByRange.taughtCount) : (stats?.recentQARecords ?? '0')} color="text-[#015F2B]" />
         <StatsCard icon={XCircle} label={`Untaught (${rangeLabel[teachingRange]})`} value={teachingStatsByRange != null ? String(teachingStatsByRange.untaughtCount) : String(stats?.untaughtLectures ?? '0')} color="text-red-600" />
-        <StatsCard icon={AlertTriangle} label={`Cancelled (${rangeLabel[teachingRange]})`} value={teachingStatsByRange != null ? String(teachingStatsByRange.cancelledCount) : '0'} color="text-amber-600" />
+        <StatsCard icon={AlertTriangle} label={`Other prog. & holidays (${rangeLabel[teachingRange]})`} value={teachingStatsByRange != null ? String(teachingStatsByRange.missedOtherProgramsHolidaysCount ?? teachingStatsByRange.cancelledCount) : '0'} color="text-amber-600" />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard icon={UserCheck} label="Substituted" value={teachingStatsByRange != null ? String(teachingStatsByRange.substitutedCount) : '0'} color="text-blue-600" />
@@ -506,7 +508,7 @@ function LecturerDashboard() {
     if (!d) return false;
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    return d >= weekAgo && (r.comment || '').toUpperCase() === 'UNTAUGHT';
+    return d >= weekAgo && isLectureMissedByLecturer(r.comment);
   });
 
   return (
@@ -1045,6 +1047,7 @@ function ManagementDashboard() {
     taughtCount: number;
     untaughtCount: number;
     cancelledCount: number;
+    missedOtherProgramsHolidaysCount?: number;
     teachingRateFromScheduled: number | null;
   } | null>(null);
   const [departmentData, setDepartmentData] = useState<any[]>([]);
@@ -1232,7 +1235,7 @@ function ManagementDashboard() {
           icon={CheckCircle} 
           label={`Teaching Rate (${rangeLabelMgmt[teachingRangeMgmt]})`} 
           value={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (teachingStatsByRange?.teachingRateFromScheduled != null ? `${teachingStatsByRange.teachingRateFromScheduled.toFixed(1)}%` : teachingRate != null ? `${teachingRate.toFixed(1)}%` : <span className="text-gray-400">0</span>)} 
-          description={teachingStatsByRange != null ? `Scheduled: ${teachingStatsByRange.scheduledCount} · Taught: ${teachingStatsByRange.taughtCount} · Untaught: ${teachingStatsByRange.untaughtCount} · Cancelled: ${teachingStatsByRange.cancelledCount}` : undefined}
+          description={teachingStatsByRange != null ? `Scheduled: ${teachingStatsByRange.scheduledCount} · Taught: ${teachingStatsByRange.taughtCount} · Untaught: ${teachingStatsByRange.untaughtCount} · Other prog. & holidays: ${teachingStatsByRange.missedOtherProgramsHolidaysCount ?? teachingStatsByRange.cancelledCount}` : undefined}
           trend={teachingRate != null && attendanceTrendValue ? attendanceTrendValue : undefined} 
         />
         <StatsCard 

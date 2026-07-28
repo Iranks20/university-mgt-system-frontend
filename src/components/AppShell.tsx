@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
-  ChevronDown,
+  ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { navAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
+import { navAllowed, graduationNavAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
 
 function roleLabel(r: string): string {
   if (r === 'QA') return 'QA Officer';
@@ -32,7 +32,28 @@ function roleLabel(r: string): string {
   if (r === 'ClinicalCoordinator') return 'Clinical Coordinator';
   if (r === 'Staff') return 'Non-Teaching Staff';
   if (r === 'HR') return 'HR Officer';
+  if (r === 'Graduation') return 'Graduation Management';
   return r;
+}
+
+const GRADUATION_NAV_CHILDREN: SidebarChild[] = [
+  { label: 'Dashboard', icon: LayoutDashboard, path: '/graduation/dashboard' },
+  { label: 'Event setup', icon: Calendar, path: '/graduation/event' },
+  { label: 'Committees', icon: ClipboardList, path: '/graduation/committees' },
+  { label: 'Registrations', icon: GraduationCap, path: '/graduation/registrations' },
+];
+
+function buildGraduationOnlyNav(): SidebarItem[] {
+  return GRADUATION_NAV_CHILDREN.map((child) => ({
+    type: 'single' as const,
+    label: child.label,
+    path: child.path,
+    icon: child.icon,
+  }));
+}
+
+function isPathUnderGraduationSection(pathname: string): boolean {
+  return pathname === '/graduation' || pathname.startsWith('/graduation/');
 }
 
 const ADMIN_USERS_CHILD_PATHS = [
@@ -60,6 +81,51 @@ function isPathUnderAdminUsersSection(pathname: string): boolean {
 
 function isPathUnderAdminClinicalSection(pathname: string): boolean {
   return ADMIN_CLINICAL_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+const ADMIN_OVERSIGHT_CHILD_PATHS = [
+  '/management-student-performance',
+  '/management-lecturer-performance',
+  '/management-staff-performance',
+  '/management-risk',
+  '/management-departments',
+  '/management-enrolment',
+  '/reports',
+] as const;
+
+const ADMIN_ACADEMIC_CHILD_PATHS = [
+  '/admin-schools',
+  '/admin-courses',
+  '/admin-classes',
+  '/curriculum-management',
+  '/admin-venues',
+  '/admin-calendar',
+  '/timetable-builder',
+  '/admin-timetables',
+] as const;
+
+const ADMIN_ATTENDANCE_CHILD_PATHS = [
+  '/student-records',
+  '/lecture-records',
+  '/cancellations',
+] as const;
+
+const ADMIN_SYSTEM_CHILD_PATHS = ['/admin-settings', '/admin-strategic-goals'] as const;
+
+function isPathUnderAdminOversightSection(pathname: string): boolean {
+  return ADMIN_OVERSIGHT_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isPathUnderAdminAcademicSection(pathname: string): boolean {
+  return ADMIN_ACADEMIC_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isPathUnderAdminAttendanceSection(pathname: string): boolean {
+  return ADMIN_ATTENDANCE_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isPathUnderAdminSystemSection(pathname: string): boolean {
+  return ADMIN_SYSTEM_CHILD_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 type SidebarChild = { label: string; path: string; icon: LucideIcon };
@@ -126,6 +192,8 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Staff Performance', path: '/management-staff-performance', icon: Users },
   { label: 'Lecturer Performance', path: '/management-lecturer-performance', icon: UserCheck },
   { label: 'Student Performance', path: '/management-student-performance', icon: GraduationCap },
+  { label: 'Risk Register', path: '/management-risk', icon: AlertTriangle },
+  { label: 'Enrolment Health', path: '/management-enrolment', icon: Users },
   { label: 'Reports', path: '/reports', icon: FileText },
   { label: 'Courses', path: '/admin-courses', icon: BookOpen },
   { label: 'Classes', path: '/admin-classes', icon: School },
@@ -141,11 +209,210 @@ function isPathUnderHrSection(pathname: string): boolean {
   return HR_MODULE_NAV_CHILDREN.some((p) => pathname === p.path || pathname.startsWith(`${p.path}/`));
 }
 
+function pushFolderIfAny(
+  items: SidebarItem[],
+  id: string,
+  label: string,
+  icon: LucideIcon,
+  children: SidebarChild[]
+) {
+  if (children.length === 1) {
+    const only = children[0];
+    items.push({ type: 'single', label: only.label, icon: only.icon, path: only.path });
+  } else if (children.length > 1) {
+    items.push({ type: 'folder', id, label, icon, children });
+  }
+}
+
+function buildManagementNav(userPermissions: string[], role: string): SidebarItem[] {
+  const allow = (path: string) =>
+    path.startsWith('/graduation')
+      ? graduationNavAllowed(userPermissions, path, role)
+      : navAllowed(userPermissions, path);
+
+  const items: SidebarItem[] = [];
+
+  if (allow('/management-overview')) {
+    items.push({
+      type: 'single',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      path: '/management-overview',
+    });
+  }
+
+  pushFolderIfAny(
+    items,
+    'performance',
+    'Performance',
+    BarChart,
+    [
+      { label: 'Student Performance', path: '/management-student-performance', icon: GraduationCap },
+      { label: 'Lecturer Performance', path: '/management-lecturer-performance', icon: UserCheck },
+      { label: 'Staff Performance', path: '/management-staff-performance', icon: Users },
+      { label: 'Risk Register', path: '/management-risk', icon: AlertTriangle },
+    ].filter((c) => allow(c.path))
+  );
+
+  pushFolderIfAny(
+    items,
+    'academic-oversight',
+    'Academic oversight',
+    School,
+    [
+      { label: 'Departments', path: '/management-departments', icon: School },
+      { label: 'Enrolment Health', path: '/management-enrolment', icon: Users },
+      { label: 'Student Records', path: '/student-records', icon: Users },
+      { label: 'Curriculum', path: '/curriculum-management', icon: ClipboardList },
+      { label: 'Timetable', path: '/timetable', icon: Calendar },
+      { label: 'Venues', path: '/admin-venues', icon: MapPin },
+    ].filter((c) => allow(c.path))
+  );
+
+  if (allow('/reports')) {
+    items.push({ type: 'single', label: 'Reports', icon: FileText, path: '/reports' });
+  }
+
+  pushFolderIfAny(
+    items,
+    'teaching-disruptions',
+    'Teaching disruptions',
+    CalendarX,
+    [
+      { label: 'Cancellations & Substitutions', path: '/cancellations', icon: CalendarX },
+      { label: 'Lecture Records', path: '/lecture-records', icon: BookOpen },
+    ].filter((c) => allow(c.path))
+  );
+
+  if (allow('/graduation/registrations')) {
+    items.push({
+      type: 'single',
+      label: 'Graduation registrations',
+      icon: GraduationCap,
+      path: '/graduation/registrations',
+    });
+  }
+
+  if (allow('/clinical/reports')) {
+    items.push({
+      type: 'single',
+      label: 'Clinical reports',
+      icon: Briefcase,
+      path: '/clinical/reports',
+    });
+  }
+
+  if (allow('/admin-settings')) {
+    items.push({ type: 'single', label: 'Settings', icon: Settings, path: '/admin-settings' });
+  }
+
+  return items;
+}
+
+function buildAdminNav(userPermissions: string[], role: string): SidebarItem[] {
+  const allow = (path: string) =>
+    path.startsWith('/graduation')
+      ? graduationNavAllowed(userPermissions, path, role)
+      : navAllowed(userPermissions, path);
+
+  const items: SidebarItem[] = [];
+
+  if (allow('/management-overview')) {
+    items.push({
+      type: 'single',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      path: '/management-overview',
+    });
+  }
+
+  pushFolderIfAny(
+    items,
+    'oversight',
+    'Oversight',
+    BarChart,
+    [
+      { label: 'Student performance', path: '/management-student-performance', icon: GraduationCap },
+      { label: 'Lecturer performance', path: '/management-lecturer-performance', icon: UserCheck },
+      { label: 'Staff performance', path: '/management-staff-performance', icon: Users },
+      { label: 'Risk register', path: '/management-risk', icon: AlertTriangle },
+      { label: 'Department stats', path: '/management-departments', icon: School },
+      { label: 'Enrolment health', path: '/management-enrolment', icon: Users },
+      { label: 'Reports', path: '/reports', icon: FileText },
+    ].filter((c) => allow(c.path))
+  );
+
+  pushFolderIfAny(
+    items,
+    'academic',
+    'Academic',
+    School,
+    [
+      { label: 'Schools', path: '/admin-schools', icon: Building },
+      { label: 'Courses', path: '/admin-courses', icon: BookOpen },
+      { label: 'Classes', path: '/admin-classes', icon: School },
+      { label: 'Curriculum', path: '/curriculum-management', icon: ClipboardList },
+      { label: 'Venues', path: '/admin-venues', icon: MapPin },
+      { label: 'Calendar', path: '/admin-calendar', icon: Calendar },
+      { label: 'Timetable builder', path: '/timetable-builder', icon: Calendar },
+      { label: 'Timetables (admin)', path: '/admin-timetables', icon: Calendar },
+    ].filter((c) => allow(c.path))
+  );
+
+  pushFolderIfAny(
+    items,
+    'attendance',
+    'Attendance & QA',
+    ClipboardList,
+    [
+      { label: 'Student records', path: '/student-records', icon: Users },
+      { label: 'Lecture records', path: '/lecture-records', icon: BookOpen },
+      { label: 'Cancellations & substitutions', path: '/cancellations', icon: CalendarX },
+    ].filter((c) => allow(c.path))
+  );
+
+  const clinicalChildren = ADMIN_CLINICAL_NAV_CHILDREN.filter((c) => allow(c.path));
+  pushFolderIfAny(items, 'clinicals', 'Clinicals', Briefcase, clinicalChildren);
+
+  const have = new Set(userPermissions);
+  const graduationChildren = GRADUATION_NAV_CHILDREN.filter((c) => {
+    if (c.path === '/graduation/dashboard') return false;
+    if (!allow(c.path)) return false;
+    if (c.path === '/graduation/event') {
+      return have.has('graduation.manage') || have.has('admin.console');
+    }
+    if (c.path === '/graduation/registrations') {
+      return have.has('graduation.registrations') || have.has('admin.console');
+    }
+    return true;
+  });
+  pushFolderIfAny(items, 'graduation', 'Graduation', GraduationCap, graduationChildren);
+
+  const adminUserChildren = ADMIN_USERS_NAV_CHILDREN.filter((c) => allow(c.path));
+  pushFolderIfAny(items, 'users', 'Users & access', Users, adminUserChildren);
+
+  pushFolderIfAny(
+    items,
+    'system',
+    'System',
+    Settings,
+    [
+      { label: 'Settings', path: '/admin-settings', icon: Settings },
+      { label: 'Strategic goals', path: '/admin-strategic-goals', icon: TrendingUp },
+    ].filter((c) => allow(c.path))
+  );
+
+  return items;
+}
+
 function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
-  const allow = (path: string) => navAllowed(userPermissions, path, role);
+  if (role === 'Graduation') {
+    return buildGraduationOnlyNav();
+  }
 
   if (role === 'HR') {
-    return HR_ROLE_NAV_CHILDREN.filter((entry) => allow(entry.path)).map((entry) => ({
+    const allowHr = (path: string) => navAllowed(userPermissions, path, role);
+    return HR_ROLE_NAV_CHILDREN.filter((entry) => allowHr(entry.path)).map((entry) => ({
       type: 'single' as const,
       label: entry.label,
       icon: entry.icon,
@@ -153,6 +420,18 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
     }));
   }
 
+  if (role === 'Management') {
+    return buildManagementNav(userPermissions, role);
+  }
+
+  if (role === 'Admin') {
+    return buildAdminNav(userPermissions, role);
+  }
+
+  const allow = (path: string) =>
+    path.startsWith('/graduation')
+      ? graduationNavAllowed(userPermissions, path, role)
+      : navAllowed(userPermissions, path);
   const items: SidebarItem[] = [
     { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   ];
@@ -191,6 +470,32 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
         items.push({ type: 'single', label: child.label, icon: child.icon, path: child.path });
       }
     }
+  }
+
+  const graduationChildren = GRADUATION_NAV_CHILDREN.filter((c) => {
+    if (!allow(c.path)) return false;
+    const have = new Set(userPermissions);
+    if (c.path === '/graduation/event') {
+      return role === 'Admin' || have.has('graduation.manage') || have.has('admin.console');
+    }
+    if (c.path === '/graduation/registrations') {
+      return (
+        role === 'Admin' ||
+        role === 'Graduation' ||
+        have.has('graduation.registrations') ||
+        have.has('admin.console')
+      );
+    }
+    return true;
+  });
+  if (graduationChildren.length > 0) {
+    items.push({
+      type: 'folder',
+      id: 'graduation',
+      label: 'Graduation',
+      icon: GraduationCap,
+      children: graduationChildren,
+    });
   }
 
   for (const entry of FLAT_NAV_CANDIDATES) {
@@ -259,6 +564,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     users: isPathUnderAdminUsersSection(location.pathname),
     clinicals: isPathUnderAdminClinicalSection(location.pathname),
     'human-resources': isPathUnderHrSection(location.pathname),
+    graduation: isPathUnderGraduationSection(location.pathname),
+    oversight: isPathUnderAdminOversightSection(location.pathname),
+    academic: isPathUnderAdminAcademicSection(location.pathname),
+    attendance: isPathUnderAdminAttendanceSection(location.pathname),
+    system: isPathUnderAdminSystemSection(location.pathname),
   }));
 
   const setNavFolderOpen = (id: string, open: boolean) => {
@@ -276,6 +586,21 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
     if (isPathUnderHrSection(location.pathname)) {
       setNavFolderOpen('human-resources', true);
+    }
+    if (isPathUnderGraduationSection(location.pathname)) {
+      setNavFolderOpen('graduation', true);
+    }
+    if (isPathUnderAdminOversightSection(location.pathname)) {
+      setNavFolderOpen('oversight', true);
+    }
+    if (isPathUnderAdminAcademicSection(location.pathname)) {
+      setNavFolderOpen('academic', true);
+    }
+    if (isPathUnderAdminAttendanceSection(location.pathname)) {
+      setNavFolderOpen('attendance', true);
+    }
+    if (isPathUnderAdminSystemSection(location.pathname)) {
+      setNavFolderOpen('system', true);
     }
   }, [location.pathname]);
 

@@ -162,17 +162,111 @@ export const analyticsService = {
     }
   },
 
-  getTopPerformingStaff: async (limit: number = 10, dateFrom?: string, dateTo?: string) => {
+  getManagementRiskPack: async (limit: number = 10): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await api.get<unknown>('/analytics/management-risk-pack', { limit: String(limit) });
+      const r = response as { data?: unknown } | null;
+      return ((r as { data?: unknown })?.data ?? r) as Record<string, unknown> | null;
+    } catch (error) {
+      console.error('Error fetching management risk pack:', error);
+      return null;
+    }
+  },
+
+  getManagementEnrolmentHealth: async (): Promise<Record<string, unknown> | null> => {
+    try {
+      const response = await api.get<unknown>('/analytics/management-enrolment-health');
+      const r = response as { data?: unknown } | null;
+      return ((r as { data?: unknown })?.data ?? r) as Record<string, unknown> | null;
+    } catch (error) {
+      console.error('Error fetching management enrolment health:', error);
+      return null;
+    }
+  },
+
+  getTopPerformingStaff: async (
+    limit: number = 10,
+    dateFrom?: string,
+    dateTo?: string,
+    school?: string
+  ) => {
     try {
       const params: Record<string, string> = { limit: String(limit) };
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
+      if (school) params.school = school;
       const response = await api.get<unknown>('/analytics/top-performing-staff', params);
       const r = response as unknown as { data?: unknown[] } | unknown[];
       return Array.isArray(r) ? r : (r as { data?: unknown[] })?.data ?? [];
     } catch (error) {
       console.error('Error fetching top performing staff:', error);
       return [];
+    }
+  },
+
+  getLecturerStatsDetail: async (
+    lecturerId: string,
+    dateFrom?: string,
+    dateTo?: string
+  ): Promise<{
+    lecturer: {
+      id: string;
+      name: string;
+      staffNumber: string | null;
+      email: string | null;
+      phone: string | null;
+      role: string | null;
+      school: string;
+      department: string;
+    };
+    summary: {
+      totalRecords: number;
+      taught: number;
+      missedByLecturer: number;
+      otherOutcomes: number;
+      rate: number;
+      rateBasis: string;
+      byComment: Record<string, number>;
+    };
+    byClass: Array<{
+      className: string;
+      courseUnit: string;
+      taught: number;
+      missedByLecturer: number;
+      total: number;
+    }>;
+    records: Array<{
+      id: string;
+      date: string | null;
+      classId: string | null;
+      className: string;
+      courseUnit: string;
+      comment: string;
+      status: string | null;
+      checkInTime: string | null;
+      checkOutTime: string | null;
+      timeForStarting: string | null;
+      timeOutForEnding: string | null;
+      duration: string | null;
+      timeLost: string | null;
+      lessonTimeout: string | null;
+      recordedBy: string | null;
+      recordedAt: string | null;
+      substituteLecturerId: string | null;
+      substituteLecturerName: string | null;
+    }>;
+    dateFrom: string | null;
+    dateTo: string | null;
+  } | null> => {
+    try {
+      const params: Record<string, string> = {};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      const response = await api.get<any>(`/analytics/lecturer-stats-detail/${lecturerId}`, params);
+      return (response as any)?.data ?? response ?? null;
+    } catch (error) {
+      console.error('Error fetching lecturer stats detail:', error);
+      return null;
     }
   },
 
@@ -215,6 +309,7 @@ export const analyticsService = {
     taughtCount: number;
     untaughtCount: number;
     cancelledCount: number;
+    missedOtherProgramsHolidaysCount?: number;
     substitutedCount: number;
     conductedCount: number;
     teachingRateFromScheduled: number | null;

@@ -10,6 +10,8 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord } from '@/types/qa';
+import { mapImportStatusToComment } from '@/lib/lecture-outcome';
+import { deliveryModeLabel } from '@/lib/delivery-mode';
 import type {
   ProgramAttendanceData,
   StudentAttendanceReport,
@@ -18,6 +20,7 @@ import type {
   CourseWiseAttendanceSummaryReport,
   WeeklyAttendanceMatrixReport,
 } from '@/types/student';
+import { UNIVERSITY_NAME } from '@/lib/institution';
 
 /**
  * Export Lecture Records to CSV/Excel (matches 3.csv format exactly)
@@ -40,6 +43,7 @@ export function exportLectureRecordsToCSV(
       'DURATION',
       'LESSON TIMEOUT',
       'TIME LOST',
+      'MODE OF DELIVERY',
       'STATUS',
       'COMMENT',
       'SUBSTITUTE LECTURER',
@@ -56,6 +60,7 @@ export function exportLectureRecordsToCSV(
       record.duration,
       record.lessonTimeout || record.duration,
       record.timeLost,
+      deliveryModeLabel(record.deliveryMode),
       record.comment,
       record.remarks || '',
       record.substituteLecturerName || '',
@@ -76,6 +81,7 @@ export function exportLectureRecordsToCSV(
     { wch: 12 },
     { wch: 15 },
     { wch: 12 },
+    { wch: 18 },
     { wch: 20 },
     { wch: 40 },
     { wch: 25 },
@@ -161,6 +167,7 @@ export function exportClassAttendanceSummaryReport(
   filterParts.push(`Generated: ${formatReportDateLabel(report.generatedAt.slice(0, 10))}`);
 
   const data: (string | number)[][] = [
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [filterParts.join(' | ')],
     [],
@@ -193,6 +200,7 @@ export function exportClassAttendanceSummaryReport(
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -254,7 +262,7 @@ export function exportWeeklyAttendanceMatrixReport(
   courseHeaderRow.push('TOTALS', 'EXPECTED');
 
   const data: (string | number)[][] = [
-    [report.universityName || 'Kampala Christian University'],
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [`Cohort: ${report.programIntakeLabel} | Week: ${report.weekRangeLabel}`],
     [],
@@ -333,7 +341,7 @@ export function exportCourseWiseAttendanceSummaryReport(
   const generatedAt = formatReportDateTime(report.generatedAt);
 
   const data: (string | number)[][] = [
-    [report.universityName || 'Kampala Christian University'],
+    [report.universityName || UNIVERSITY_NAME],
     [report.title],
     [filterParts.join(' | ')],
     [],
@@ -394,56 +402,62 @@ export function exportCourseWiseAttendanceSummaryReport(
 }
 
 /**
- * Export Lecturer Summary Report to CSV/Excel (matches 2.csv format exactly)
- * First row: School name
- * Second row: Headers - LECTURER'S NAME, CLASS, COURSE UNIT, NO. TAUGHT, NO. MISSED BY LECTURERS, COMMENT IF ANY
- * Data rows with blank rows between lecturers
+ * Export Lecturer Summary Report to Excel
+ * School name row, then headers aligned with School Summary breakdown fields
  */
 export function exportLecturerSummaryReport(
   report: QALecturerSummaryReport,
   filename?: string
 ): void {
-  const data: (string | number)[][] = [
-    // First row: School name
-    [report.school],
-    // Second row: Headers
-    [
-      'LECTURER\'S NAME',
-      'CLASS',
-      'COURSE UNIT',
-      'NO. TAUGHT',
-      'NO. MISSED BY LECTURERS',
-      'COMMENT IF ANY',
-    ],
+  const headers = [
+    "LECTURER'S NAME",
+    'CLASS',
+    'COURSE UNIT',
+    'NO. TAUGHT',
+    'NO. UNTAIGHT',
+    'MISSED BY LECTURER',
+    'MISSED BY STUDENTS',
+    'OTHER PROG. & HOLIDAYS',
+    'ASSIGNMENT',
+    'SDL',
+    'SUBSTITUTED',
   ];
+  const data: (string | number)[][] = [[report.school], headers];
 
-  // Add data rows with blank rows between lecturers
   report.lecturers.forEach((lecturer, index) => {
     data.push([
       lecturer.lecturerName,
       lecturer.class,
       lecturer.courseUnit,
       lecturer.noTaught,
-      lecturer.noMissedByLecturers,
-      lecturer.commentIfAny || '',
+      lecturer.noUntaught ?? 0,
+      lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+      lecturer.missedByStudents ?? 0,
+      lecturer.missedOtherProgramsHolidays ?? 0,
+      lecturer.assignment ?? 0,
+      lecturer.noSdl ?? 0,
+      lecturer.noSubstituted ?? 0,
     ]);
-    
-    // Add blank row after each lecturer (except the last one)
+
     if (index < report.lecturers.length - 1) {
-      data.push(['', '', '', '', '', '']);
+      data.push(Array(headers.length).fill(''));
     }
   });
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
+
   ws['!cols'] = [
-    { wch: 25 }, // LECTURER'S NAME
-    { wch: 30 }, // CLASS
-    { wch: 35 }, // COURSE UNIT
-    { wch: 12 }, // NO. TAUGHT
-    { wch: 25 }, // NO. MISSED BY LECTURERS
-    { wch: 20 }, // COMMENT IF ANY
+    { wch: 25 },
+    { wch: 30 },
+    { wch: 35 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 12 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -452,6 +466,79 @@ export function exportLecturerSummaryReport(
   const defaultFilename = `QA_Lecturer_Summary_${report.school.replace(/\s+/g, '_')}_${formatDate(new Date())}.xlsx`;
   const finalFilename = filename || defaultFilename;
 
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, finalFilename);
+}
+
+export function exportLecturerSummaryReports(
+  reports: QALecturerSummaryReport[],
+  filename?: string
+): void {
+  if (reports.length === 0) return;
+  if (reports.length === 1) {
+    exportLecturerSummaryReport(reports[0], filename);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  reports.forEach((report) => {
+    const headers = [
+      "LECTURER'S NAME",
+      'CLASS',
+      'COURSE UNIT',
+      'NO. TAUGHT',
+      'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROG. & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
+    ];
+    const data: (string | number)[][] = [
+      [report.school],
+      headers,
+    ];
+
+    report.lecturers.forEach((lecturer, index) => {
+      data.push([
+        lecturer.lecturerName,
+        lecturer.class,
+        lecturer.courseUnit,
+        lecturer.noTaught,
+        lecturer.noUntaught ?? 0,
+        lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+        lecturer.missedByStudents ?? 0,
+        lecturer.missedOtherProgramsHolidays ?? 0,
+        lecturer.assignment ?? 0,
+        lecturer.noSdl ?? 0,
+        lecturer.noSubstituted ?? 0,
+      ]);
+      if (index < report.lecturers.length - 1) {
+        data.push(Array(headers.length).fill(''));
+      }
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, report.school.substring(0, 31));
+  });
+
+  const defaultFilename = `QA_Lecturer_Summary_${formatDate(new Date())}.xlsx`;
+  const finalFilename = filename || defaultFilename;
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, finalFilename);
@@ -466,33 +553,53 @@ export function exportSchoolSummaryReport(
   filename?: string
 ): void {
   const data = [
-    // Header row - exact match to 1.csv (preserving typo)
     [
       'SCHOOL',
       'TOTAL NO. TAUGHT',
       'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROGRAMS & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
     ],
-    // Data rows
-    ...summaries.map(summary => [
+    ...summaries.map((summary) => [
       summary.school,
       summary.totalNoTaught,
       summary.noUntaught,
+      summary.missedByLecturer ?? 0,
+      summary.missedByStudents ?? 0,
+      summary.missedOtherProgramsHolidays ?? 0,
+      summary.assignment ?? 0,
+      summary.noSdl ?? 0,
+      summary.noSubstituted ?? 0,
     ]),
-    // Total row
     [
       'TOTAL',
       summaries.reduce((sum, s) => sum + s.totalNoTaught, 0),
       summaries.reduce((sum, s) => sum + s.noUntaught, 0),
+      summaries.reduce((sum, s) => sum + (s.missedByLecturer ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedByStudents ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedOtherProgramsHolidays ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.assignment ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSdl ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSubstituted ?? 0), 0),
     ],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
+
   ws['!cols'] = [
-    { wch: 25 }, // SCHOOL
-    { wch: 18 }, // TOTAL NO. TAUGHT
-    { wch: 15 }, // NO. UNTAIGHT
+    { wch: 25 },
+    { wch: 18 },
+    { wch: 15 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 14 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -528,11 +635,24 @@ export function exportAllQAReports(
   schoolSheet['!cols'] = [{ wch: 25 }, { wch: 18 }, { wch: 15 }];
   XLSX.utils.book_append_sheet(wb, schoolSheet, 'School Summary');
 
-  // Sheet 2: Lecturer Summary (2.csv format) - one sheet per school
+  // Sheet 2: Lecturer Summary - one sheet per school
   lecturerReports.forEach(report => {
+    const headers = [
+      "LECTURER'S NAME",
+      'CLASS',
+      'COURSE UNIT',
+      'NO. TAUGHT',
+      'NO. UNTAIGHT',
+      'MISSED BY LECTURER',
+      'MISSED BY STUDENTS',
+      'OTHER PROG. & HOLIDAYS',
+      'ASSIGNMENT',
+      'SDL',
+      'SUBSTITUTED',
+    ];
     const lecturerData: (string | number)[][] = [
       [report.school],
-      ['LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'NO. TAUGHT', 'NO. MISSED BY LECTURERS', 'COMMENT IF ANY'],
+      headers,
     ];
     
     report.lecturers.forEach((lecturer, index) => {
@@ -541,16 +661,33 @@ export function exportAllQAReports(
         lecturer.class,
         lecturer.courseUnit,
         lecturer.noTaught,
-        lecturer.noMissedByLecturers,
-        lecturer.commentIfAny || '',
+        lecturer.noUntaught ?? 0,
+        lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
+        lecturer.missedByStudents ?? 0,
+        lecturer.missedOtherProgramsHolidays ?? 0,
+        lecturer.assignment ?? 0,
+        lecturer.noSdl ?? 0,
+        lecturer.noSubstituted ?? 0,
       ]);
       if (index < report.lecturers.length - 1) {
-        lecturerData.push(['', '', '', '', '', '']);
+        lecturerData.push(Array(headers.length).fill(''));
       }
     });
     
     const lecturerSheet = XLSX.utils.aoa_to_sheet(lecturerData);
-    lecturerSheet['!cols'] = [{ wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 12 }, { wch: 25 }, { wch: 20 }];
+    lecturerSheet['!cols'] = [
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 35 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 12 },
+    ];
     XLSX.utils.book_append_sheet(wb, lecturerSheet, report.school.substring(0, 31)); // Excel sheet name limit
   });
 
@@ -727,18 +864,7 @@ export function exportQARecords(
     const duration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
     
     // Map status to comment
-    const statusToComment: Record<string, string> = {
-      'Present': 'TAUGHT',
-      'Absent': 'UNTAUGHT',
-      'Late': 'TAUGHT',
-      'Cancelled': 'UNTAUGHT',
-      'TAUGHT': 'TAUGHT',
-      'UNTAUGHT': 'UNTAUGHT',
-      'COMPENSATION': 'COMPENSATION',
-      'MEETING': 'MEETING',
-      'SDL': 'SDL',
-      'STUDENTS ORIENTATION': 'STUDENTS ORIENTATION',
-    };
+    const statusToComment = mapImportStatusToComment;
     
     return {
       date: record.scheduledDate,
@@ -749,7 +875,7 @@ export function exportQARecords(
       timeOutForEnding: endTime,
       duration: duration,
       timeLost: '0',
-      comment: statusToComment[record.status] || 'TAUGHT',
+      comment: statusToComment(record.status),
     };
   });
   

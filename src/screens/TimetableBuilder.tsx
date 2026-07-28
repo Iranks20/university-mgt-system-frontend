@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { academicService } from '@/services/academic.service';
 import { staffService } from '@/services/staff.service';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,7 +18,7 @@ type IntakeType = 'Day' | 'Evening' | 'Weekend';
 type DeliveryMode = 'InPerson' | 'Online' | 'Hybrid';
 
 type ProgramLite = { id: string; name: string; code?: string; departmentId?: string };
-type CourseLite = { id: string; code: string; name: string };
+type CourseLite = { id: string; code: string; name: string; source?: 'program' | 'combined' };
 type VenueLite = { id: string; name: string };
 type LecturerLite = { id: string; name: string };
 
@@ -32,6 +33,8 @@ type DraftRow = {
   startTime: string;
   endTime: string;
   capacity: string;
+  existingClassId?: string;
+  isSharedSchedule?: boolean;
 };
 
 const INTAKES: { value: IntakeType; label: string }[] = [
@@ -172,9 +175,19 @@ export default function TimetableBuilder() {
       const intakeId = intake?.id || '';
       setProgramIntakeId(intakeId);
 
-      const res = await academicService.getCourses({ programId, level: year, semester, page: 1, limit: 50 });
-      const arr = res?.data ?? [];
-      const mapped = arr.map((c: any) => ({ id: c.id, code: c.code, name: c.name }));
+      if (!intakeId) {
+        setCourses([]);
+        setDrafts({});
+        return;
+      }
+
+      const scope = await academicService.getTimetableBuilderScope(intakeId);
+      const mapped: CourseLite[] = (scope?.courses ?? []).map((c) => ({
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        source: c.source,
+      }));
       setCourses(mapped);
       if (mapped.length === 0) {
         toast.info('No courses found for this program/year/semester. Add courses first in Admin Schools.');
@@ -182,34 +195,38 @@ export default function TimetableBuilder() {
         return;
       }
 
-      const existingClasses = intakeId ? await fetchAllClassesForIntake(intakeId) : [];
-      const existingByCourseId = new Map<string, any>();
-      for (const cls of existingClasses) {
-        if (!existingByCourseId.has(cls.courseId)) existingByCourseId.set(cls.courseId, cls);
-      }
-
       const groupName =
         selectedProgram?.code
           ? `${selectedProgram.code} Y${year}S${semester} ${intakeType}`
           : `Y${year}S${semester} ${intakeType}`;
 
+      const classesByCourseId = scope?.classesByCourseId ?? {};
       const nextDrafts: Record<string, DraftRow> = {};
       for (const c of mapped) {
-        const existing = existingByCourseId.get(c.id);
+        const existing = classesByCourseId[c.id];
         nextDrafts[c.id] = drafts[c.id] ?? {
           courseId: c.id,
-          className: existing?.name ?? groupName,
+          className: existing?.className ?? groupName,
           lecturerId: existing?.lecturerId ?? '',
           venueId: existing?.venueId ?? '',
-          deliveryMode: existing?.deliveryMode ?? 'InPerson',
+          deliveryMode: (existing?.deliveryMode as DeliveryMode) ?? 'InPerson',
           meetingUrl: existing?.meetingUrl ?? '',
           dayOfWeek: existing?.dayOfWeek != null ? String(existing.dayOfWeek) : '',
           startTime: existing?.startTime ?? '',
           endTime: existing?.endTime ?? '',
           capacity: existing?.capacity != null ? String(existing.capacity) : '50',
+          existingClassId: existing?.classId,
+          isSharedSchedule: existing?.isSharedSchedule ?? false,
         };
       }
       setDrafts(nextDrafts);
+
+      const combinedCount = mapped.filter((c) => c.source === 'combined').length;
+      if (combinedCount > 0) {
+        toast.info(
+          `${combinedCount} course${combinedCount === 1 ? '' : 's'} linked via combined cohort class${combinedCount === 1 ? '' : 'es'} — schedule shown from the shared class.`
+        );
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Failed to load scope');
       setProgramIntakeId('');
@@ -273,10 +290,17 @@ export default function TimetableBuilder() {
 
       for (const cls of sourceClasses) {
         try {
+          const cohortIds = Array.isArray(cls.cohortProgramIntakeIds)
+            ? cls.cohortProgramIntakeIds
+            : cls.programIntakeId
+              ? [cls.programIntakeId]
+              : [];
+          const programIntakeIds = [...new Set([targetIntakeId, ...cohortIds.filter((id: string) => id !== dayIntakeId)])];
           await academicService.createClass({
             name: cls.name,
             courseId: cls.courseId,
             programIntakeId: targetIntakeId,
+            programIntakeIds,
             lecturerId: cls.lecturerId,
             venueId: cls.deliveryMode === 'Online' ? null : cls.venueId,
             dayOfWeek: cls.dayOfWeek,
@@ -297,6 +321,9 @@ export default function TimetableBuilder() {
       if (errors.length > 0) {
         toast.warning(`Some items were not copied: ${errors.slice(0, 2).join(' · ')}${errors.length > 2 ? ' …' : ''}`);
       }
+      if (created > 0) {
+        window.dispatchEvent(new CustomEvent('class-updated'));
+      }
 
       if (intakeType === duplicateTargetIntake) {
         setProgramIntakeId(targetIntakeId);
@@ -314,6 +341,10 @@ export default function TimetableBuilder() {
   const createOne = async (courseId: string) => {
     const d = drafts[courseId];
     if (!d) return;
+    if (d.isSharedSchedule && d.existingClassId) {
+      toast.info('This course uses a shared combined-cohort class. Edit it under Admin Classes.');
+      return;
+    }
     if (!programIntakeId) {
       toast.error('Select scope and load courses first');
       return;
@@ -326,21 +357,31 @@ export default function TimetableBuilder() {
       toast.error('Day, start time and end time are required');
       return;
     }
+    const payload = {
+      name: d.className.trim(),
+      courseId: d.courseId,
+      programIntakeId,
+      lecturerId: d.lecturerId || null,
+      venueId: d.deliveryMode === 'Online' ? null : (d.venueId || null),
+      dayOfWeek: parseInt(d.dayOfWeek, 10),
+      startTime: d.startTime,
+      endTime: d.endTime,
+      capacity: parseInt(d.capacity, 10) || 50,
+      deliveryMode: d.deliveryMode,
+      meetingUrl: d.meetingUrl?.trim() ? d.meetingUrl.trim() : null,
+    };
     try {
-      await academicService.createClass({
-        name: d.className.trim(),
-        courseId: d.courseId,
-        programIntakeId,
-        lecturerId: d.lecturerId || null,
-        venueId: d.deliveryMode === 'Online' ? null : (d.venueId || null),
-        dayOfWeek: parseInt(d.dayOfWeek, 10),
-        startTime: d.startTime,
-        endTime: d.endTime,
-        capacity: parseInt(d.capacity, 10) || 50,
-        deliveryMode: d.deliveryMode,
-        meetingUrl: d.meetingUrl?.trim() ? d.meetingUrl.trim() : null,
-      } as any);
-      toast.success('Class saved');
+      if (d.existingClassId) {
+        await academicService.updateClass(d.existingClassId, payload as any);
+        toast.success('Class updated');
+      } else {
+        const created = await academicService.createClass(payload as any);
+        if (created?.id) {
+          updateDraft(courseId, { existingClassId: created.id });
+        }
+        toast.success('Class saved');
+      }
+      window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save class');
     }
@@ -354,6 +395,8 @@ export default function TimetableBuilder() {
     setCreatingAll(true);
     try {
       for (const c of courses) {
+        const draft = drafts[c.id];
+        if (draft?.isSharedSchedule) continue;
         await createOne(c.id);
       }
     } finally {
@@ -536,17 +579,30 @@ export default function TimetableBuilder() {
                 <TableBody>
                   {courses.map(c => {
                     const d = drafts[c.id];
+                    const isShared = d?.isSharedSchedule === true;
                     return (
-                      <TableRow key={c.id}>
+                      <TableRow key={c.id} className={isShared ? 'bg-violet-50/60' : undefined}>
                         <TableCell className="font-medium">
-                          <div>{c.code}</div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{c.code}</span>
+                            {c.source === 'combined' ? (
+                              <Badge variant="outline" className="text-violet-800 border-violet-300 bg-violet-50">
+                                Combined cohort
+                              </Badge>
+                            ) : null}
+                          </div>
                           <div className="text-xs text-muted-foreground">{c.name}</div>
+                          {isShared ? (
+                            <div className="text-xs text-violet-800 mt-1">
+                              Scheduled via shared class — edit in Admin Classes
+                            </div>
+                          ) : null}
                         </TableCell>
                         <TableCell>
-                          <Input value={d?.className ?? ''} onChange={e => updateDraft(c.id, { className: e.target.value })} />
+                          <Input value={d?.className ?? ''} disabled={isShared} onChange={e => updateDraft(c.id, { className: e.target.value })} />
                         </TableCell>
                         <TableCell>
-                          <Select value={d?.deliveryMode ?? 'InPerson'} onValueChange={v => updateDraft(c.id, { deliveryMode: v as DeliveryMode })}>
+                          <Select value={d?.deliveryMode ?? 'InPerson'} disabled={isShared} onValueChange={v => updateDraft(c.id, { deliveryMode: v as DeliveryMode })}>
                             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {DELIVERY_MODES.map(x => (
@@ -564,13 +620,14 @@ export default function TimetableBuilder() {
                             searchPlaceholder="Search lecturer..."
                             emptyText="No lecturer found."
                             className="w-[220px]"
+                            disabled={isShared}
                           />
                         </TableCell>
                         <TableCell>
                           <Select
                             value={d?.venueId ? d.venueId : UNASSIGNED}
                             onValueChange={v => updateDraft(c.id, { venueId: v === UNASSIGNED ? '' : v })}
-                            disabled={(d?.deliveryMode ?? 'InPerson') === 'Online'}
+                            disabled={isShared || (d?.deliveryMode ?? 'InPerson') === 'Online'}
                           >
                             <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
@@ -582,7 +639,7 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Select value={d?.dayOfWeek ?? ''} onValueChange={v => updateDraft(c.id, { dayOfWeek: v })}>
+                          <Select value={d?.dayOfWeek ?? ''} disabled={isShared} onValueChange={v => updateDraft(c.id, { dayOfWeek: v })}>
                             <SelectTrigger className="w-[140px]"><SelectValue placeholder="Day" /></SelectTrigger>
                             <SelectContent>
                               {DAYS.map(x => (
@@ -592,27 +649,31 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[110px]" type="time" value={d?.startTime ?? ''} onChange={e => updateDraft(c.id, { startTime: e.target.value })} />
+                          <Input className="w-[110px]" type="time" disabled={isShared} value={d?.startTime ?? ''} onChange={e => updateDraft(c.id, { startTime: e.target.value })} />
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[110px]" type="time" value={d?.endTime ?? ''} onChange={e => updateDraft(c.id, { endTime: e.target.value })} />
+                          <Input className="w-[110px]" type="time" disabled={isShared} value={d?.endTime ?? ''} onChange={e => updateDraft(c.id, { endTime: e.target.value })} />
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[90px]" value={d?.capacity ?? ''} onChange={e => updateDraft(c.id, { capacity: e.target.value })} />
+                          <Input className="w-[90px]" disabled={isShared} value={d?.capacity ?? ''} onChange={e => updateDraft(c.id, { capacity: e.target.value })} />
                         </TableCell>
                         <TableCell>
                           <Input
                             className="w-[220px]"
                             value={d?.meetingUrl ?? ''}
                             onChange={e => updateDraft(c.id, { meetingUrl: e.target.value })}
-                            disabled={(d?.deliveryMode ?? 'InPerson') === 'InPerson'}
+                            disabled={isShared || (d?.deliveryMode ?? 'InPerson') === 'InPerson'}
                             placeholder={(d?.deliveryMode ?? 'InPerson') === 'InPerson' ? '—' : 'https://...'}
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" className="bg-[#015F2B]" onClick={() => createOne(c.id)}>
-                            Save
-                          </Button>
+                          {isShared ? (
+                            <Badge variant="secondary">Shared</Badge>
+                          ) : (
+                            <Button size="sm" className="bg-[#015F2B]" onClick={() => createOne(c.id)}>
+                              Save
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

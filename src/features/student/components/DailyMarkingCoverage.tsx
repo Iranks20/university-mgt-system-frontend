@@ -7,6 +7,8 @@ import {
   AlertCircle,
   Clock,
   Users,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,15 +31,30 @@ import type {
   DailyMarkingCoverageItem,
   DailyMarkingCoverageStatus,
 } from '@/types/student';
+import { lectureCommentLabel } from '@/lib/lecture-outcome';
 import { toast } from 'sonner';
 import { PROGRAM_INTAKE_ALL, useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 
 const STATUS_FILTER_OPTIONS: Array<{ value: DailyMarkingCoverageFilter; label: string }> = [
-  { value: 'pending', label: 'Pending only' },
   { value: 'all', label: 'All statuses' },
-  { value: 'not_started', label: 'Not started' },
+  { value: 'pending', label: 'Needs student mark' },
+  { value: 'awaiting_lecture', label: 'Awaiting lecture mark' },
+  { value: 'not_started', label: 'Ready to mark' },
   { value: 'partial', label: 'Partial' },
   { value: 'complete', label: 'Complete' },
+  { value: 'sdl', label: 'SDL' },
+  { value: 'assignment', label: 'Assignment' },
+  { value: 'missed_by_lecturer', label: 'Missed by lecturer' },
+  { value: 'missed_by_students', label: 'Missed by students' },
+  { value: 'missed_other_programs_holidays', label: 'Missed (other/holidays)' },
+];
+
+const LECTURE_OUTCOME_STATUSES: DailyMarkingCoverageStatus[] = [
+  'sdl',
+  'assignment',
+  'missed_by_lecturer',
+  'missed_by_students',
+  'missed_other_programs_holidays',
 ];
 
 function formatTimeRange(start: string | null, end: string | null): string {
@@ -51,7 +68,26 @@ function formatTimeRange(start: string | null, end: string | null): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-function statusBadge(status: DailyMarkingCoverageStatus) {
+function outcomeBadgeLabel(status: DailyMarkingCoverageStatus, lectureComment?: string | null): string {
+  if (lectureComment) return lectureCommentLabel(lectureComment);
+  switch (status) {
+    case 'sdl':
+      return 'SDL';
+    case 'assignment':
+      return 'ASSIGNMENT';
+    case 'missed_by_lecturer':
+      return 'MISSED BY LECTURER';
+    case 'missed_by_students':
+      return 'MISSED BY STUDENTS';
+    case 'missed_other_programs_holidays':
+      return 'MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS';
+    default:
+      return status;
+  }
+}
+
+function statusBadge(item: Pick<DailyMarkingCoverageItem, 'status' | 'lectureComment'>) {
+  const { status, lectureComment } = item;
   switch (status) {
     case 'complete':
       return (
@@ -65,19 +101,51 @@ function statusBadge(status: DailyMarkingCoverageStatus) {
           Partial
         </Badge>
       );
+    case 'awaiting_lecture':
+      return (
+        <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100 border-slate-200">
+          Awaiting lecture mark
+        </Badge>
+      );
     case 'no_students':
       return (
         <Badge variant="secondary" className="text-muted-foreground">
           No students
         </Badge>
       );
-    default:
+    case 'not_started':
       return (
-        <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200">
-          Not started
+        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-200">
+          Ready to mark
+        </Badge>
+      );
+    default:
+      if (LECTURE_OUTCOME_STATUSES.includes(status)) {
+        return (
+          <Badge className="bg-violet-100 text-violet-900 hover:bg-violet-100 border-violet-200">
+            {outcomeBadgeLabel(status, lectureComment)}
+          </Badge>
+        );
+      }
+      return (
+        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-blue-200">
+          Ready to mark
         </Badge>
       );
   }
+}
+
+function canMarkAttendance(item: DailyMarkingCoverageItem): boolean {
+  return item.attendanceAllowed === true && item.status !== 'no_students';
+}
+
+function markDisabledTitle(item: DailyMarkingCoverageItem): string | undefined {
+  if (canMarkAttendance(item)) return undefined;
+  if (item.status === 'no_students') return 'No students enrolled for this class';
+  if (LECTURE_OUTCOME_STATUSES.includes(item.status)) {
+    return 'Student attendance is not recorded for this lecture outcome';
+  }
+  return 'Mark the lecture Taught / Substituted / Compensation on Lecture Records first';
 }
 
 interface DailyMarkingCoverageProps {
@@ -96,7 +164,7 @@ export default function DailyMarkingCoverage({
   programs,
   programToSchoolMap,
   initialDate,
-  initialStatus = 'pending',
+  initialStatus = 'all',
   refreshToken = 0,
   onMarkClass,
   onCoverageLoaded,
@@ -120,6 +188,8 @@ export default function DailyMarkingCoverage({
   const [statusFilter, setStatusFilter] = useState<DailyMarkingCoverageFilter>(initialStatus);
   const [coverage, setCoverage] = useState<DailyMarkingCoverage | null>(null);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const queryParams = useMemo(() => {
     const params: {
@@ -176,10 +246,18 @@ export default function DailyMarkingCoverage({
     if (initialStatus) setStatusFilter(initialStatus);
   }, [initialStatus]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [queryParams, pageSize]);
+
   const handleMark = (item: DailyMarkingCoverageItem) => {
     if (!onMarkClass) return;
     if (item.status === 'no_students') {
       toast.info('This class has no active students in the cohort.');
+      return;
+    }
+    if (!canMarkAttendance(item)) {
+      toast.info(markDisabledTitle(item) ?? 'Student attendance cannot be marked for this slot.');
       return;
     }
     onMarkClass({
@@ -196,6 +274,10 @@ export default function DailyMarkingCoverage({
 
   const summary = coverage?.summary;
   const items = coverage?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * pageSize;
+  const pagedItems = items.slice(pageStart, pageStart + pageSize);
 
   return (
     <div className="space-y-4">
@@ -206,7 +288,8 @@ export default function DailyMarkingCoverage({
             Marking coverage
           </CardTitle>
           <CardDescription>
-            See which classes have student attendance marked for a day. Open pending rows in the daily bulk grid.
+            Class slots for the day with lecture outcome and student marking progress. SDL, Assignment,
+            and missed outcomes show here with Mark disabled.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -332,11 +415,11 @@ export default function DailyMarkingCoverage({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Pending</p>
+              <p className="text-sm font-medium text-muted-foreground">Needs student mark</p>
               <h3 className="text-2xl font-bold text-amber-700">{loading ? '—' : summary?.pending ?? 0}</h3>
             </div>
             <div className="h-10 w-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-700">
@@ -347,11 +430,24 @@ export default function DailyMarkingCoverage({
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Not started</p>
-              <h3 className="text-2xl font-bold text-red-600">{loading ? '—' : summary?.notStarted ?? 0}</h3>
+              <p className="text-sm font-medium text-muted-foreground">Awaiting lecture</p>
+              <h3 className="text-2xl font-bold text-slate-700">
+                {loading ? '—' : summary?.awaitingLecture ?? 0}
+              </h3>
             </div>
-            <div className="h-10 w-10 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+            <div className="h-10 w-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-700">
               <Clock size={20} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Ready to mark</p>
+              <h3 className="text-2xl font-bold text-blue-700">{loading ? '—' : summary?.notStarted ?? 0}</h3>
+            </div>
+            <div className="h-10 w-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-700">
+              <Users size={20} />
             </div>
           </CardContent>
         </Card>
@@ -370,9 +466,9 @@ export default function DailyMarkingCoverage({
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Complete</p>
-              <h3 className="text-2xl font-bold text-green-600">{loading ? '—' : summary?.complete ?? 0}</h3>
+              <h3 className="text-2xl font-bold text-green-700">{loading ? '—' : summary?.complete ?? 0}</h3>
             </div>
-            <div className="h-10 w-10 bg-green-50 rounded-full flex items-center justify-center text-green-600">
+            <div className="h-10 w-10 bg-green-50 rounded-full flex items-center justify-center text-green-700">
               <CheckCircle size={20} />
             </div>
           </CardContent>
@@ -380,10 +476,12 @@ export default function DailyMarkingCoverage({
         <Card className="bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Total slots</p>
-              <h3 className="text-2xl font-bold text-gray-900">{loading ? '—' : summary?.totalSlots ?? 0}</h3>
+              <p className="text-sm font-medium text-muted-foreground">Lecture outcomes</p>
+              <h3 className="text-2xl font-bold text-violet-800">
+                {loading ? '—' : summary?.lectureOutcomes ?? 0}
+              </h3>
             </div>
-            <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
+            <div className="h-10 w-10 bg-violet-50 rounded-full flex items-center justify-center text-violet-800">
               <ClipboardList size={20} />
             </div>
           </CardContent>
@@ -392,10 +490,34 @@ export default function DailyMarkingCoverage({
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle>Class slots</CardTitle>
-          <CardDescription>
-            Showing {items.length} row{items.length === 1 ? '' : 's'} for the selected filters.
-          </CardDescription>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Class slots</CardTitle>
+              <CardDescription>
+                Showing {items.length === 0 ? 0 : pageStart + 1}–
+                {Math.min(pageStart + pageSize, items.length)} of {items.length} row
+                {items.length === 1 ? '' : 's'} for the selected filters.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground whitespace-nowrap">Rows</Label>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => setPageSize(Number(v))}
+              >
+                <SelectTrigger className="w-[88px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-md border overflow-x-auto">
@@ -426,7 +548,7 @@ export default function DailyMarkingCoverage({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  items.map((item) => (
+                  pagedItems.map((item) => (
                     <TableRow key={`${item.programIntakeId}|${item.classId}`}>
                       <TableCell className="whitespace-nowrap">
                         {formatTimeRange(item.startTime, item.endTime)}
@@ -445,13 +567,14 @@ export default function DailyMarkingCoverage({
                       <TableCell className="text-right tabular-nums">
                         {item.markedStudents}/{item.expectedStudents}
                       </TableCell>
-                      <TableCell>{statusBadge(item.status)}</TableCell>
+                      <TableCell>{statusBadge(item)}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           size="sm"
                           variant="outline"
                           className="text-[#015F2B] border-[#015F2B]/30"
-                          disabled={item.status === 'no_students'}
+                          disabled={!canMarkAttendance(item)}
+                          title={markDisabledTitle(item)}
                           onClick={() => handleMark(item)}
                         >
                           Mark
@@ -462,6 +585,32 @@ export default function DailyMarkingCoverage({
                 )}
               </TableBody>
             </Table>
+            {items.length > 0 && (
+              <div className="flex items-center justify-between border-t px-4 py-2">
+                <span className="text-sm text-muted-foreground">{items.length} total</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {safePage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

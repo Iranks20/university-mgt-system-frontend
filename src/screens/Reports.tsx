@@ -6,7 +6,7 @@ import {
 import { 
   FileText, Download, Filter, Calendar, Users, Building, 
   TrendingUp, AlertCircle, CheckCircle, Search, RotateCcw,
-  ArrowUp, ArrowDown, Loader2,
+  ArrowUp, ArrowDown, Loader2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,12 +29,44 @@ import {
   sortCourseWiseAttendanceRows,
   type CourseWiseRowSortDirection,
 } from '@/lib/attendance-metrics';
+import { UNIVERSITY_NAME } from '@/lib/institution';
+import { lectureCommentLabel } from '@/lib/lecture-outcome';
 import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } from '@/types/student';
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+const REPORT_TABLE_PAGE_SIZE = 20;
+
+function ReportTablePagination({
+  total,
+  page,
+  onPageChange,
+}: {
+  total: number;
+  page: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total === 0) return null;
+  const totalPages = Math.max(1, Math.ceil(total / REPORT_TABLE_PAGE_SIZE));
+  return (
+    <div className="flex items-center justify-between border-t px-4 py-2">
+      <span className="text-sm text-muted-foreground">{total} total</span>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          <ChevronLeft className="h-4 w-4" /> Previous
+        </Button>
+        <span className="text-sm">
+          Page {page} of {totalPages}
+        </span>
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          Next <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function Reports() {
   const { user } = useAuth();
@@ -45,7 +77,7 @@ export default function Reports() {
   const [attendancePie, setAttendancePie] = useState<{ name: string; value: number; color: string }[]>([]);
   const [recentReports, setRecentReports] = useState<{ id: string; name: string; date: string; type: string }[]>([]);
   const [schoolPerformance, setSchoolPerformance] = useState<{ name: string; taught: number; untaught: number; rate: number; scheduled?: number; rateVsScheduled?: number }[]>([]);
-  const [lecturerTableData, setLecturerTableData] = useState<{ id: string; name: string; school: string; taught: number; missed: number; rate: number }[]>([]);
+  const [lecturerTableData, setLecturerTableData] = useState<{ id: string; name: string; school: string; department: string; taught: number; missed: number; rate: number }[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [schoolsLoading, setSchoolsLoading] = useState(false);
   const [lecturersLoading, setLecturersLoading] = useState(false);
@@ -64,8 +96,12 @@ export default function Reports() {
   const [retryCount, setRetryCount] = useState(0);
   const [lecturerSearch, setLecturerSearch] = useState('');
   const [schoolFilter, setSchoolFilter] = useState<string>('all');
+  const [lecturerDeptFilter, setLecturerDeptFilter] = useState<string>('all');
+  const [lecturerRateFilter, setLecturerRateFilter] = useState<'all' | 'below_90' | '90_plus'>('all');
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedLecturer, setSelectedLecturer] = useState<{ id: string; name: string; school: string; taught: number; missed: number; rate: number } | null>(null);
+  const [selectedLecturer, setSelectedLecturer] = useState<{ id: string; name: string; school: string; department: string; taught: number; missed: number; rate: number } | null>(null);
+  const [lecturerDetailLoading, setLecturerDetailLoading] = useState(false);
+  const [lecturerDetail, setLecturerDetail] = useState<Awaited<ReturnType<typeof analyticsService.getLecturerStatsDetail>>>(null);
   const [reconciliationData, setReconciliationData] = useState<{ date: string; className: string; lecturerName: string; scheduled: boolean; outcome: string; substituteLecturerName?: string | null }[]>([]);
   const [reconciliationLoading, setReconciliationLoading] = useState(false);
   const [reconDateFrom, setReconDateFrom] = useState(() => {
@@ -105,6 +141,9 @@ export default function Reports() {
   const [exportAllLoading, setExportAllLoading] = useState(false);
   const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
+  const [lecturerPage, setLecturerPage] = useState(1);
+  const [classAttendPage, setClassAttendPage] = useState(1);
+  const [courseWisePage, setCourseWisePage] = useState(1);
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
   >([]);
@@ -264,14 +303,16 @@ export default function Reports() {
   useEffect(() => {
     setLecturersLoading(true);
     const params = getLecturerDateParams();
-    analyticsService.getTopPerformingStaff(200, params?.dateFrom, params?.dateTo).then((list) => {
+    const school = schoolFilter === 'all' ? undefined : schoolFilter;
+    analyticsService.getTopPerformingStaff(500, params?.dateFrom, params?.dateTo, school).then((list) => {
       const arr = Array.isArray(list) ? list : [];
       setLecturerTableData(arr.map((s: any, idx: number) => {
         const rate = typeof s.attendance === 'number' ? s.attendance : (typeof s.attendance === 'string' ? parseFloat(s.attendance.replace('%', '')) : 0) || 0;
         return {
           id: s.id || String(idx),
           name: s.name ?? '—',
-          school: s.department ?? '—',
+          school: s.school ?? '—',
+          department: s.department ?? '—',
           taught: s.classes ?? 0,
           missed: s.missedClasses ?? s.missedCount ?? s.missed ?? 0,
           rate: Math.round(rate * 10) / 10,
@@ -279,7 +320,11 @@ export default function Reports() {
       }));
       setLecturersLoading(false);
     }).catch(() => setLecturersLoading(false));
-  }, [lecturerDateRange]);
+  }, [lecturerDateRange, schoolFilter]);
+
+  useEffect(() => {
+    setLecturerDeptFilter('all');
+  }, [schoolFilter, lecturerDateRange]);
 
   useEffect(() => {
     academicService.getSchools().then((list) => {
@@ -290,8 +335,32 @@ export default function Reports() {
     academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
     academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
     academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
-    academicService.getCourses({ limit: 500 }).then((r) => setAttendCourses(r.data || [])).catch(() => setAttendCourses([]));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params: {
+      programId?: string;
+      level?: number;
+      semester?: number;
+    } = {};
+    if (attendSelectedProgramId !== ALL_VALUE) params.programId = attendSelectedProgramId;
+    if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
+    if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
+
+    academicService
+      .getAllCourses(params)
+      .then((courses) => {
+        if (!cancelled) setAttendCourses(courses);
+      })
+      .catch(() => {
+        if (!cancelled) setAttendCourses([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attendSelectedProgramId, attendSelectedYear, attendSelectedSemester]);
 
   const attendProgramToSchoolMap = useMemo(() => {
     const levelToSchool = new Map(attendLevels.map((l) => [l.id, l.schoolId]));
@@ -309,12 +378,26 @@ export default function Reports() {
     [attendFilteredPrograms]
   );
 
+  const attendDeptIdsInScope = useMemo(() => {
+    if (attendSelectedSchool === ALL_VALUE) return null;
+    const schoolLevelIds = new Set(
+      attendLevels.filter((l) => l.schoolId === attendSelectedSchool).map((l) => l.id)
+    );
+    return new Set(
+      attendDepartments.filter((d) => schoolLevelIds.has(d.levelId)).map((d) => d.id)
+    );
+  }, [attendSelectedSchool, attendLevels, attendDepartments]);
+
   const attendFilteredCourses = useMemo(() => {
     let list = attendCourses;
     if (attendSelectedProgramId !== ALL_VALUE) {
       list = list.filter((c) => c.programId === attendSelectedProgramId);
-    } else if (attendSelectedSchool !== ALL_VALUE) {
-      list = list.filter((c) => c.programId && attendProgramIdsInScope.has(c.programId));
+    } else if (attendSelectedSchool !== ALL_VALUE && attendDeptIdsInScope) {
+      list = list.filter(
+        (c) =>
+          attendDeptIdsInScope.has(c.departmentId) ||
+          (c.programId != null && attendProgramIdsInScope.has(c.programId))
+      );
     }
     if (attendSelectedYear !== ALL_VALUE) {
       list = list.filter((c) => c.level === Number(attendSelectedYear));
@@ -330,7 +413,18 @@ export default function Reports() {
     attendSelectedYear,
     attendSelectedSemester,
     attendProgramIdsInScope,
+    attendDeptIdsInScope,
   ]);
+
+  useEffect(() => {
+    if (
+      attendSelectedCourseId !== ALL_VALUE &&
+      !attendFilteredCourses.some((c) => c.id === attendSelectedCourseId)
+    ) {
+      setAttendSelectedCourseId(ALL_VALUE);
+      setAttendSelectedClassId(ALL_VALUE);
+    }
+  }, [attendFilteredCourses, attendSelectedCourseId]);
 
   useEffect(() => {
     if (attendSelectedCourseId === ALL_VALUE) {
@@ -396,6 +490,94 @@ export default function Reports() {
     return sortCourseWiseAttendanceRows(courseWiseReport.rows, courseWiseNameSort);
   }, [courseWiseReport, courseWiseNameSort]);
 
+  const filteredLecturers = useMemo(
+    () =>
+      lecturerTableData.filter((lecturer) => {
+        const matchesSearch =
+          lecturerSearch === '' || lecturer.name.toLowerCase().includes(lecturerSearch.toLowerCase());
+        const matchesDept =
+          lecturerDeptFilter === 'all' || lecturer.department === lecturerDeptFilter;
+        const matchesRate =
+          lecturerRateFilter === 'all' ||
+          (lecturerRateFilter === 'below_90' && lecturer.rate < 90) ||
+          (lecturerRateFilter === '90_plus' && lecturer.rate >= 90);
+        return matchesSearch && matchesDept && matchesRate;
+      }),
+    [lecturerTableData, lecturerSearch, lecturerDeptFilter, lecturerRateFilter]
+  );
+
+  const lecturerSchoolOptions = useMemo(() => {
+    const fromData = lecturerTableData.map((l) => l.school).filter((s) => s && s !== '—');
+    const fromSchools = schoolsList.map((s) => s.name);
+    return Array.from(new Set([...fromSchools, ...fromData])).sort();
+  }, [lecturerTableData, schoolsList]);
+
+  const lecturerDeptOptions = useMemo(() => {
+    return Array.from(
+      new Set(lecturerTableData.map((l) => l.department).filter((d) => d && d !== '—' && d !== 'N/A'))
+    ).sort();
+  }, [lecturerTableData]);
+
+  const paginatedLecturers = useMemo(() => {
+    const start = (lecturerPage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return filteredLecturers.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [filteredLecturers, lecturerPage]);
+
+  const paginatedCourseWiseRows = useMemo(() => {
+    const start = (courseWisePage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return courseWiseSortedRows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [courseWiseSortedRows, courseWisePage]);
+
+  const paginatedClassAttendRows = useMemo(() => {
+    const rows = classAttendReport?.students ?? [];
+    const start = (classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE;
+    return rows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [classAttendReport, classAttendPage]);
+
+  const openLecturerDetails = async (lecturer: {
+    id: string;
+    name: string;
+    school: string;
+    department: string;
+    taught: number;
+    missed: number;
+    rate: number;
+  }) => {
+    setSelectedLecturer(lecturer);
+    setDetailsOpen(true);
+    setLecturerDetail(null);
+    setLecturerDetailLoading(true);
+    try {
+      const params = getLecturerDateParams();
+      const detail = await analyticsService.getLecturerStatsDetail(
+        lecturer.id,
+        params?.dateFrom,
+        params?.dateTo
+      );
+      setLecturerDetail(detail);
+      if (!detail) {
+        toast.error('Could not load lecturer lecture records for this period.');
+      }
+    } catch {
+      toast.error('Could not load lecturer lecture records for this period.');
+      setLecturerDetail(null);
+    } finally {
+      setLecturerDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLecturerPage(1);
+  }, [lecturerSearch, schoolFilter, lecturerDeptFilter, lecturerRateFilter, lecturerDateRange, lecturerTableData]);
+
+  useEffect(() => {
+    setCourseWisePage(1);
+  }, [courseWiseReport, courseWiseNameSort]);
+
+  useEffect(() => {
+    setClassAttendPage(1);
+  }, [classAttendReport]);
+
   const toggleCourseWiseNameSort = () => {
     setCourseWiseNameSort((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
@@ -414,6 +596,7 @@ export default function Reports() {
         return;
       }
       setClassAttendReport(report);
+      setClassAttendPage(1);
       if (report.students.length === 0) {
         toast.info('No enrolled students found for the selected scope.');
       }
@@ -456,6 +639,7 @@ export default function Reports() {
       }
       setCourseWiseReport(report);
       setCourseWiseNameSort('asc');
+      setCourseWisePage(1);
       if (report.rows.length === 0) {
         toast.info('No enrolled course units found for the selected scope.');
       }
@@ -624,18 +808,18 @@ export default function Reports() {
     setExportAllLoading(true);
     try {
       const result = await reportService.exportReport('all', 'xlsx');
-      if (result.downloadUrl) {
-        const link = document.createElement('a');
-        link.href = result.downloadUrl;
+                if (result.downloadUrl) {
+                  const link = document.createElement('a');
+                  link.href = result.downloadUrl;
         link.download = result.filename.endsWith('.xlsx') ? result.filename : `${result.filename}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
         toast.success('Excel report downloaded.');
-      }
-    } catch (error: any) {
-      console.error('Error exporting reports:', error);
-      toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
+                }
+              } catch (error: any) {
+                console.error('Error exporting reports:', error);
+                toast.error(`Failed to export: ${error?.message || 'Unknown error'}`);
     } finally {
       setExportAllLoading(false);
     }
@@ -644,21 +828,21 @@ export default function Reports() {
   const handleNewReport = async () => {
     if (headerReportActionBusy) return;
     setNewReportLoading(true);
-    try {
-      const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
+              try {
+                const report = await reportService.generateReport('lecture-records', 'QA Lecture Records Report', {}, {});
       await reportService.downloadReport(report.id, 'xlsx');
       toast.success('Report saved and downloaded as Excel.');
-      const reports = await reportService.getReports();
-      const reportList = Array.isArray(reports) ? reports : [];
-      setRecentReports(reportList.map((r: any) => ({
-        id: r.id,
-        name: r.title || `${r.type || 'Report'}`,
-        date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
-        type: r.type || '—',
-      })));
-    } catch (error: any) {
-      console.error('Error generating report:', error);
-      toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
+                const reports = await reportService.getReports();
+                const reportList = Array.isArray(reports) ? reports : [];
+                setRecentReports(reportList.map((r: any) => ({
+                  id: r.id,
+                  name: r.title || `${r.type || 'Report'}`,
+                  date: r.generatedAt ? new Date(r.generatedAt).toISOString().slice(0, 10) : '—',
+                  type: r.type || '—',
+                })));
+              } catch (error: any) {
+                console.error('Error generating report:', error);
+                toast.error(`Failed to generate report: ${error?.message || 'Unknown error'}`);
     } finally {
       setNewReportLoading(false);
     }
@@ -1120,45 +1304,81 @@ export default function Reports() {
 
           {/* LECTURERS TAB */}
           <TabsContent value="lecturers" className="space-y-4">
-             <div className="flex flex-wrap items-center gap-4 mb-4">
-               <Select value={lecturerDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setLecturerDateRange(v)}>
-                 <SelectTrigger className="w-[180px]">
-                   <SelectValue placeholder="Date range" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="all">All time</SelectItem>
-                   <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                   <SelectItem value="this_term">Last 3 months</SelectItem>
-                 </SelectContent>
-               </Select>
-               <div className="relative flex-1 min-w-[200px] max-w-sm">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search lecturer..." className="pl-8" value={lecturerSearch} onChange={(e) => setLecturerSearch(e.target.value)} />
-               </div>
-               <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Filter School" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Schools</SelectItem>
-                    {Array.from(new Set([...schoolPerformance.map(s => s.name), ...lecturerTableData.map(l => l.school).filter(Boolean)])).sort().map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
-                    ))}
-                  </SelectContent>
-               </Select>
-             </div>
-             
              <Card>
-               <CardHeader>
+               <CardHeader className="pb-3">
                   <CardTitle>Lecturer Performance</CardTitle>
                   <CardDescription>Top performing staff teaching records and attendance rates.</CardDescription>
                </CardHeader>
                <CardContent>
+                 <div className="flex flex-wrap gap-2 items-center mb-6">
+                   <Select value={lecturerDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setLecturerDateRange(v)}>
+                     <SelectTrigger className="w-[180px]">
+                       <SelectValue placeholder="Date range" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="all">All time</SelectItem>
+                       <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                       <SelectItem value="this_term">Last 3 months</SelectItem>
+                     </SelectContent>
+                   </Select>
+                   <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Filter School" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Schools</SelectItem>
+                        {lecturerSchoolOptions.map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                   </Select>
+                   <Select value={lecturerDeptFilter} onValueChange={setLecturerDeptFilter}>
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Departments</SelectItem>
+                        {lecturerDeptOptions.map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                   </Select>
+                   <Select value={lecturerRateFilter} onValueChange={(v: 'all' | 'below_90' | '90_plus') => setLecturerRateFilter(v)}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Teaching rate" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All rates</SelectItem>
+                        <SelectItem value="90_plus">90% and above</SelectItem>
+                        <SelectItem value="below_90">Below 90%</SelectItem>
+                      </SelectContent>
+                   </Select>
+                   <div className="relative flex-1 min-w-[200px] max-w-sm">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Search lecturer..." className="pl-8" value={lecturerSearch} onChange={(e) => setLecturerSearch(e.target.value)} />
+                   </div>
+                   {(schoolFilter !== 'all' || lecturerDeptFilter !== 'all' || lecturerRateFilter !== 'all' || lecturerSearch) && (
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={() => {
+                         setSchoolFilter('all');
+                         setLecturerDeptFilter('all');
+                         setLecturerRateFilter('all');
+                         setLecturerSearch('');
+                       }}
+                     >
+                       Clear filters
+                     </Button>
+                   )}
+                 </div>
+                 <div className="rounded-md border">
                  <Table>
                    <TableHeader>
                      <TableRow>
                        <TableHead>Lecturer Name</TableHead>
-                       <TableHead>School / Dept</TableHead>
+                       <TableHead>School</TableHead>
+                       <TableHead>Department</TableHead>
                        <TableHead className="text-right">Taught</TableHead>
                        <TableHead className="text-right">Missed</TableHead>
                        <TableHead className="text-right">Rate</TableHead>
@@ -1167,20 +1387,15 @@ export default function Reports() {
                    </TableHeader>
                    <TableBody>
                      {lecturersLoading ? (
-                       <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-                     ) : lecturerTableData.length === 0 ? (
-                       <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">No lecturer data yet.</TableCell></TableRow>
+                       <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
+                     ) : filteredLecturers.length === 0 ? (
+                       <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No lecturer data for the selected filters.</TableCell></TableRow>
                      ) : (
-                       lecturerTableData
-                         .filter(lecturer => {
-                           const matchesSearch = lecturerSearch === '' || lecturer.name.toLowerCase().includes(lecturerSearch.toLowerCase());
-                           const matchesFilter = schoolFilter === 'all' || lecturer.school.toLowerCase().includes(schoolFilter.toLowerCase());
-                           return matchesSearch && matchesFilter;
-                         })
-                         .map((lecturer) => (
+                       paginatedLecturers.map((lecturer) => (
                          <TableRow key={lecturer.id}>
                            <TableCell className="font-medium">{lecturer.name}</TableCell>
                            <TableCell>{lecturer.school}</TableCell>
+                           <TableCell>{lecturer.department}</TableCell>
                            <TableCell className="text-right">{lecturer.taught}</TableCell>
                            <TableCell className="text-right text-red-600">{lecturer.missed}</TableCell>
                            <TableCell className="text-right">
@@ -1193,10 +1408,7 @@ export default function Reports() {
                                variant="ghost" 
                                size="sm" 
                                className="text-[#015F2B]"
-                               onClick={() => {
-                                 setSelectedLecturer(lecturer);
-                                 setDetailsOpen(true);
-                               }}
+                               onClick={() => openLecturerDetails(lecturer)}
                              >
                                View Details
                              </Button>
@@ -1206,6 +1418,12 @@ export default function Reports() {
                      )}
                    </TableBody>
                  </Table>
+                 <ReportTablePagination
+                   total={filteredLecturers.length}
+                   page={lecturerPage}
+                   onPageChange={setLecturerPage}
+                 />
+                 </div>
                </CardContent>
              </Card>
           </TabsContent>
@@ -1214,6 +1432,9 @@ export default function Reports() {
               <Card>
                 <CardHeader>
                   <CardTitle>{classAttendReport?.title ?? 'Class / course attendance summary'}</CardTitle>
+                  {classAttendReport ? (
+                    <CardDescription>{classAttendReport.universityName || UNIVERSITY_NAME}</CardDescription>
+                  ) : null}
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
@@ -1361,9 +1582,11 @@ export default function Reports() {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          classAttendReport.students.map((row, idx) => (
+                          paginatedClassAttendRows.map((row, idx) => (
                             <TableRow key={row.studentId}>
-                              <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {(classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE + idx + 1}
+                              </TableCell>
                               <TableCell className="font-medium">{row.studentName}</TableCell>
                               <TableCell>{row.registrationNumber}</TableCell>
                               <TableCell className="text-right">
@@ -1382,6 +1605,11 @@ export default function Reports() {
                         )}
                       </TableBody>
                     </Table>
+                    <ReportTablePagination
+                      total={classAttendReport?.students.length ?? 0}
+                      page={classAttendPage}
+                      onPageChange={setClassAttendPage}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -1391,6 +1619,9 @@ export default function Reports() {
             <Card>
               <CardHeader>
                 <CardTitle>{courseWiseReport?.title ?? 'Course-wise student attendance summary'}</CardTitle>
+                {courseWiseReport ? (
+                  <CardDescription>{courseWiseReport.universityName || UNIVERSITY_NAME}</CardDescription>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
@@ -1558,8 +1789,8 @@ export default function Reports() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        courseWiseSortedRows.map((row) => (
-                          <TableRow key={`${row.registrationNumber}-${row.courseId}`}>
+                        paginatedCourseWiseRows.map((row) => (
+                          <TableRow key={`${row.registrationNumber}-${row.courseId}-${row.serialNo}`}>
                             <TableCell className="text-muted-foreground">{row.serialNo}</TableCell>
                             <TableCell>{row.registrationNumber}</TableCell>
                             <TableCell className="font-medium">{row.studentName}</TableCell>
@@ -1578,6 +1809,11 @@ export default function Reports() {
                       )}
                     </TableBody>
                   </Table>
+                  <ReportTablePagination
+                    total={courseWiseSortedRows.length}
+                    page={courseWisePage}
+                    onPageChange={setCourseWisePage}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -1876,42 +2112,190 @@ export default function Reports() {
         </Tabs>
 
         {/* Lecturer Details Dialog */}
-        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+        <Dialog
+          open={detailsOpen}
+          onOpenChange={(open) => {
+            setDetailsOpen(open);
+            if (!open) {
+              setLecturerDetail(null);
+              setLecturerDetailLoading(false);
+            }
+          }}
+        >
+          <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Lecturer Performance Details</DialogTitle>
               <DialogDescription>
-                Performance metrics for {selectedLecturer?.name}
+                Full lecture evidence for {selectedLecturer?.name}
+                {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
+                  ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
+                  : lecturerDateRange === 'all'
+                    ? ' · all time'
+                    : ''}
               </DialogDescription>
             </DialogHeader>
             {selectedLecturer && (
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Name</p>
-                    <p className="text-sm font-medium">{selectedLecturer.name}</p>
+              <div className="space-y-6 py-2">
+                {lecturerDetailLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Loading lecture records…
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">School</p>
-                    <p className="text-sm font-medium">{selectedLecturer.school}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Classes Taught</p>
-                    <p className="text-sm font-medium">{selectedLecturer.taught}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Classes Missed</p>
-                    <p className={`text-sm font-medium ${selectedLecturer.missed > 0 ? 'text-red-600' : ''}`}>
-                      {selectedLecturer.missed}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Teaching Rate</p>
-                    <p className={`text-sm font-bold ${selectedLecturer.rate >= 90 ? 'text-green-600' : selectedLecturer.rate >= 80 ? 'text-orange-600' : 'text-red-600'}`}>
-                      {selectedLecturer.rate.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Name</p>
+                        <p className="text-sm font-medium">{lecturerDetail?.lecturer.name || selectedLecturer.name}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Staff number</p>
+                        <p className="text-sm font-medium">{lecturerDetail?.lecturer.staffNumber || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Email</p>
+                        <p className="text-sm font-medium">{lecturerDetail?.lecturer.email || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">School</p>
+                        <p className="text-sm font-medium">{lecturerDetail?.lecturer.school || selectedLecturer.school}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Department</p>
+                        <p className="text-sm font-medium">{lecturerDetail?.lecturer.department || selectedLecturer.department}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Teaching rate</p>
+                        <p className={`text-sm font-bold ${(lecturerDetail?.summary.rate ?? selectedLecturer.rate) >= 90 ? 'text-green-600' : (lecturerDetail?.summary.rate ?? selectedLecturer.rate) >= 80 ? 'text-orange-600' : 'text-red-600'}`}>
+                          {(lecturerDetail?.summary.rate ?? selectedLecturer.rate).toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Total records</p>
+                          <p className="text-xl font-bold">{lecturerDetail?.summary.totalRecords ?? '—'}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Taught</p>
+                          <p className="text-xl font-bold text-[#015F2B]">{lecturerDetail?.summary.taught ?? selectedLecturer.taught}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Missed by lecturer</p>
+                          <p className="text-xl font-bold text-red-600">{lecturerDetail?.summary.missedByLecturer ?? selectedLecturer.missed}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Other outcomes</p>
+                          <p className="text-xl font-bold">{lecturerDetail?.summary.otherOutcomes ?? '—'}</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {lecturerDetail?.summary.rateBasis && (
+                      <p className="text-xs text-muted-foreground">
+                        Rate calculation: {lecturerDetail.summary.rateBasis}. Other outcomes (SDL, assignment, pending, etc.) are listed below but excluded from the rate denominator.
+                      </p>
+                    )}
+
+                    {lecturerDetail && Object.keys(lecturerDetail.summary.byComment).length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(lecturerDetail.summary.byComment)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([comment, count]) => (
+                            <Badge key={comment} variant="secondary">
+                              {lectureCommentLabel(comment)}: {count}
+                            </Badge>
+                          ))}
+                      </div>
+                    )}
+
+                    {lecturerDetail && lecturerDetail.byClass.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-semibold">By class / course unit</h4>
+                        <div className="rounded-md border overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Class</TableHead>
+                                <TableHead>Course unit</TableHead>
+                                <TableHead className="text-right">Taught</TableHead>
+                                <TableHead className="text-right">Missed</TableHead>
+                                <TableHead className="text-right">Total</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {lecturerDetail.byClass.map((row) => (
+                                <TableRow key={`${row.className}-${row.courseUnit}`}>
+                                  <TableCell>{row.className}</TableCell>
+                                  <TableCell>{row.courseUnit}</TableCell>
+                                  <TableCell className="text-right">{row.taught}</TableCell>
+                                  <TableCell className="text-right text-red-600">{row.missedByLecturer}</TableCell>
+                                  <TableCell className="text-right">{row.total}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold">Lecture records</h4>
+                      <div className="rounded-md border overflow-x-auto max-h-[360px] overflow-y-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Class</TableHead>
+                              <TableHead>Course unit</TableHead>
+                              <TableHead>Outcome</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Scheduled</TableHead>
+                              <TableHead>Check-in</TableHead>
+                              <TableHead>Check-out</TableHead>
+                              <TableHead>Substitute</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {!lecturerDetail || lecturerDetail.records.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={9} className="text-center py-6 text-muted-foreground">
+                                  No lecture records found for this lecturer in the selected period.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              lecturerDetail.records.map((row) => (
+                                <TableRow key={row.id}>
+                                  <TableCell className="whitespace-nowrap">{row.date || '—'}</TableCell>
+                                  <TableCell>{row.className}</TableCell>
+                                  <TableCell className="max-w-[180px] truncate">{row.courseUnit}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{lectureCommentLabel(row.comment)}</Badge>
+                                  </TableCell>
+                                  <TableCell>{row.status || '—'}</TableCell>
+                                  <TableCell className="whitespace-nowrap">
+                                    {[row.timeForStarting, row.timeOutForEnding].filter(Boolean).join(' – ') || '—'}
+                                  </TableCell>
+                                  <TableCell>{row.checkInTime || '—'}</TableCell>
+                                  <TableCell>{row.checkOutTime || '—'}</TableCell>
+                                  <TableCell>{row.substituteLecturerName || '—'}</TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </DialogContent>

@@ -12,6 +12,8 @@ import ManagementLecturerPerformance from './screens/ManagementLecturerPerforman
 import ManagementStudentDetails from './screens/ManagementStudentDetails'
 import ManagementDepartments from './screens/ManagementDepartments'
 import ManagementOverview from './screens/ManagementOverview'
+import ManagementRiskRegister from './screens/ManagementRiskRegister'
+import ManagementEnrolmentHealth from './screens/ManagementEnrolmentHealth'
 import StudentClasses from './screens/StudentClasses'
 import LecturerPerformance from './screens/LecturerPerformance'
 import LecturerCourseAttendance from './screens/LecturerCourseAttendance'
@@ -53,6 +55,12 @@ import HrDocumentsPage from './screens/hr/pages/HrDocumentsPage'
 import HrAppraisalsPage from './screens/hr/pages/HrAppraisalsPage'
 import HrReportsPage from './screens/hr/pages/HrReportsPage'
 import StaffAppraisal from './screens/StaffAppraisal'
+import GraduationRegistration from './screens/GraduationRegistration'
+import GraduationDashboardPage from './screens/graduation/pages/GraduationDashboardPage'
+import GraduationEventPage from './screens/graduation/pages/GraduationEventPage'
+import GraduationCommitteesPage, { GraduationCommitteeSlugRedirect } from './screens/graduation/pages/GraduationCommitteesPage'
+import GraduationRegistrationsPage from './screens/graduation/pages/GraduationRegistrationsPage'
+import GraduationProtectedRoute from './components/graduation/GraduationProtectedRoute'
 import { homePathForRole } from './lib/clinical-access'
 import { routeGuardProps } from './lib/nav-permissions'
 
@@ -67,6 +75,25 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 	return <>{children}</>
 }
 
+function GraduationDashboardGate() {
+	const { userRole, user } = useAuth()
+	if (userRole === 'Graduation') {
+		return <Navigate to="/graduation/dashboard" replace />
+	}
+	if (userRole === 'Admin') {
+		return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
+	}
+	return <Dashboard />
+}
+
+function DefaultRedirect() {
+	const { isAuthenticated, userRole, user } = useAuth()
+	if (!isAuthenticated) {
+		return <Navigate to="/login" replace />
+	}
+	return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
+}
+
 function AppRoutes() {
 	return (
 		<Routes>
@@ -79,13 +106,14 @@ function AppRoutes() {
 					</PublicRoute>
 				} 
 			/>
+			<Route path="/graduation-registration" element={<GraduationRegistration />} />
 			
 			{/* Protected Routes - All users */}
 			<Route 
 				path="/dashboard" 
 				element={
 					<ProtectedRoute {...routeGuardProps('/dashboard')}>
-						<Dashboard />
+						<GraduationDashboardGate />
 					</ProtectedRoute>
 				} 
 			/>
@@ -166,6 +194,22 @@ function AppRoutes() {
 						<ManagementOverview />
 					</ProtectedRoute>
 				} 
+			/>
+			<Route
+				path="/management-risk"
+				element={
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-risk')}>
+						<ManagementRiskRegister />
+					</ProtectedRoute>
+				}
+			/>
+			<Route
+				path="/management-enrolment"
+				element={
+					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-enrolment')}>
+						<ManagementEnrolmentHealth />
+					</ProtectedRoute>
+				}
 			/>
 			<Route 
 				path="/management-departments" 
@@ -348,6 +392,52 @@ function AppRoutes() {
 					</ProtectedRoute>
 				} 
 			/>
+			<Route 
+				path="/admin-graduation-registrations" 
+				element={<Navigate to="/graduation/registrations" replace />}
+			/>
+
+			<Route path="/graduation" element={<Navigate to="/graduation/dashboard" replace />} />
+			<Route
+				path="/graduation/dashboard"
+				element={
+					<GraduationProtectedRoute path="/graduation/dashboard">
+						<GraduationDashboardPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/event"
+				element={
+					<GraduationProtectedRoute path="/graduation/event" requireManage>
+						<GraduationEventPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/committees"
+				element={
+					<GraduationProtectedRoute path="/graduation/committees">
+						<GraduationCommitteesPage />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/committees/:slug"
+				element={
+					<GraduationProtectedRoute path="/graduation/committees">
+						<GraduationCommitteeSlugRedirect />
+					</GraduationProtectedRoute>
+				}
+			/>
+			<Route
+				path="/graduation/registrations"
+				element={
+					<GraduationProtectedRoute path="/graduation/registrations" requireRegistrations>
+						<GraduationRegistrationsPage />
+					</GraduationProtectedRoute>
+				}
+			/>
 			
 			{/* QA Routes */}
 			<Route 
@@ -371,7 +461,7 @@ function AppRoutes() {
 			<Route path="/" element={<Navigate to="/login" replace />} />
 			
 			{/* Catch all - redirect to dashboard if authenticated, otherwise login */}
-			<Route path="*" element={<Navigate to="/dashboard" replace />} />
+			<Route path="*" element={<DefaultRedirect />} />
 		</Routes>
 	)
 }

@@ -1,5 +1,6 @@
 import Components from "../components"
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router';
 import { 
   Calendar as CalendarIcon, Clock, MapPin, 
   ChevronLeft, ChevronRight, BookOpen, User, LogIn, LogOut,
@@ -22,14 +23,8 @@ import type { TimetableClass } from '@/services/timetable.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-// Generate day names dynamically for better localization support
-const getDayNames = (): string[] => {
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  // Return weekdays (Monday-Saturday) for timetable
-  return days.slice(1);
-};
-
-const DAYS = getDayNames();
+const PRESENCE_GRACE_MINUTES = 15;
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const QA_DAY_OPTIONS = [
   { value: '1', label: 'Monday' },
@@ -74,18 +69,22 @@ function normalizeTimetableClassRecord(item: TimetableClass): TimetableClass {
 interface TimetableItem {
   id: string;
   day: string | null;
+  dayOfWeek?: number | null;
   time: string;
   course: string;
   code: string;
   venue: string;
   lecturer: string;
   type: string;
+  startTime?: string;
+  endTime?: string;
   isLive?: boolean;
 }
 
 export default function Timetable() {
   const { role } = useRole();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'list' | 'week'>('week');
   const [selectedDay, setSelectedDay] = useState('Monday');
   const [timetableData, setTimetableData] = useState<TimetableItem[]>([]);
@@ -93,6 +92,7 @@ export default function Timetable() {
   const [qaTotal, setQaTotal] = useState(0);
   const qaPageSize = 50;
   const [loading, setLoading] = useState(true);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [activeCheckIns, setActiveCheckIns] = useState<Record<string, { checkIn: string; checkOut?: string }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
@@ -143,6 +143,10 @@ export default function Timetable() {
 
   const parseTimeToMinutes = (timeStr: string): number | null => {
     if (!timeStr) return null;
+    if (timeStr.includes('T')) {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+    }
     const parts = timeStr.split(':');
     if (parts.length < 2) return null;
     const hours = parseInt(parts[0], 10);
@@ -153,36 +157,36 @@ export default function Timetable() {
 
   const formatTimeDisplay = (value: string | null | undefined): string => {
     if (!value) return '';
-    // If ISO datetime, format to local HH:MM
     if (value.includes('T')) {
       const d = new Date(value);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
       }
     }
-    // Already HH:MM or similar
+    const match = value.match(/^(\d{1,2}):(\d{2})/);
+    if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
     return value;
   };
 
-  const isClassLive = (startTime: string, endTime: string, dayOfWeek: number | null): boolean => {
+  const isClassInPresenceWindow = (startTime: string, endTime: string, dayOfWeek: number | null): boolean => {
     if (!startTime || !endTime || dayOfWeek === null) return false;
-    const now = new Date();
-    const currentDay = now.getDay();
-    if (currentDay !== dayOfWeek) return false;
+    const now = new Date(nowTick);
+    if (now.getDay() !== dayOfWeek) return false;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     const startMinutes = parseTimeToMinutes(startTime);
     const endMinutes = parseTimeToMinutes(endTime);
     if (startMinutes === null || endMinutes === null) return false;
-    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    return (
+      currentMinutes >= startMinutes - PRESENCE_GRACE_MINUTES &&
+      currentMinutes <= endMinutes + PRESENCE_GRACE_MINUTES
+    );
   };
 
   const loadTimetable = async () => {
     try {
       setLoading(true);
       let data: any[] = [];
-      if (role === 'Student') {
-        data = await timetableService.getMyTimetable();
-      } else if (role === 'Lecturer') {
+      if (role === 'Student' || role === 'Lecturer') {
         data = await academicService.getTimetable();
       } else if (role === 'QA') {
         const query: {
@@ -223,22 +227,24 @@ export default function Timetable() {
         const dayName =
           dayOfWeek !== null && dayOfWeek !== undefined && dayOfWeek >= 0 && dayOfWeek <= 6
             ? dayNamesFull[dayOfWeek]
-            : null;
-        const startDisplay = formatTimeDisplay(item.startTime || '');
-        const endDisplay = formatTimeDisplay(item.endTime || '');
-        const live = isClassLive(startDisplay, endDisplay, dayOfWeek);
+            : (typeof item.day === 'string' ? item.day : null);
+        const startRaw = item.startTime || '';
+        const endRaw = item.endTime || '';
+        const startDisplay = formatTimeDisplay(startRaw);
+        const endDisplay = formatTimeDisplay(endRaw);
+        const live = isClassInPresenceWindow(startRaw || startDisplay, endRaw || endDisplay, dayOfWeek);
         return {
           id: item.id,
           day: dayName,
           dayOfWeek,
           time: startDisplay && endDisplay ? `${startDisplay} - ${endDisplay}` : 'TBA',
-          course: fromScheduled ? (item.courseName || 'Unknown Course') : (item.course?.name || 'Unknown Course'),
+          course: fromScheduled ? (item.courseName || 'Unknown Course') : (item.course?.name || item.name || 'Unknown Course'),
           code: fromScheduled ? (item.courseCode || '—') : (item.course?.code || '—'),
           venue: fromScheduled ? (item.venue || 'TBA') : (item.venue?.name || 'TBA'),
           lecturer: fromScheduled ? (item.lecturerName || 'TBA') : (item.lecturer?.name || 'TBA'),
           type: 'Lecture',
-          startTime: item.startTime,
-          endTime: item.endTime,
+          startTime: startRaw || startDisplay,
+          endTime: endRaw || endDisplay,
           isLive: live,
         };
       });
@@ -263,11 +269,41 @@ export default function Timetable() {
   }, [user, role, qaPage, qaFilters.day, qaFilters.classStatus]);
 
   useEffect(() => {
+    const tick = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    setTimetableData((prev) =>
+      prev.map((item) => ({
+        ...item,
+        isLive: isClassInPresenceWindow(
+          item.startTime || '',
+          item.endTime || '',
+          item.dayOfWeek ?? null
+        ),
+      }))
+    );
+  }, [nowTick]);
+
+  useEffect(() => {
+    const reload = () => {
+      loadTimetable();
+    };
+    window.addEventListener('class-updated', reload);
+    window.addEventListener('focus', reload);
+    return () => {
+      window.removeEventListener('class-updated', reload);
+      window.removeEventListener('focus', reload);
+    };
+  }, [role, user, qaPage, qaFilters.day, qaFilters.classStatus]);
+
+  useEffect(() => {
     if (role === 'QA') {
       const now = new Date();
-      const dayIndex = now.getDay(); // 0-6
-      const mondayBasedIndex = dayIndex === 0 ? 6 : dayIndex - 1; // 0=Mon,...,6=Sun
-      const todayName = DAYS[mondayBasedIndex] ?? 'Monday';
+      const dayIndex = now.getDay();
+      const mondayBasedIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+      const todayName = WEEK_DAYS[mondayBasedIndex] ?? 'Monday';
       setViewMode('list');
       setSelectedDay(todayName);
     }
@@ -470,129 +506,22 @@ export default function Timetable() {
 
   useEffect(() => {
     if (role !== 'Lecturer') return;
-    
+
     const handleCheckInOutChange = () => {
       refreshCheckInState();
     };
-    
-    const handleFocus = () => {
-      refreshCheckInState();
-    };
-    
+
     window.addEventListener('check-in-out-changed', handleCheckInOutChange);
-    window.addEventListener('focus', handleFocus);
-    
     return () => {
       window.removeEventListener('check-in-out-changed', handleCheckInOutChange);
-      window.removeEventListener('focus', handleFocus);
     };
   }, [role]);
 
-  const formatTime = (date: Date): string => {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
+  const goToMarkPresence = () => {
+    navigate('/presence');
   };
 
-  const handleCheckIn = async (classId: string) => {
-    try {
-      let lat = 0;
-      let lng = 0;
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-      } catch (_) {}
-      const result = await qaService.checkIn(classId, lat, lng);
-      const rec = result.record;
-      const checkInStr = rec?.checkInTime || formatTime(new Date());
-      setActiveCheckIns(prev => ({
-        ...prev,
-        [classId]: { checkIn: checkInStr, ...(rec?.checkOutTime ? { checkOut: rec.checkOutTime } : {}) },
-      }));
-      window.dispatchEvent(new CustomEvent('check-in-out-changed', { detail: { classId, action: 'check-in' } }));
-      if (result.alreadyCheckedIn) {
-        toast.info('You are already checked in for this class.');
-      } else {
-        toast.success('Check-in recorded');
-      }
-    } catch (error: any) {
-      const code = (error as any)?.code;
-      if (code === 'ALREADY_CHECKED_IN') {
-        const record = await qaService.getTodayRecordForClass(classId);
-        if (record) {
-          setActiveCheckIns(prev => ({
-            ...prev,
-            [classId]: {
-              checkIn: record.checkInTime || '',
-              ...(record.checkOutTime ? { checkOut: record.checkOutTime } : {}),
-            },
-          }));
-        }
-        toast.info('You are already checked in for this class.');
-      } else {
-        toast.error(error?.message || 'Check-in failed');
-      }
-    }
-  };
-
-  const handleCheckOut = async (classId: string) => {
-    try {
-      const record = await qaService.checkOut(classId);
-      const checkOutStr = (record as any)?.checkOutTime || formatTime(new Date());
-      setActiveCheckIns(prev => ({
-        ...prev,
-        [classId]: { ...prev[classId], checkIn: prev[classId]?.checkIn || '', checkOut: checkOutStr },
-      }));
-      window.dispatchEvent(new CustomEvent('check-in-out-changed', { detail: { classId, action: 'check-out' } }));
-      toast.success('Check-out recorded');
-    } catch (error: any) {
-      const code = (error as any)?.code;
-      const record = await qaService.getTodayRecordForClass(classId);
-      if (record) {
-        setActiveCheckIns(prev => ({
-          ...prev,
-          [classId]: {
-            checkIn: record.checkInTime || prev[classId]?.checkIn || '',
-            checkOut: record.checkOutTime || prev[classId]?.checkOut,
-          },
-        }));
-      }
-      if (code === 'NO_CHECK_IN') {
-        toast.warning('No active check-in found. Check in first, or you may have already checked out.');
-      } else if (code === 'ALREADY_CHECKED_OUT') {
-        toast.info('You have already checked out for this class today.');
-      } else {
-        toast.error(error?.message || 'Check-out failed');
-      }
-    }
-  };
-
-  // Calculate duration
-  const calculateDuration = (start: string, end: string): string => {
-    const parseTime = (timeStr: string): number => {
-      const parts = timeStr.split(':');
-      if (parts.length >= 2) {
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      }
-      return 0;
-    };
-
-    const startMinutes = parseTime(start);
-    const endMinutes = parseTime(end);
-    const diff = endMinutes - startMinutes;
-    
-    if (diff < 0) return '00:00:00';
-    
-    const hours = Math.floor(diff / 60);
-    const minutes = diff % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-  };
-
-  const filteredTimetable = viewMode === 'list' 
+  const filteredTimetable = viewMode === 'list'
     ? timetableData.filter(t => t.day === selectedDay)
     : timetableData;
 
@@ -952,7 +881,9 @@ export default function Timetable() {
             <p className="text-gray-500">
               {role === 'QA'
                 ? "View all classes scheduled for today across the university."
-                : 'View your weekly class schedule and venues.'}
+                : role === 'Lecturer'
+                  ? 'Your weekly schedule from Timetable Builder / class edits. Mark Presence opens during a live session (±15 min).'
+                  : 'View your weekly class schedule and venues.'}
             </p>
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -979,15 +910,15 @@ export default function Timetable() {
           <div className="space-y-4">
             <div className="flex items-center justify-between bg-white p-4 rounded-lg border shadow-sm">
               <Button variant="ghost" size="icon" onClick={() => {
-                const prevIndex = DAYS.indexOf(selectedDay) - 1;
-                if (prevIndex >= 0) setSelectedDay(DAYS[prevIndex]);
+                const prevIndex = WEEK_DAYS.indexOf(selectedDay) - 1;
+                if (prevIndex >= 0) setSelectedDay(WEEK_DAYS[prevIndex]);
               }}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <h2 className="text-lg font-semibold text-[#015F2B]">{selectedDay}</h2>
               <Button variant="ghost" size="icon" onClick={() => {
-                const nextIndex = DAYS.indexOf(selectedDay) + 1;
-                if (nextIndex < DAYS.length) setSelectedDay(DAYS[nextIndex]);
+                const nextIndex = WEEK_DAYS.indexOf(selectedDay) + 1;
+                if (nextIndex < WEEK_DAYS.length) setSelectedDay(WEEK_DAYS[nextIndex]);
               }}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -999,8 +930,7 @@ export default function Timetable() {
                   <TimetableCard 
                     key={item.id} 
                     item={item}
-                    onCheckIn={handleCheckIn}
-                    onCheckOut={handleCheckOut}
+                    onMarkPresence={goToMarkPresence}
                     onOpenDetails={(i) => { setSelectedItem(i); setDetailsOpen(true); }}
                     checkInData={activeCheckIns[item.id]}
                   />
@@ -1016,8 +946,8 @@ export default function Timetable() {
         )}
 
         {viewMode === 'week' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            {WEEK_DAYS.map(day => {
               const dayClasses = timetableData.filter(t => t.day === day);
               return (
                 <Card key={day} className={`h-full border-t-4 ${dayClasses.length > 0 ? 'border-t-[#015F2B]' : 'border-t-gray-200'}`}>
@@ -1033,7 +963,7 @@ export default function Timetable() {
                         const isLecturer = role === 'Lecturer';
                         
                         return (
-                          <div key={item.id} className={`p-3 bg-white rounded border shadow-sm hover:shadow-md transition-shadow cursor-pointer group ${item.isLive ? 'border-green-400 bg-green-50/30' : ''}`}>
+                          <div key={item.id} className={`p-3 bg-white rounded border shadow-sm hover:shadow-md transition-shadow group ${item.isLive ? 'border-green-400 bg-green-50/30' : ''}`}>
                             <div className="flex justify-between items-start mb-1">
                               <span className="text-xs font-bold text-[#F6A000]">{item.time}</span>
                               <div className="flex gap-1">
@@ -1045,7 +975,7 @@ export default function Timetable() {
                                 <Badge variant="secondary" className="text-[10px] px-1 h-5">{item.type}</Badge>
                               </div>
                             </div>
-                            <h4 className="font-semibold text-sm text-[#015F2B] leading-tight group-hover:underline">{item.course}</h4>
+                            <h4 className="font-semibold text-sm text-[#015F2B] leading-tight">{item.course}</h4>
                             <p className="text-xs text-gray-500 mb-2">{item.code}</p>
                             <div className="flex items-center gap-1 text-xs text-gray-600 font-medium">
                               <MapPin size={10} /> {item.venue}
@@ -1054,39 +984,32 @@ export default function Timetable() {
                               <User size={10} /> {item.lecturer}
                             </div>
                             {isLecturer && (
-                              <div className="mt-2 pt-2 border-t border-gray-200">
-                                {!hasCheckedIn ? (
+                              <div className="mt-2 pt-2 border-t border-gray-200 space-y-2">
+                                {hasCheckedIn && (
+                                  <div className="text-[10px] space-y-0.5">
+                                    <div className="text-green-600 flex items-center gap-1">
+                                      <LogIn className="h-3 w-3" />
+                                      {checkInData.checkIn}
+                                    </div>
+                                    {hasCheckedOut && (
+                                      <div className="text-blue-600 flex items-center gap-1">
+                                        <LogOut className="h-3 w-3" />
+                                        {checkInData.checkOut}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {item.isLive ? (
                                   <Button 
                                     size="sm" 
                                     variant="default"
                                     className="w-full bg-[#015F2B] hover:bg-[#014022] h-7 text-xs"
-                                    onClick={() => handleCheckIn(item.id)}
+                                    onClick={goToMarkPresence}
                                   >
-                                    <LogIn className="h-3 w-3 mr-1" />
-                                    Check In
+                                    <MapPin className="h-3 w-3 mr-1" />
+                                    {hasCheckedIn && !hasCheckedOut ? 'Continue on Presence' : 'Mark Presence'}
                                   </Button>
-                                ) : !hasCheckedOut ? (
-                                  <Button 
-                                    size="sm" 
-                                    variant="default"
-                                    className="w-full bg-blue-600 hover:bg-blue-700 h-7 text-xs"
-                                    onClick={() => handleCheckOut(item.id)}
-                                  >
-                                    <LogOut className="h-3 w-3 mr-1" />
-                                    Check Out
-                                  </Button>
-                                ) : (
-                                  <div className="text-xs">
-                                    <div className="text-green-600 flex items-center gap-1 mb-1">
-                                      <LogIn className="h-3 w-3" />
-                                      {checkInData.checkIn}
-                                    </div>
-                                    <div className="text-blue-600 flex items-center gap-1">
-                                      <LogOut className="h-3 w-3" />
-                                      {checkInData.checkOut}
-                                    </div>
-                                  </div>
-                                )}
+                                ) : null}
                               </div>
                             )}
                           </div>
@@ -1151,10 +1074,9 @@ export default function Timetable() {
   );
 }
 
-function TimetableCard({ item, onCheckIn, onCheckOut, onOpenDetails, checkInData }: { 
+function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: { 
   item: TimetableItem; 
-  onCheckIn: (id: string) => void;
-  onCheckOut: (id: string) => void;
+  onMarkPresence: () => void;
   onOpenDetails?: (item: TimetableItem) => void;
   checkInData?: { checkIn: string; checkOut?: string };
 }) {
@@ -1162,7 +1084,6 @@ function TimetableCard({ item, onCheckIn, onCheckOut, onOpenDetails, checkInData
   const isLecturer = role === 'Lecturer';
   const hasCheckedIn = !!checkInData?.checkIn;
   const hasCheckedOut = !!checkInData?.checkOut;
-
   const isLive = item.isLive ?? false;
 
   return (
@@ -1210,34 +1131,21 @@ function TimetableCard({ item, onCheckIn, onCheckOut, onOpenDetails, checkInData
                 </div>
               </div>
               <div className="flex gap-2">
-                {isLecturer && (
-                  <div className="flex gap-1">
-                    {!hasCheckedIn ? (
-                      <Button 
-                        size="sm" 
-                        variant="default"
-                        className="bg-[#015F2B] hover:bg-[#014022]"
-                        onClick={() => onCheckIn(item.id)}
-                      >
-                        <LogIn className="h-3 w-3 mr-1" />
-                        Check In
-                      </Button>
-                    ) : !hasCheckedOut ? (
-                      <Button 
-                        size="sm" 
-                        variant="default"
-                        className="bg-blue-600 hover:bg-blue-700"
-                        onClick={() => onCheckOut(item.id)}
-                      >
-                        <LogOut className="h-3 w-3 mr-1" />
-                        Check Out
-                      </Button>
-                    ) : (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        Completed
-                      </Badge>
-                    )}
-                  </div>
+                {isLecturer && isLive && (
+                  <Button 
+                    size="sm" 
+                    variant="default"
+                    className="bg-[#015F2B] hover:bg-[#014022]"
+                    onClick={onMarkPresence}
+                  >
+                    <MapPin className="h-3 w-3 mr-1" />
+                    {hasCheckedIn && !hasCheckedOut ? 'Continue on Presence' : 'Mark Presence'}
+                  </Button>
+                )}
+                {isLecturer && hasCheckedIn && hasCheckedOut && !isLive && (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    Completed
+                  </Badge>
                 )}
                 {onOpenDetails && (
                 <Button 

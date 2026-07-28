@@ -236,6 +236,28 @@ export const academicService = {
     }
   },
 
+  getAllCourses: async (params?: {
+    departmentId?: string;
+    programId?: string;
+    level?: number;
+    semester?: number;
+    unassigned?: boolean;
+  }): Promise<Course[]> => {
+    const pageSize = 200;
+    const all: Course[] = [];
+    let page = 1;
+    let total = 0;
+    do {
+      const res = await academicService.getCourses({ ...params, page, limit: pageSize });
+      const batch = res.data ?? [];
+      all.push(...batch);
+      total = res.total ?? all.length;
+      if (batch.length === 0) break;
+      page += 1;
+    } while (all.length < total);
+    return all;
+  },
+
   moveCourses: async (payload: { courseIds: string[]; targetProgramId?: string | null; targetDepartmentId: string; targetLevel: number; targetSemester: number }): Promise<{ moved: number }> => {
     try {
       const res = await api.post<{ data: { moved: number } }>('/academic/courses/move', payload);
@@ -332,6 +354,40 @@ export const academicService = {
       console.error('Error ensuring program intake:', error);
       throw error;
     }
+  },
+
+  getTimetableBuilderScope: async (programIntakeId: string): Promise<{
+    intake: {
+      id: string;
+      programId: string;
+      year: number;
+      semester: number;
+      intakeType: string;
+      program: { id: string; name: string; code: string };
+    };
+    courses: Array<{ id: string; code: string; name: string; source: 'program' | 'combined' }>;
+    classesByCourseId: Record<
+      string,
+      {
+        classId: string;
+        className: string;
+        lecturerId: string | null;
+        venueId: string | null;
+        deliveryMode: string;
+        meetingUrl: string | null;
+        dayOfWeek: number | null;
+        startTime: string | null;
+        endTime: string | null;
+        capacity: number;
+        isSharedSchedule: boolean;
+        cohortProgramIntakeIds: string[];
+      }
+    >;
+  }> => {
+    const res = await api.get<{ data: any }>(
+      `/academic/program-intakes/${programIntakeId}/timetable-builder-scope`
+    );
+    return (res as { data?: any })?.data ?? res;
   },
 
   getClassesRelatedForAttendance: async (

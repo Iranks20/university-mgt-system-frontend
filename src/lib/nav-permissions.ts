@@ -50,13 +50,28 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-venues': ['academic.venues'],
   '/admin-calendar': ['academic.write'],
   '/admin-strategic-goals': ['admin.console'],
+  '/admin-graduation-registrations': ['graduation.registrations'],
+  '/graduation/dashboard': [
+    ['graduation.access'],
+    ['graduation.committee'],
+    ['graduation.manage'],
+    ['admin.console'],
+  ],
+  '/graduation/event': [['graduation.manage'], ['admin.console']],
+  '/graduation/committees': [
+    ['graduation.access'],
+    ['graduation.committee'],
+    ['graduation.manage'],
+    ['admin.console'],
+  ],
+  '/graduation/registrations': [['graduation.registrations'], ['admin.console']],
   '/admin-settings': ['settings.read'],
   '/timetable': [
     ['timetable.student_me'],
     ['academic.personal_schedule', 'qa.lecturer_portal'],
     ['timetable.ops'],
   ],
-  '/timetable-builder': [['academic.write'], ['timetable.ops'], ['qa.seed_timetable']],
+  '/timetable-builder': [['academic.write'], ['timetable.admin'], ['qa.seed_timetable']],
   '/clinical-rotations': [
     ['clinical.sessions.record'],
     ['clinical.reports.view'],
@@ -66,7 +81,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['clinical.instructors.manage'],
     ['clinical.rotations.manage'],
   ],
-  '/clinical/sites': [['clinical.sites.manage'], ['clinical.reports.view']],
+  '/clinical/sites': [['clinical.sites.manage']],
   '/clinical/site-team': [['clinical.assignments.manage']],
   '/clinical/instructors': [
     ['clinical.instructors.manage'],
@@ -97,6 +112,8 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['timetable.ops'],
   ],
   '/management-overview': [['analytics.mgmt_overview']],
+  '/management-risk': [['analytics.mgmt_overview', 'analytics.ops']],
+  '/management-enrolment': [['analytics.mgmt_overview', 'students.read']],
   '/management-departments': [['academic.read', 'academic.mgmt_read']],
   '/management-staff-performance': [['staff.read', 'reports.access']],
   '/management-lecturer-performance': [
@@ -112,6 +129,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/management-student-details': [
     ['students.read', 'students.attendance_staff'],
     ['students.read', 'analytics.ops'],
+    ['students.read', 'analytics.mgmt_overview'],
   ],
   '/cancellations': [
     ['cancellations.lecturer', 'timetable.lecturer_me'],
@@ -173,6 +191,7 @@ export const ROUTE_PERMISSION: Record<string, PermissionRequirement> = {
 
 const HOME_PATH_CANDIDATES = [
   '/hr/dashboard',
+  '/management-overview',
   '/dashboard',
   '/clinical/sites',
   '/clinical/sessions',
@@ -247,6 +266,8 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/student-classes', label: 'My Classes', permissions: NAV_PERMISSION['/student-classes'] },
   { path: '/student-history', label: 'Attendance History', permissions: NAV_PERMISSION['/student-history'] },
   { path: '/management-overview', label: 'University Overview', permissions: NAV_PERMISSION['/management-overview'] },
+  { path: '/management-risk', label: 'Risk Register', permissions: NAV_PERMISSION['/management-risk'] },
+  { path: '/management-enrolment', label: 'Enrolment Health', permissions: NAV_PERMISSION['/management-enrolment'] },
   { path: '/management-departments', label: 'Department Stats', permissions: NAV_PERMISSION['/management-departments'] },
   { path: '/management-staff-performance', label: 'Staff Performance', permissions: NAV_PERMISSION['/management-staff-performance'] },
   { path: '/management-lecturer-performance', label: 'Lecturer Performance', permissions: NAV_PERMISSION['/management-lecturer-performance'] },
@@ -259,6 +280,11 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/admin-venues', label: 'Venues', permissions: NAV_PERMISSION['/admin-venues'] },
   { path: '/admin-calendar', label: 'Calendar', permissions: NAV_PERMISSION['/admin-calendar'] },
   { path: '/admin-strategic-goals', label: 'Strategic Goals', permissions: NAV_PERMISSION['/admin-strategic-goals'] },
+  { path: '/admin-graduation-registrations', label: 'Graduation registrations', permissions: NAV_PERMISSION['/admin-graduation-registrations'] },
+  { path: '/graduation/dashboard', label: 'Graduation dashboard', permissions: NAV_PERMISSION['/graduation/dashboard'] },
+  { path: '/graduation/event', label: 'Graduation event', permissions: NAV_PERMISSION['/graduation/event'] },
+  { path: '/graduation/committees', label: 'Graduation committees', permissions: NAV_PERMISSION['/graduation/committees'] },
+  { path: '/graduation/registrations', label: 'Graduand registrations', permissions: NAV_PERMISSION['/graduation/registrations'] },
   { path: '/admin-settings', label: 'Settings', permissions: NAV_PERMISSION['/admin-settings'] },
   { path: '/admin-students', label: 'Students (Users)', permissions: NAV_PERMISSION['/admin-students'] },
   { path: '/admin-lecturers', label: 'Lecturers (Users)', permissions: NAV_PERMISSION['/admin-lecturers'] },
@@ -290,6 +316,13 @@ export function navAllowed(
   role?: string | null
 ): boolean {
   return routeAllowed(userPermissions, path, role);
+}
+
+export function graduationNavAllowed(userPermissions: string[], path: string, role?: string | null): boolean {
+  if (role === 'Graduation' || role === 'Admin') {
+    if (path.startsWith('/graduation')) return true;
+  }
+  return routeAllowed(userPermissions, path);
 }
 
 export function shouldNestClinicalNavItems(role: string): boolean {

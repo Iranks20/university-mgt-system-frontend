@@ -10,7 +10,8 @@ export type UserRole =
   | 'Staff'
   | 'HR'
   | 'Management'
-  | 'Admin';
+  | 'Admin'
+  | 'Graduation';
 
 const VALID_ROLES: UserRole[] = [
   'QA',
@@ -22,6 +23,7 @@ const VALID_ROLES: UserRole[] = [
   'HR',
   'Management',
   'Admin',
+  'Graduation',
 ];
 
 function isValidRole(value: string | null | undefined): value is UserRole {

@@ -19,8 +19,8 @@ Use **Sync system roles** on `/admin-roles` to reset these to the standard matri
 
 | Role code | Who it is for | University QA scope | Clinical scope |
 |-----------|---------------|---------------------|----------------|
-| **Admin** | IT / full administrators | Full access including user admin | Full clinical access |
-| **Management** | Deans, registry leadership | Overview, reports, read-mostly academic data | Clinical read/coordination (no student write) |
+| **Admin** | IT / full administrators | Organised admin sidebar (oversight, academic write, attendance/QA, users, system); home `/management-overview` | Full clinical access |
+| **Management** | Deans, registry leadership | Organised oversight sidebar (overview, performance, academic read, reports, disruption queues, graduation view, clinical reports) | Clinical reports only (`clinical.reports.view`) |
 | **QA** | University quality assurance | Lecture records, timetables, cancellations queue, student records (read), reports | **No** `clinical.*` permissions |
 | **QAClinicals** | Hospital / clinical QA | Read students & academic catalog only | Record sessions, instructors, rotations, clinical reports |
 | **ClinicalCoordinator** | Clinical placement coordinator | Read students & academic catalog | Sites, assignments, policies, verify sessions, reports |
@@ -182,7 +182,7 @@ A menu item appears if the user has **any one** of the listed permission sets (c
 |-----------|------|----------------|
 | Dashboard | `/dashboard` | (always shown) |
 | Timetable | `/timetable` | `timetable.student_me` **OR** `academic.personal_schedule` + `qa.lecturer_portal` **OR** `timetable.ops` |
-| Timetable Builder | `/timetable-builder` | `academic.write` **OR** `timetable.ops` **OR** `qa.seed_timetable` |
+| Timetable Builder | `/timetable-builder` | `academic.write` **OR** `timetable.admin` **OR** `qa.seed_timetable` |
 | Lecture Records | `/lecture-records` | `qa.review` |
 | Cancellations | `/cancellations` | Lecturer cancel **OR** queue **OR** queue+decide **OR** substitution equivalents |
 | Student Records | `/student-records` | `students.read` + `academic.read` |
@@ -193,6 +193,8 @@ A menu item appears if the user has **any one** of the listed permission sets (c
 | My Classes | `/student-classes` | `students.self` + `enrollment.self` + `settings.read` + `students.attendance_self` |
 | Attendance History | `/student-history` | Student self **OR** `staff.timeclock` |
 | University Overview | `/management-overview` | `analytics.mgmt_overview` |
+| Risk Register | `/management-risk` | `analytics.mgmt_overview` + `analytics.ops` |
+| Enrolment Health | `/management-enrolment` | `analytics.mgmt_overview` + `students.read` |
 | Department Stats | `/management-departments` | `academic.read` + `academic.mgmt_read` |
 | Staff Performance | `/management-staff-performance` | `staff.read` + `reports.access` |
 | Lecturer Performance | `/management-lecturer-performance` | mgmt read combo **OR** analytics+reports **OR** `qa.review` + `analytics.ops` |
@@ -211,7 +213,7 @@ A menu item appears if the user has **any one** of the listed permission sets (c
 | → Roles & Permissions | `/admin-roles` | `admin.console` |
 | → Audit log | `/admin-audit-log` | `admin.console` |
 | **Clinicals** folder | | |
-| → Clinical Sites | `/clinical/sites` | `clinical.sites.manage` **OR** `clinical.reports.view` |
+| → Clinical Sites | `/clinical/sites` | `clinical.sites.manage` |
 | → Site Team | `/clinical/site-team` | `clinical.assignments.manage` |
 | → Instructors | `/clinical/instructors` | `clinical.instructors.manage` **OR** session record/verify |
 | → Rotations | `/clinical/rotations` | `clinical.rotations.manage` **OR** session record/verify |
@@ -219,6 +221,36 @@ A menu item appears if the user has **any one** of the listed permission sets (c
 | → Sessions | `/clinical/sessions` | `clinical.sessions.record` **OR** `clinical.sessions.verify` |
 | → Attendance | `/clinical/attendance` | `clinical.sessions.record` |
 | → Clinical Reports | `/clinical/reports` | `clinical.reports.view` |
+
+### Management organised sidebar
+
+Management login uses a dedicated sidebar (not the flat Admin menu):
+
+1. **Dashboard** → `/management-overview`
+2. **Performance** → student / lecturer / staff performance + **Risk Register**
+3. **Academic oversight** → departments, enrolment health, student records, curriculum, timetable, venues
+4. **Reports**
+5. **Teaching disruptions** → cancellations & substitutions, lecture records
+6. **Graduation** → **Registrations** only (`graduation.registrations`). No Dashboard, Committees, or Event setup (those APIs are Admin/Graduation-only).
+7. **Clinical reports** only
+8. **Settings**
+
+After deploying matrix changes, run `npm run db:apply-management-oversight` (or `npm run db:sync-rbac`) on the backend and ask Management users to sign out/in.
+
+### Admin organised sidebar
+
+Admin login uses a dedicated sectioned sidebar (not the flat permission dump). Home is `/management-overview`. Top-level menus:
+
+1. **Dashboard** → `/management-overview`
+2. **Oversight** → student / lecturer / staff performance, risk register, department stats, enrolment health, reports
+3. **Academic** → schools, courses, classes, curriculum, venues, calendar, timetable builder, timetables (admin)
+4. **Attendance & QA** → student records, lecture records, cancellations & substitutions
+5. **Clinicals** → full clinical ops (sites through reports)
+6. **Graduation** → event setup, committees, registrations (no graduation dashboard)
+7. **Users & access** → students, lecturers, system accounts, roles & permissions, audit log
+8. **System** → settings, strategic goals
+
+Admin menu **does not** show lecturer/student portals (Mark Presence, My Classes, Attendance History, lecturer-only Performance), the ops timetable view (`/timetable`), course attendance, or graduation dashboard. Admin still has full matrix permissions (`Admin: ALL`); this is a navigation UX change only.
 
 ---
 
