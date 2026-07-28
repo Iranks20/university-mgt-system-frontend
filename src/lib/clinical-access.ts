@@ -65,6 +65,9 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
 }
 
 export function homePathForRole(role: string | null, permissions?: string[]): string {
+  if (role === 'HR') {
+    return '/hr/dashboard';
+  }
   if (role === 'Graduation') {
     return graduationHomePath(permissions, role) ?? '/graduation/dashboard';
   }

@@ -13,6 +13,7 @@ export type AdminRole =
   | 'Lecturer'
   | 'Student'
   | 'Staff'
+  | 'HR'
   | 'Management'
   | 'Admin';
 

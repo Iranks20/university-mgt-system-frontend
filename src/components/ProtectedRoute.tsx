@@ -43,14 +43,14 @@ function ProtectedRouteContent({
     }
 
     if (!permissionOk || !roleOk) {
-      const home = resolveHomePath(permissions);
+      const home = resolveHomePath(permissions, currentRole);
       if (home && location.pathname !== home) {
         return <Navigate to={home} replace />;
       }
       return <AccessDenied homePath={home} />;
     }
   } else if (allowedRoles && currentRole && !allowedRoles.includes(currentRole)) {
-    const home = resolveHomePath(permissions);
+    const home = resolveHomePath(permissions, currentRole);
     if (home && location.pathname !== home) {
       return <Navigate to={home} replace />;
     }

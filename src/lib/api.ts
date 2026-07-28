@@ -56,6 +56,7 @@ class ApiClient {
         if (!isAuthEndpoint) {
           if (typeof window !== 'undefined') {
             localStorage.removeItem('kcu-token');
+            localStorage.removeItem('kcu-user');
             localStorage.removeItem('kcu-authenticated');
             localStorage.removeItem('kcu-role');
             window.location.href = '/login';
