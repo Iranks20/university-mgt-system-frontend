@@ -100,12 +100,13 @@ export function HrTemplateEditorDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
-      await saveAppraisalTemplate(draft, draft.id);
-      toast.success('Appraisal template updated');
+      const isNew = !draft.id;
+      await saveAppraisalTemplate(draft, isNew ? undefined : draft.id);
+      toast.success(isNew ? 'Appraisal template created' : 'Appraisal template updated');
       onSaved();
       onOpenChange(false);
-    } catch {
-      toast.error('Failed to save template');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save template');
     } finally {
       setSaving(false);
     }
@@ -115,9 +116,11 @@ export function HrTemplateEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit appraisal template</DialogTitle>
+          <DialogTitle>{draft.id ? 'Edit appraisal template' : 'New appraisal template'}</DialogTitle>
           <DialogDescription>
-            {draft.code} · Changes apply to new cycles; in-flight reviews keep their snapshot.
+            {draft.id
+              ? `${draft.code} · Changes apply to new cycles; in-flight reviews keep their snapshot.`
+              : 'Create a published template that can be assigned when launching a cycle.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +136,12 @@ export function HrTemplateEditorDialog({
             </div>
             <div>
               <Label>Code</Label>
-              <Input className="mt-1" value={draft.code} disabled />
+              <Input
+                className="mt-1"
+                value={draft.code}
+                disabled={!!draft.id}
+                onChange={(e) => setDraft({ ...draft, code: e.target.value.toUpperCase() })}
+              />
             </div>
           </div>
           <div>

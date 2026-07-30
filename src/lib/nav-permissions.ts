@@ -157,7 +157,6 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   ],
   '/hr/dashboard': ['hr.read'],
   '/hr/employees': ['hr.read'],
-  '/hr/leave': [['hr.read', 'hr.leave_manage'], ['hr.read', 'hr.leave_approve']],
   '/hr/attendance': ['hr.read'],
   '/hr/onboarding': [['hr.read', 'hr.write']],
   '/hr/documents': ['hr.read'],
@@ -301,7 +300,6 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/clinical/reports', label: 'Clinical Reports', permissions: NAV_PERMISSION['/clinical/reports'] },
   { path: '/hr/dashboard', label: 'HR Dashboard', permissions: NAV_PERMISSION['/hr/dashboard'] },
   { path: '/hr/employees', label: 'Employees', permissions: NAV_PERMISSION['/hr/employees'] },
-  { path: '/hr/leave', label: 'Leave', permissions: NAV_PERMISSION['/hr/leave'] },
   { path: '/hr/attendance', label: 'Staff Attendance', permissions: NAV_PERMISSION['/hr/attendance'] },
   { path: '/hr/onboarding', label: 'Onboarding', permissions: NAV_PERMISSION['/hr/onboarding'] },
   { path: '/hr/documents', label: 'HR Documents', permissions: NAV_PERMISSION['/hr/documents'] },
@@ -336,7 +334,6 @@ export function shouldNestHrNavItems(role: string): boolean {
 export const HR_NAV_PATHS = [
   '/hr/dashboard',
   '/hr/employees',
-  '/hr/leave',
   '/hr/attendance',
   '/hr/onboarding',
   '/hr/documents',

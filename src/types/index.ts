@@ -82,6 +82,7 @@ export interface Department {
   code: string;
   levelId: string;
   head?: string;
+  headStaffId?: string | null;
   duration?: number;
 }
 
@@ -128,9 +129,18 @@ export interface Staff {
   email: string;
   phone?: string;
   departmentId: string;
-  role: 'Lecturer' | 'Senior Lecturer' | 'Associate Professor' | 'Professor' | 'Administrator';
-  employmentType: 'Full-time' | 'Part-time' | 'Contract';
-  hireDate: Date;
+  schoolId?: string | null;
+  role: string;
+  employmentType: string;
+  status?: string;
+  hireDate: Date | string;
+  supervisorId?: string | null;
+  supervisorName?: string | null;
+  departmentName?: string | null;
+  departmentHeadStaffId?: string | null;
+  userId?: string | null;
+  userRole?: string;
+  tempPassword?: string;
 }
 
 export interface Lecturer extends Staff {

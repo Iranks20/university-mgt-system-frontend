@@ -2,7 +2,7 @@ import api from '@/lib/api';
 import type { Staff, Lecturer } from '@/types';
 
 export const staffService = {
-  getStaff: async (params?: { search?: string; role?: string; department?: string; status?: string; page?: number; limit?: number }): Promise<{ data: Staff[]; total: number; page: number; pageSize: number }> => {
+  getStaff: async (params?: { search?: string; role?: string; department?: string; status?: string; missingSupervisor?: boolean; page?: number; limit?: number }): Promise<{ data: Staff[]; total: number; page: number; pageSize: number }> => {
     try {
       const response = await api.get<{ data: Staff[]; total: number; page: number; pageSize: number }>('/staff', params);
       return Array.isArray(response) ? { data: response, total: response.length, page: 1, pageSize: response.length } : response;
@@ -96,6 +96,71 @@ export const staffService = {
       console.error('Error fetching staff check-in history:', error);
       return [];
     }
+  },
+
+  getWorkforceCheckIns: async (params?: {
+    date?: string;
+    departmentId?: string;
+  }): Promise<{
+    records: Array<{
+      id: string;
+      staffId: string;
+      employeeName: string;
+      departmentId: string;
+      department: string;
+      date: string;
+      checkIn: string | null;
+      checkOut: string | null;
+      hours: number;
+      status: string;
+      location: string | null;
+    }>;
+    summary: {
+      present: number;
+      late: number;
+      absent: number;
+      onLeave: number;
+      checkedIn: number;
+      totalActive: number;
+    };
+    date: string;
+  }> => {
+    const response = await api.get<{
+      records: Array<{
+        id: string;
+        staffId: string;
+        employeeName: string;
+        departmentId: string;
+        department: string;
+        date: string;
+        checkIn: string | null;
+        checkOut: string | null;
+        hours: number;
+        status: string;
+        location: string | null;
+      }>;
+      summary: {
+        present: number;
+        late: number;
+        absent: number;
+        onLeave: number;
+        checkedIn: number;
+        totalActive: number;
+      };
+      date: string;
+    }>('/staff/check-ins', params);
+    return {
+      records: response?.records ?? [],
+      summary: response?.summary ?? {
+        present: 0,
+        late: 0,
+        absent: 0,
+        onLeave: 0,
+        checkedIn: 0,
+        totalActive: 0,
+      },
+      date: response?.date ?? params?.date ?? '',
+    };
   },
 
   updateStaff: async (id: string, staff: Partial<Staff>): Promise<Staff> => {

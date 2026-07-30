@@ -161,7 +161,6 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
 const HR_MODULE_NAV_CHILDREN: SidebarChild[] = [
   { label: 'HR Dashboard', icon: LayoutDashboard, path: '/hr/dashboard' },
   { label: 'Employees', icon: Users, path: '/hr/employees' },
-  { label: 'Leave', icon: CalendarX, path: '/hr/leave' },
   { label: 'Staff Attendance', icon: Clock, path: '/hr/attendance' },
   { label: 'Onboarding', icon: UserPlus, path: '/hr/onboarding' },
   { label: 'HR Documents', icon: FileText, path: '/hr/documents' },
@@ -171,6 +170,7 @@ const HR_MODULE_NAV_CHILDREN: SidebarChild[] = [
 
 const HR_ROLE_NAV_CHILDREN: SidebarChild[] = [
   ...HR_MODULE_NAV_CHILDREN,
+  { label: 'My Appraisal', icon: ClipboardList, path: '/staff-appraisal' },
   { label: 'Settings', icon: Settings, path: '/admin-settings' },
 ];
 

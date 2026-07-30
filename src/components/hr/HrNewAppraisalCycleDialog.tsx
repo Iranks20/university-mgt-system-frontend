@@ -24,6 +24,7 @@ import { ChevronLeft, ChevronRight, Eye, FileStack, Rocket, Users } from 'lucide
 import { toast } from 'sonner';
 import { HrAppraisalFormPreview } from '@/components/hr/HrAppraisalFormPreview';
 import { staffService } from '@/services/staff.service';
+import { hrAppraisalService, type CycleLaunchReadiness } from '@/services/hr-appraisal.service';
 import {
   categoriesInScope,
   defaultFormAssignmentsForScope,
@@ -38,6 +39,7 @@ import {
   getAppraisalFormTemplates,
   getHrAppraisalCycles,
 } from '@/features/hr/hr-appraisal-store';
+import { getApiErrorMessage } from '@/lib/api';
 import type { Staff } from '@/types';
 import type {
   AppraisalCycleScope,
@@ -45,6 +47,7 @@ import type {
   CreateAppraisalCycleInput,
   CycleFormAssignment,
 } from '@/features/hr/types';
+import { Link } from 'react-router';
 
 const STEPS = [
   { id: 1, title: 'Cycle details', description: 'Name and performance period' },
@@ -53,14 +56,6 @@ const STEPS = [
   { id: 4, title: 'Timeline', description: 'Deadlines for each stage' },
   { id: 5, title: 'Launch', description: 'Review and open cycle' },
 ] as const;
-
-const WORKFLOW_STAGES = [
-  { key: 'open', label: 'HR opens cycle', color: 'bg-gray-100 text-gray-800' },
-  { key: 'self', label: 'Employee self-assessment', color: 'bg-amber-100 text-amber-800' },
-  { key: 'supervisor', label: 'Supervisor review', color: 'bg-blue-100 text-blue-800' },
-  { key: 'hr', label: 'HR calibration', color: 'bg-indigo-100 text-indigo-800' },
-  { key: 'done', label: 'Completed & filed', color: 'bg-green-100 text-green-800' },
-];
 
 type HrNewAppraisalCycleDialogProps = {
   open: boolean;
@@ -112,6 +107,8 @@ export function HrNewAppraisalCycleDialog({
   const [launching, setLaunching] = useState(false);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [liveStaff, setLiveStaff] = useState<Staff[]>([]);
+  const [readiness, setReadiness] = useState<CycleLaunchReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -184,6 +181,8 @@ export function HrNewAppraisalCycleDialog({
     setForm(defaultForm());
     setLaunching(false);
     setPreviewTemplateId(null);
+    setReadiness(null);
+    setReadinessLoading(false);
   };
 
   const handleClose = (next: boolean) => {
@@ -199,6 +198,18 @@ export function HrNewAppraisalCycleDialog({
       ),
     }));
   };
+
+  const launchAssignments = useMemo(
+    () =>
+      categorySelections
+        .filter((assignment) => assignment.templateId)
+        .map((assignment) => ({
+          ruleType: 'category' as const,
+          category: assignment.category,
+          templateId: assignment.templateId,
+        })),
+    [categorySelections]
+  );
 
   const canProceed = () => {
     if (step === 1) {
@@ -219,6 +230,37 @@ export function HrNewAppraisalCycleDialog({
     return true;
   };
 
+  useEffect(() => {
+    if (!open || step !== 5 || !canProceed()) {
+      if (step !== 5) setReadiness(null);
+      return;
+    }
+
+    let cancelled = false;
+    setReadinessLoading(true);
+    hrAppraisalService
+      .getCycleLaunchReadiness({
+        scopeCategories: categoriesInScope(form.scope),
+        formAssignments: launchAssignments,
+      })
+      .then((data) => {
+        if (!cancelled) setReadiness(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setReadiness(null);
+          toast.error(getApiErrorMessage(error, 'Could not check launch readiness'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReadinessLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, form.scope, launchAssignments]);
+
   const handleLaunch = async () => {
     if (!canProceed()) {
       toast.error('Complete all required fields before launching');
@@ -230,8 +272,8 @@ export function HrNewAppraisalCycleDialog({
       toast.success(`Cycle launched — ${cycle.employeeCount} employees enrolled with assigned forms`);
       onLaunched();
       handleClose(false);
-    } catch {
-      toast.error('Failed to launch appraisal cycle');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Failed to launch appraisal cycle'));
     } finally {
       setLaunching(false);
     }
@@ -473,32 +515,43 @@ export function HrNewAppraisalCycleDialog({
                   />
                 </div>
               </div>
-              <div className="rounded-lg border border-dashed p-4">
-                <p className="text-sm font-medium mb-3">Workflow timeline</p>
-                <div className="flex flex-wrap gap-2 items-center text-xs">
-                  {WORKFLOW_STAGES.map((stage, i) => (
-                    <span key={stage.key} className="flex items-center gap-2">
-                      <span className={`rounded px-2 py-1 ${stage.color}`}>{stage.label}</span>
-                      {i < WORKFLOW_STAGES.length - 1 ? <span className="text-gray-400">→</span> : null}
-                    </span>
-                  ))}
-                </div>
-              </div>
             </div>
           ) : null}
 
           {step === 5 ? (
             <div className="space-y-4">
-              <Card className="bg-green-50 border-green-200">
+              <Card
+                className={
+                  readiness && !readiness.readyToLaunch
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-green-50 border-green-200'
+                }
+              >
                 <CardContent className="pt-4 space-y-2 text-sm">
-                  <p className="font-semibold text-green-900">Ready to launch</p>
-                  <dl className="grid grid-cols-2 gap-2 text-green-900">
+                  <p
+                    className={`font-semibold ${
+                      readiness && !readiness.readyToLaunch ? 'text-amber-900' : 'text-green-900'
+                    }`}
+                  >
+                    {readiness && !readiness.readyToLaunch
+                      ? 'Launch blocked until supervisors are fixed'
+                      : 'Ready to launch'}
+                  </p>
+                  <dl
+                    className={`grid grid-cols-2 gap-2 ${
+                      readiness && !readiness.readyToLaunch ? 'text-amber-900' : 'text-green-900'
+                    }`}
+                  >
                     <dt className="text-green-700">Cycle</dt>
                     <dd>{form.name}</dd>
                     <dt className="text-green-700">Period</dt>
                     <dd>{form.periodLabel}</dd>
                     <dt className="text-green-700">Employees</dt>
-                    <dd>{eligibleCount}</dd>
+                    <dd>{readiness?.eligibleCount ?? eligibleCount}</dd>
+                    <dt className="text-green-700">Ready with supervisor</dt>
+                    <dd>{readiness?.readyCount ?? '—'}</dd>
+                    <dt className="text-green-700">Missing supervisor</dt>
+                    <dd>{readiness?.missingSupervisorCount ?? (readinessLoading ? 'Checking…' : '—')}</dd>
                     <dt className="text-green-700">Self-assessment due</dt>
                     <dd>{form.selfAssessmentDeadline}</dd>
                     <dt className="text-green-700">Supervisor due</dt>
@@ -508,6 +561,49 @@ export function HrNewAppraisalCycleDialog({
                   </dl>
                 </CardContent>
               </Card>
+
+              {readiness?.missingSupervisorCount ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 space-y-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {readiness.missingSupervisorCount} staff member(s) in scope still have no
+                        supervisor or department HOD.
+                      </p>
+                      <p className="text-amber-900/80">
+                        Update reporting lines first, then launch again.
+                      </p>
+                    </div>
+                    <Button variant="outline" asChild>
+                      <Link to="/hr/employees?supervision=missing" onClick={() => handleClose(false)}>
+                        Open employee directory
+                      </Link>
+                    </Button>
+                  </div>
+
+                  {readiness.missingSupervisorDepartments.length ? (
+                    <div>
+                      <p className="font-medium mb-2">Most affected departments</p>
+                      <div className="flex flex-wrap gap-2">
+                        {readiness.missingSupervisorDepartments.slice(0, 8).map((row) => (
+                          <Badge key={row.department} variant="outline">
+                            {row.department}: {row.count}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <p className="font-medium mb-2">Examples</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {readiness.missingSupervisors.map((label) => (
+                        <li key={label}>{label}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-lg border p-4 text-sm">
                 <p className="font-medium text-gray-900 mb-2">Appraisal forms in this cycle</p>
@@ -527,19 +623,6 @@ export function HrNewAppraisalCycleDialog({
                   })}
                 </ul>
               </div>
-
-              <div className="rounded-lg border p-4 text-sm text-gray-600">
-                <p className="font-medium text-gray-900 mb-2">What happens on launch</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Appraisal forms are generated per employee using the templates above</li>
-                  <li>Employees see <strong>My Appraisal</strong> with their category-specific form</li>
-                  <li>Supervisors receive items in the review queue after self-assessment</li>
-                  <li>HR can track completion and finalize ratings from this page</li>
-                </ul>
-              </div>
-              <Badge variant="outline" className="border-green-400 text-green-800">
-                Connected to HR appraisal API — forms are generated from live staff records
-              </Badge>
             </div>
           ) : null}
 
@@ -563,7 +646,11 @@ export function HrNewAppraisalCycleDialog({
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             ) : (
-              <Button type="button" disabled={launching || !canProceed()} onClick={handleLaunch}>
+              <Button
+                type="button"
+                disabled={launching || !canProceed() || readinessLoading || readiness?.readyToLaunch === false}
+                onClick={handleLaunch}
+              >
                 <Rocket className="h-4 w-4 mr-2" />
                 {launching ? 'Launching...' : 'Launch cycle'}
               </Button>

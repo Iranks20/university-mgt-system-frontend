@@ -9,6 +9,7 @@ import {
   getAppraisalFormTemplates,
   saveAppraisalReview,
   getCalibrationForCycle,
+  updateAppraisalCycleStatus,
 } from '@/features/hr/hr-appraisal-store';
 import { HrAppraisalFormPreview } from '@/components/hr/HrAppraisalFormPreview';
 import { HrTemplateEditorDialog } from '@/components/hr/HrTemplateEditorDialog';
@@ -35,7 +36,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Eye, ClipboardCheck, Plus, FileStack, Printer, BarChart3, Pencil } from 'lucide-react';
+import { Eye, ClipboardCheck, Plus, Printer, BarChart3, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 function formatScore(value?: number | null) {
@@ -52,6 +53,7 @@ export default function HrAppraisalsPage() {
   const [newCycleOpen, setNewCycleOpen] = useState(false);
   const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
   const [templateEditId, setTemplateEditId] = useState<string | null>(null);
+  const [newTemplateDraft, setNewTemplateDraft] = useState<AppraisalFormTemplate | null>(null);
   const [printReview, setPrintReview] = useState<HrAppraisalReview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -60,7 +62,45 @@ export default function HrAppraisalsPage() {
     [formTemplates]
   );
   const previewTemplate = templatePreviewId ? templateById.get(templatePreviewId) : null;
-  const editTemplate = templateEditId ? templateById.get(templateEditId) : null;
+  const editTemplate =
+    newTemplateDraft ?? (templateEditId ? templateById.get(templateEditId) ?? null : null);
+
+  const openNewTemplate = () => {
+    setTemplateEditId(null);
+    setNewTemplateDraft({
+      id: '',
+      code: `CUSTOM-${Date.now().toString(36).toUpperCase()}`,
+      name: 'New appraisal template',
+      description: '',
+      intendedFor: 'Custom staff group',
+      categories: ['Administrative'],
+      jobTitlePatterns: [],
+      departmentPatterns: [],
+      ratingScaleMax: 3,
+      ratingIncludesNa: true,
+      cycleKind: 'Annual',
+      includesDevelopmentPlan: true,
+      includesTrainingNeeds: true,
+      goals: [],
+      competencies: [],
+      sections: [
+        {
+          id: 'sec-1',
+          title: 'Key performance indicators',
+          kind: 'kpi',
+          criteria: [
+            {
+              id: 'sec-1-c1',
+              title: 'Core duty performance',
+              targetPrompt: 'Describe expected standard',
+              meansOfVerification: 'Evidence / reports',
+              weight: 3,
+            },
+          ],
+        },
+      ],
+    });
+  };
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -104,8 +144,8 @@ export default function HrAppraisalsPage() {
       setSelectedId(null);
       setEditReview(null);
       toast.success('Appraisal finalized and archived to HR documents');
-    } catch {
-      toast.error('Failed to finalize appraisal');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to finalize appraisal');
     }
   };
 
@@ -116,8 +156,28 @@ export default function HrAppraisalsPage() {
       await saveAppraisalReview(r, 'advance_hr');
       await refreshAll();
       toast.success('Moved to HR review queue');
-    } catch {
-      toast.error('Failed to update review');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update review');
+    }
+  };
+
+  const handleCloseCycle = async (cycle: HrAppraisalCycle) => {
+    try {
+      await updateAppraisalCycleStatus(cycle.id, 'Closed');
+      await refreshAll();
+      toast.success(`Closed cycle: ${cycle.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to close cycle');
+    }
+  };
+
+  const handleMoveCycleToReview = async (cycle: HrAppraisalCycle) => {
+    try {
+      await updateAppraisalCycleStatus(cycle.id, 'Review');
+      await refreshAll();
+      toast.success(`Cycle moved to Review: ${cycle.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update cycle');
     }
   };
 
@@ -126,7 +186,7 @@ export default function HrAppraisalsPage() {
   return (
     <HrPageShell
       title="Performance Appraisal"
-      description="Annual review cycles — self-assessment, supervisor review, HR calibration, and final ratings (standard university workflow)."
+      description="Review cycles, form templates, and calibration"
       actions={
         <Button variant="outline" onClick={() => setNewCycleOpen(true)}>
           <Plus className="h-4 w-4 mr-2" /> New Cycle
@@ -162,23 +222,6 @@ export default function HrAppraisalsPage() {
           </CardHeader>
         </Card>
       ) : null}
-
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-base">Standard appraisal workflow</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-gray-600 flex flex-wrap gap-2 items-center">
-          <span className="rounded bg-gray-100 px-2 py-1">1. HR opens cycle</span>
-          <span>→</span>
-          <span className="rounded bg-amber-100 px-2 py-1">2. Employee self-assessment</span>
-          <span>→</span>
-          <span className="rounded bg-blue-100 px-2 py-1">3. Supervisor review</span>
-          <span>→</span>
-          <span className="rounded bg-indigo-100 px-2 py-1">4. HR review & calibration</span>
-          <span>→</span>
-          <span className="rounded bg-green-100 px-2 py-1">5. Completed & filed</span>
-        </CardContent>
-      </Card>
 
       <Tabs defaultValue="queue">
         <TabsList>
@@ -244,18 +287,11 @@ export default function HrAppraisalsPage() {
         </TabsContent>
 
         <TabsContent value="forms" className="mt-4 space-y-4">
-          <Card className="border-dashed">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileStack className="h-5 w-5" />
-                Appraisal form library
-              </CardTitle>
-              <CardDescription>
-                Standard form types HR assigns when launching a cycle. Each category of staff receives
-                the matching template (configurable in New Cycle → Appraisal forms).
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={openNewTemplate}>
+              <Plus className="h-4 w-4 mr-2" /> New template
+            </Button>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {formTemplates.map((template) => (
               <Card key={template.id}>
@@ -298,12 +334,24 @@ export default function HrAppraisalsPage() {
           <div className="grid gap-4">
             {cycles.map((c) => (
               <Card key={c.id}>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between gap-3">
                   <div>
                     <CardTitle className="text-lg">{c.name}</CardTitle>
                     <CardDescription>{c.periodLabel}</CardDescription>
                   </div>
-                  {cycleStatusBadge(c.status)}
+                  <div className="flex items-center gap-2">
+                    {cycleStatusBadge(c.status)}
+                    {c.status === 'Open' ? (
+                      <Button size="sm" variant="outline" onClick={() => handleMoveCycleToReview(c)}>
+                        Move to Review
+                      </Button>
+                    ) : null}
+                    {c.status === 'Open' || c.status === 'Review' ? (
+                      <Button size="sm" variant="outline" onClick={() => handleCloseCycle(c)}>
+                        Close cycle
+                      </Button>
+                    ) : null}
+                  </div>
                 </CardHeader>
                 <CardContent className="text-sm text-gray-600 space-y-3">
                   <p>{c.completedCount} of {c.employeeCount} reviews completed</p>
@@ -538,9 +586,16 @@ export default function HrAppraisalsPage() {
         open={!!editTemplate}
         template={editTemplate ?? null}
         onOpenChange={(open) => {
-          if (!open) setTemplateEditId(null);
+          if (!open) {
+            setTemplateEditId(null);
+            setNewTemplateDraft(null);
+          }
         }}
-        onSaved={refreshAll}
+        onSaved={async () => {
+          setNewTemplateDraft(null);
+          setTemplateEditId(null);
+          await refreshAll();
+        }}
       />
 
       <Dialog open={!!previewTemplate} onOpenChange={() => setTemplatePreviewId(null)}>

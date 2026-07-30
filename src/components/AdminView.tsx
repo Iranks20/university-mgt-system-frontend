@@ -3952,7 +3952,7 @@ function SettingsTab() {
 // -----------------------------------------------------------------------------
 type SchoolsTabRow = { id: string; name: string; dean: string | null; code?: string; deptCount?: number; studentCount?: number; staffCount?: number };
 type LevelRow = { id: string; name: string; schoolId: string };
-type DepartmentRow = { id: string; name: string; schoolId: string; levelId: string; head: string | null; duration?: number };
+type DepartmentRow = { id: string; name: string; schoolId: string; levelId: string; head: string | null; headStaffId: string | null; duration?: number };
 type ProgramRow = { id: string; name: string; code: string; departmentId: string; duration: number };
 type SelectedNode =
   | { type: 'yearSemester'; programId: string; departmentId: string; level: number; semester: number; programName: string; programCode: string }
@@ -3961,6 +3961,7 @@ function SchoolsTab() {
   const [schools, setSchools] = useState<SchoolsTabRow[]>([]);
   const [levels, setLevels] = useState<LevelRow[]>([]);
   const [departments, setDepartments] = useState<DepartmentRow[]>([]);
+  const [staffOptions, setStaffOptions] = useState<{ id: string; label: string }[]>([]);
   const [departmentsBySchool, setDepartmentsBySchool] = useState<Record<string, DepartmentRow[]>>({});
   const [programsByDepartment, setProgramsByDepartment] = useState<Record<string, ProgramRow[]>>({});
   const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set());
@@ -3987,7 +3988,7 @@ function SchoolsTab() {
   const [selectedDeptForProgram, setSelectedDeptForProgram] = useState<string>('');
   const [schoolForm, setSchoolForm] = useState({ name: '', dean: '' });
   const [levelForm, setLevelForm] = useState({ name: '', schoolId: '' });
-  const [deptForm, setDeptForm] = useState({ name: '', head: '', schoolId: '', levelId: '', duration: 4 });
+  const [deptForm, setDeptForm] = useState({ name: '', head: '', headStaffId: '', schoolId: '', levelId: '', duration: 4 });
   const [programForm, setProgramForm] = useState({ name: '', code: '', departmentId: '', duration: 4 });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [coursesInNode, setCoursesInNode] = useState<any[]>([]);
@@ -4004,14 +4005,22 @@ function SchoolsTab() {
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const [schoolList, levelsRaw, deptsRaw] = await Promise.all([
+      const [schoolList, levelsRaw, deptsRaw, staffRaw] = await Promise.all([
         academicService.getSchools(),
         academicService.getLevels(),
         academicService.getDepartments(),
+        staffService.getStaff({ page: 1, limit: 500 }),
       ]);
       const list = Array.isArray(schoolList) ? schoolList : (schoolList as any)?.data ?? [];
       const levelList = Array.isArray(levelsRaw) ? levelsRaw : (levelsRaw as any)?.data ?? [];
       const deptList = Array.isArray(deptsRaw) ? deptsRaw : (deptsRaw as any)?.data ?? [];
+      const staffList = Array.isArray(staffRaw?.data) ? staffRaw.data : [];
+      setStaffOptions(
+        staffList.map((s: any) => ({
+          id: s.id,
+          label: `${s.firstName} ${s.lastName} · ${s.role} (${s.staffNumber})`,
+        }))
+      );
 
       const levelById: Record<string, LevelRow> = {};
       const levelsBySchool: Record<string, LevelRow[]> = {};
@@ -4035,6 +4044,7 @@ function SchoolsTab() {
           schoolId,
           levelId: d.levelId,
           head: d.head ?? null,
+          headStaffId: d.headStaffId ?? null,
           duration: d.duration ?? 4,
         };
         deptRows.push(row);
@@ -4353,7 +4363,7 @@ function SchoolsTab() {
     const targetLevel = levelId
       ? levels.find(l => l.id === levelId)
       : levels.find(l => l.schoolId === schoolId);
-    setDeptForm({ name: '', head: '', schoolId, levelId: targetLevel?.id ?? '', duration: 4 });
+    setDeptForm({ name: '', head: '', headStaffId: '', schoolId, levelId: targetLevel?.id ?? '', duration: 4 });
     setAddDeptOpen(true);
   };
 
@@ -4362,6 +4372,7 @@ function SchoolsTab() {
     setDeptForm({
       name: dept.name,
       head: dept.head || '',
+      headStaffId: dept.headStaffId || '',
       schoolId: dept.schoolId,
       levelId: dept.levelId,
       duration: dept.duration || 4,
@@ -4428,17 +4439,17 @@ function SchoolsTab() {
         await academicService.updateDepartment(editingDept.id, {
           name: deptForm.name,
           levelId: deptForm.levelId,
-          head: deptForm.head || undefined,
+          headStaffId: deptForm.headStaffId || null,
           duration: deptForm.duration || 4,
-        });
+        } as any);
       } else {
         await academicService.createDepartment({
           name: deptForm.name,
           code: deptForm.name,
           levelId: deptForm.levelId,
-          head: deptForm.head || undefined,
+          headStaffId: deptForm.headStaffId || null,
           duration: deptForm.duration || 4,
-        });
+        } as any);
       }
       await loadSchools();
       setAddDeptOpen(false);
@@ -5155,7 +5166,20 @@ function SchoolsTab() {
             </div>
             <div>
               <Label>Head of Department</Label>
-              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} placeholder="e.g. Prof. Jane Smith" />
+              <Select
+                value={deptForm.headStaffId || '_none'}
+                onValueChange={(v) => setDeptForm((f) => ({ ...f, headStaffId: v === '_none' ? '' : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select staff member" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Not assigned —</SelectItem>
+                  {staffOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddDeptOpen(false)}>Cancel</Button>
@@ -5212,7 +5236,20 @@ function SchoolsTab() {
             </div>
             <div>
               <Label>Head of Department</Label>
-              <Input value={deptForm.head} onChange={e => setDeptForm(f => ({ ...f, head: e.target.value }))} />
+              <Select
+                value={deptForm.headStaffId || '_none'}
+                onValueChange={(v) => setDeptForm((f) => ({ ...f, headStaffId: v === '_none' ? '' : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select staff member" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Not assigned —</SelectItem>
+                  {staffOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditDeptOpen(false)}>Cancel</Button>
