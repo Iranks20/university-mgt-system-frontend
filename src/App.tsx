@@ -48,7 +48,6 @@ import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
 import HrDashboardPage from './screens/hr/pages/HrDashboardPage'
 import HrEmployeesPage from './screens/hr/pages/HrEmployeesPage'
-import HrLeavePage from './screens/hr/pages/HrLeavePage'
 import HrAttendancePage from './screens/hr/pages/HrAttendancePage'
 import HrOnboardingPage from './screens/hr/pages/HrOnboardingPage'
 import HrDocumentsPage from './screens/hr/pages/HrDocumentsPage'
@@ -282,7 +281,6 @@ function AppRoutes() {
 
 			<Route path="/hr/dashboard" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/dashboard')}><HrDashboardPage /></ProtectedRoute>} />
 			<Route path="/hr/employees" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/employees')}><HrEmployeesPage /></ProtectedRoute>} />
-			<Route path="/hr/leave" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/leave')}><HrLeavePage /></ProtectedRoute>} />
 			<Route path="/hr/attendance" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/attendance')}><HrAttendancePage /></ProtectedRoute>} />
 			<Route path="/hr/onboarding" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/onboarding')}><HrOnboardingPage /></ProtectedRoute>} />
 			<Route path="/hr/documents" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/documents')}><HrDocumentsPage /></ProtectedRoute>} />

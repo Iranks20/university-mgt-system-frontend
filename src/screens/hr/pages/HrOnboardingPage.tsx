@@ -1,74 +1,189 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
-import { getHrOnboarding } from '@/features/hr/hr-demo-store';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Search, UserPlus } from 'lucide-react';
+import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
-import { UserPlus } from 'lucide-react';
-import { toast } from 'sonner';
+import { staffService } from '@/services/staff.service';
+import type { Staff } from '@/types';
 
-function taskStatusBadge(status: string) {
-  const map: Record<string, string> = {
-    Done: 'bg-green-100 text-green-800',
-    'In Progress': 'bg-blue-100 text-blue-800',
-    Pending: 'bg-gray-100 text-gray-700',
-  };
-  return <Badge className={map[status] || ''}>{status}</Badge>;
+function daysSince(hireDate: string | Date) {
+  const start = new Date(hireDate);
+  const now = new Date();
+  return Math.floor((now.getTime() - start.getTime()) / 86400000);
+}
+
+function formatDate(value: string | Date) {
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function HrOnboardingPage() {
-  const [cases] = useState(() => getHrOnboarding());
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const result = await staffService.getStaff({ limit: 500 });
+        if (!cancelled) setStaff(result.data ?? []);
+      } catch {
+        if (!cancelled) setStaff([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onboardingPool = useMemo(() => {
+    return staff
+      .filter((s) => s.status !== 'Terminated' && s.status !== 'Inactive')
+      .filter((s) => {
+        if (s.status === 'Probation') return true;
+        return daysSince(s.hireDate) <= 90;
+      })
+      .sort((a, b) => new Date(b.hireDate).getTime() - new Date(a.hireDate).getTime());
+  }, [staff]);
+
+  const filtered = onboardingPool.filter((s) => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    const name = `${s.firstName} ${s.lastName}`.toLowerCase();
+    return (
+      name.includes(q) ||
+      s.staffNumber.toLowerCase().includes(q) ||
+      (s.departmentName ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const probationCount = onboardingPool.filter((s) => s.status === 'Probation').length;
+  const newHireCount = onboardingPool.filter((s) => s.status !== 'Probation').length;
 
   return (
     <HrPageShell
       title="Onboarding"
-      description="New hire checklists — account provisioning, orientation, and department induction."
+      description="Probation and recent hires (≤90 days)"
       actions={
-        <Button onClick={() => toast.info('New hire wizard will connect to backend')}>
-          <UserPlus className="h-4 w-4 mr-2" /> Start Onboarding
+        <Button variant="outline" asChild>
+          <Link to="/hr/employees">
+            <UserPlus className="h-4 w-4 mr-2" /> Manage staff
+          </Link>
         </Button>
       }
     >
-      <div className="grid gap-6">
-        {cases.map((c) => (
-          <Card key={c.id}>
-            <CardHeader>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle>{c.employeeName}</CardTitle>
-                  <CardDescription>
-                    {c.jobTitle} · {c.department} · Start {c.startDate}
-                  </CardDescription>
-                </div>
-                <div className="w-full sm:w-48">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>Progress</span>
-                    <span>{c.progress}%</span>
-                  </div>
-                  <Progress value={c.progress} className="h-2" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {c.tasks.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <span className="text-sm font-medium">{t.label}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">Owner: {t.owner}</span>
-                      {taskStatusBadge(t.status)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-gray-600">In onboarding pool</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{loading ? '—' : onboardingPool.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-purple-700">Probation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{loading ? '—' : probationCount}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-[#015F2B]">New hires (≤90 days)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{loading ? '—' : newHireCount}</div>
+          </CardContent>
+        </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Staff</CardTitle>
+          <div className="relative max-w-sm pt-2">
+            <Search className="absolute left-3 top-5 h-4 w-4 text-gray-400" />
+            <Input
+              className="pl-9"
+              placeholder="Search name, staff number, department…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Staff no.</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Hire date</TableHead>
+                <TableHead>Days since hire</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Account</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    No probation or recent-hire staff found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium">
+                      {s.firstName} {s.lastName}
+                    </TableCell>
+                    <TableCell>{s.staffNumber}</TableCell>
+                    <TableCell>{s.departmentName ?? '—'}</TableCell>
+                    <TableCell>{formatDate(s.hireDate)}</TableCell>
+                    <TableCell>{daysSince(s.hireDate)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        className={
+                          s.status === 'Probation'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-green-100 text-green-800'
+                        }
+                      >
+                        {s.status ?? 'Active'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {s.userId ? (
+                        <Badge className="bg-green-100 text-green-800">Linked</Badge>
+                      ) : (
+                        <Badge className="bg-amber-100 text-amber-800">No user</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </HrPageShell>
   );
 }

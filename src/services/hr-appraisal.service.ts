@@ -31,6 +31,15 @@ export type HrAppraisalDashboardSummary = {
   recentReviews: HrAppraisalReview[];
 };
 
+export type CycleLaunchReadiness = {
+  eligibleCount: number;
+  readyCount: number;
+  missingSupervisorCount: number;
+  missingSupervisors: string[];
+  missingSupervisorDepartments: Array<{ department: string; count: number }>;
+  readyToLaunch: boolean;
+};
+
 const emptyDashboardSummary: HrAppraisalDashboardSummary = {
   activeCycle: null,
   inProgressCount: 0,
@@ -45,7 +54,7 @@ function asArray<T>(res: T[] | { data?: T[] } | null | undefined): T[] {
 
 function asRecord<T extends object>(res: T | { data?: T } | null | undefined): T | null {
   if (!res || typeof res !== 'object') return null;
-  if ('data' in res && (res as { data?: T }).data !== undefined) {
+  if ('data' in res && (res as Record<string, unknown>).data !== undefined) {
     return (res as { data: T }).data;
   }
   return res as T;
@@ -113,6 +122,17 @@ export const hrAppraisalService = {
     return asRecord(res)!;
   },
 
+  getCycleLaunchReadiness: async (input: {
+    scopeCategories: string[];
+    formAssignments: AppraisalAssignmentRule[];
+  }): Promise<CycleLaunchReadiness> => {
+    const res = await api.post<CycleLaunchReadiness | { data: CycleLaunchReadiness }>(
+      '/hr/appraisals/cycles/readiness',
+      input
+    );
+    return asRecord(res)!;
+  },
+
   updateCycleStatus: async (id: string, status: HrAppraisalCycle['status']) => {
     const res = await api.patch<HrAppraisalCycle | { data: HrAppraisalCycle }>(
       `/hr/appraisals/cycles/${id}`,
@@ -146,10 +166,17 @@ export const hrAppraisalService = {
   },
 
   getMyReview: async (): Promise<HrAppraisalReview | null> => {
-    const res = await api.get<HrAppraisalReview | null | { data: HrAppraisalReview | null }>(
+    const res = await api.get<HrAppraisalReview | { data: HrAppraisalReview }>(
       '/hr/appraisals/reviews/mine'
     );
     return asRecord(res);
+  },
+
+  getTeamReviews: async (): Promise<HrAppraisalReview[]> => {
+    const res = await api.get<HrAppraisalReview[] | { data: HrAppraisalReview[] }>(
+      '/hr/appraisals/reviews/team'
+    );
+    return asArray(res);
   },
 
   updateReview: async (

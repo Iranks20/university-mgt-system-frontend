@@ -18,9 +18,24 @@ type AuthContextType = {
   logout: () => Promise<void>;
   userRole: string | null;
   updateRole: (role: string) => void;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function persistSession(token: string, user: User, role: string) {
+  localStorage.setItem('kcu-token', token);
+  localStorage.setItem('kcu-user', JSON.stringify(user));
+  localStorage.setItem('kcu-role', role);
+  localStorage.setItem('kcu-authenticated', 'true');
+}
+
+function clearSession() {
+  localStorage.removeItem('kcu-token');
+  localStorage.removeItem('kcu-user');
+  localStorage.removeItem('kcu-role');
+  localStorage.removeItem('kcu-authenticated');
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const getInitialAuth = () => {
@@ -28,13 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const savedToken = localStorage.getItem('kcu-token');
       const savedUser = localStorage.getItem('kcu-user');
       const savedRole = localStorage.getItem('kcu-role');
-      
+
       if (savedToken && savedUser && savedRole) {
         try {
           return {
             isAuthenticated: true,
             userRole: savedRole,
-            user: JSON.parse(savedUser),
+            user: JSON.parse(savedUser) as User,
           };
         } catch {
           return { isAuthenticated: false, userRole: null, user: null };
@@ -49,41 +64,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<string | null>(initialState.userRole);
   const [user, setUser] = useState<User | null>(initialState.user);
 
+  const refreshUser = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('kcu-token') : null;
+    if (!token) return;
+    const next = await api.get<User>('/auth/me');
+    if (!next?.id) return;
+    setIsAuthenticated(true);
+    setUserRole(next.role);
+    setUser(next);
+    persistSession(token, next, next.role);
+  };
+
+  useEffect(() => {
+    if (!initialState.isAuthenticated) return;
+    refreshUser().catch(() => {
+      setIsAuthenticated(false);
+      setUserRole(null);
+      setUser(null);
+      clearSession();
+    });
+  }, []);
+
   const login = async (email: string, password: string, studentId?: string) => {
-    try {
-      const payload = studentId ? { studentId, password } : { email, password };
-      const response = await api.post<{ token: string; user: User; role: string }>('/auth/login', payload);
-      
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('kcu-token', response.token);
-        localStorage.setItem('kcu-user', JSON.stringify(response.user));
-        localStorage.setItem('kcu-role', response.role);
-        localStorage.setItem('kcu-authenticated', 'true');
-      }
-      
-      setIsAuthenticated(true);
-      setUserRole(response.role);
-      setUser(response.user);
-    } catch (error) {
-      throw error;
-    }
+    const payload = studentId ? { studentId, password } : { email, password };
+    const response = await api.post<{ token: string; user: User; role: string }>('/auth/login', payload);
+    persistSession(response.token, response.user, response.role);
+    setIsAuthenticated(true);
+    setUserRole(response.role);
+    setUser(response.user);
   };
 
   const logout = async () => {
     try {
       await api.post('/auth/logout');
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch {
     } finally {
       setIsAuthenticated(false);
       setUserRole(null);
       setUser(null);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('kcu-token');
-        localStorage.removeItem('kcu-user');
-        localStorage.removeItem('kcu-role');
-        localStorage.removeItem('kcu-authenticated');
-      }
+      clearSession();
     }
   };
 
@@ -95,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, userRole, updateRole }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, userRole, updateRole, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,10 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import type {
-  AppraisalReviewStatus,
-  EmploymentStatus,
-  HrAppraisalCycle,
-  LeaveRequestStatus,
-} from '@/features/hr/types';
+import type { AppraisalReviewStatus, EmploymentStatus, HrAppraisalCycle } from '@/features/hr/types';
 
 export function employmentStatusBadge(status: EmploymentStatus) {
   const map: Record<EmploymentStatus, string> = {
@@ -13,16 +8,6 @@ export function employmentStatusBadge(status: EmploymentStatus) {
     Suspended: 'bg-orange-100 text-orange-800',
     Terminated: 'bg-red-100 text-red-800',
     Probation: 'bg-purple-100 text-purple-800',
-  };
-  return <Badge className={`${map[status]} hover:${map[status]}`}>{status}</Badge>;
-}
-
-export function leaveStatusBadge(status: LeaveRequestStatus) {
-  const map: Record<LeaveRequestStatus, string> = {
-    Pending: 'bg-amber-100 text-amber-800',
-    Approved: 'bg-green-100 text-green-800',
-    Rejected: 'bg-red-100 text-red-800',
-    Cancelled: 'bg-gray-100 text-gray-700',
   };
   return <Badge className={`${map[status]} hover:${map[status]}`}>{status}</Badge>;
 }

@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
-import { getHrAttendance } from '@/features/hr/hr-demo-store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,6 +14,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Download, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { staffService } from '@/services/staff.service';
+import { academicService } from '@/services/academic.service';
+import { hrReportsService } from '@/services/hr-reports.service';
+import { getApiErrorMessage } from '@/lib/api';
+
+type AttendanceRow = {
+  id: string;
+  staffId: string;
+  employeeName: string;
+  departmentId: string;
+  department: string;
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  hours: number;
+  status: string;
+};
 
 function attendanceStatusBadge(status: string) {
   const colors: Record<string, string> = {
@@ -26,39 +42,92 @@ function attendanceStatusBadge(status: string) {
   return <Badge className={colors[status] || ''}>{status}</Badge>;
 }
 
-export default function HrAttendancePage() {
-  const [records] = useState(() => getHrAttendance());
-  const [search, setSearch] = useState('');
-  const [dept, setDept] = useState('All');
-  const [date, setDate] = useState('2026-06-05');
+function formatTime(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
 
-  const departments = useMemo(
-    () => ['All', ...new Set(records.map((r) => r.department))],
-    [records]
-  );
+export default function HrAttendancePage() {
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [date, setDate] = useState(today);
+  const [deptId, setDeptId] = useState('all');
+  const [search, setSearch] = useState('');
+  const [records, setRecords] = useState<AttendanceRow[]>([]);
+  const [summary, setSummary] = useState({
+    present: 0,
+    late: 0,
+    absent: 0,
+    onLeave: 0,
+  });
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    academicService
+      .getDepartments()
+      .then((depts) => setDepartments(depts.map((d) => ({ id: d.id, name: d.name }))))
+      .catch(() => setDepartments([]));
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await staffService.getWorkforceCheckIns({
+        date,
+        departmentId: deptId === 'all' ? undefined : deptId,
+      });
+      setRecords(result.records);
+      setSummary({
+        present: result.summary.present,
+        late: result.summary.late,
+        absent: result.summary.absent,
+        onLeave: result.summary.onLeave,
+      });
+    } catch {
+      setRecords([]);
+      setSummary({ present: 0, late: 0, absent: 0, onLeave: 0 });
+      toast.error('Could not load attendance register');
+    } finally {
+      setLoading(false);
+    }
+  }, [date, deptId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const filtered = records.filter((r) => {
-    const matchDept = dept === 'All' || r.department === dept;
-    const matchDate = r.date === date;
     const q = search.toLowerCase();
-    const matchSearch = !q || r.employeeName.toLowerCase().includes(q);
-    return matchDept && matchDate && matchSearch;
+    return !q || r.employeeName.toLowerCase().includes(q);
   });
-
-  const summary = {
-    present: filtered.filter((r) => r.status === 'Present').length,
-    late: filtered.filter((r) => r.status === 'Late').length,
-    absent: filtered.filter((r) => r.status === 'Absent').length,
-    onLeave: filtered.filter((r) => r.status === 'On Leave').length,
-  };
 
   return (
     <HrPageShell
       title="Staff Attendance"
-      description="Daily attendance register from staff check-in records — integrates with existing timeclock."
+      description="Daily check-in register"
       actions={
-        <Button variant="outline" onClick={() => toast.info('Monthly export will connect to backend')}>
-          <Download className="h-4 w-4 mr-2" /> Export Register
+        <Button
+          variant="outline"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              const result = await hrReportsService.downloadExport({
+                type: 'attendance',
+                date,
+              });
+              toast.success(`Downloaded ${result.filename}`);
+            } catch (error) {
+              toast.error(getApiErrorMessage(error, 'Export failed'));
+            } finally {
+              setExporting(false);
+            }
+          }}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          {exporting ? 'Exporting…' : 'Export CSV'}
         </Button>
       }
     >
@@ -74,7 +143,7 @@ export default function HrAttendancePage() {
               <CardTitle className={`text-sm ${s.color}`}>{s.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{s.value}</div>
+              <div className="text-2xl font-bold">{loading ? '—' : s.value}</div>
             </CardContent>
           </Card>
         ))}
@@ -88,12 +157,24 @@ export default function HrAttendancePage() {
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="sm:w-44" />
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input className="pl-9" placeholder="Search employee..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input
+              className="pl-9"
+              placeholder="Search employee..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <Select value={dept} onValueChange={setDept}>
-            <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+          <Select value={deptId} onValueChange={setDeptId}>
+            <SelectTrigger className="sm:w-48">
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
             <SelectContent>
-              {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              <SelectItem value="all">All departments</SelectItem>
+              {departments.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </CardContent>
@@ -114,17 +195,31 @@ export default function HrAttendancePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.employeeName}</TableCell>
-                  <TableCell>{r.department}</TableCell>
-                  <TableCell>{r.date}</TableCell>
-                  <TableCell>{r.checkIn}</TableCell>
-                  <TableCell>{r.checkOut || '—'}</TableCell>
-                  <TableCell>{r.hours > 0 ? r.hours.toFixed(1) : '—'}</TableCell>
-                  <TableCell>{attendanceStatusBadge(r.status)}</TableCell>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    Loading attendance…
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    No attendance rows for this date
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.employeeName}</TableCell>
+                    <TableCell>{r.department}</TableCell>
+                    <TableCell>{r.date}</TableCell>
+                    <TableCell>{formatTime(r.checkIn)}</TableCell>
+                    <TableCell>{formatTime(r.checkOut)}</TableCell>
+                    <TableCell>{r.hours > 0 ? r.hours.toFixed(1) : '—'}</TableCell>
+                    <TableCell>{attendanceStatusBadge(r.status)}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

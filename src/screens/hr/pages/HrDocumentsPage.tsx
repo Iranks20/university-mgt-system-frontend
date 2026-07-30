@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
-import { getHrDocuments } from '@/features/hr/hr-demo-store';
 import {
   getCompletedAppraisalArchives,
   getHrAppraisalReviewById,
 } from '@/features/hr/hr-appraisal-store';
 import { AppraisalPrintView } from '@/components/hr/AppraisalPrintView';
-import type { HrAppraisalReview, HrDocument } from '@/features/hr/types';
+import type { HrAppraisalReview } from '@/features/hr/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,64 +17,69 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileText, Upload, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import { ClipboardCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 type DocumentRow = {
   id: string;
   employeeName: string;
   title: string;
-  category: HrDocument['category'] | 'Appraisal Archive';
+  category: 'Appraisal Archive';
   uploadedAt: string;
-  expiresAt: string | null;
-  fileName: string;
-  appraisalReviewId?: string;
+  cycleName: string;
+  appraisalReviewId: string;
+  overallHrScore?: number | null;
 };
 
 export default function HrDocumentsPage() {
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [search, setSearch] = useState('');
   const [printReview, setPrintReview] = useState<HrAppraisalReview | null>(null);
-  const [loadingArchive, setLoadingArchive] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const mockDocs: DocumentRow[] = getHrDocuments().map((doc) => ({ ...doc }));
-    setDocs(mockDocs);
-
-    setLoadingArchive(true);
+    let cancelled = false;
+    setLoading(true);
     getCompletedAppraisalArchives()
       .then((archives) => {
-        const archiveRows: DocumentRow[] = archives.map((review) => ({
-          id: `appraisal-${review.id}`,
-          employeeName: review.employeeName,
-          title: review.archivedDocumentTitle ?? `${review.cycleName} — ${review.formTemplateName}`,
-          category: 'Appraisal Archive',
-          uploadedAt: review.completedAt?.slice(0, 10) ?? review.dueDate,
-          expiresAt: null,
-          fileName: 'View appraisal',
-          appraisalReviewId: review.id,
-        }));
-        setDocs([...archiveRows, ...mockDocs]);
+        if (cancelled) return;
+        setDocs(
+          archives.map((review) => ({
+            id: `appraisal-${review.id}`,
+            employeeName: review.employeeName,
+            title: review.archivedDocumentTitle ?? `${review.cycleName} — ${review.formTemplateName}`,
+            category: 'Appraisal Archive',
+            uploadedAt: review.completedAt?.slice(0, 10) ?? review.dueDate,
+            cycleName: review.cycleName,
+            appraisalReviewId: review.id,
+            overallHrScore: review.overallHrScore,
+          }))
+        );
       })
-      .catch(() => undefined)
-      .finally(() => setLoadingArchive(false));
+      .catch(() => {
+        if (!cancelled) {
+          setDocs([]);
+          toast.error('Could not load appraisal archives');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const expiringSoon = useMemo(
-    () =>
-      docs.filter((d) => d.expiresAt && new Date(d.expiresAt) <= new Date('2026-12-31')),
-    [docs]
-  );
-
-  const filtered = docs.filter((d) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return (
-      !q ||
-      d.employeeName.toLowerCase().includes(q) ||
-      d.title.toLowerCase().includes(q) ||
-      d.category.toLowerCase().includes(q)
+    return docs.filter(
+      (d) =>
+        !q ||
+        d.employeeName.toLowerCase().includes(q) ||
+        d.title.toLowerCase().includes(q) ||
+        d.cycleName.toLowerCase().includes(q)
     );
-  });
+  }, [docs, search]);
 
   const openAppraisalArchive = async (reviewId: string) => {
     const review = await getHrAppraisalReviewById(reviewId);
@@ -90,42 +93,17 @@ export default function HrDocumentsPage() {
   return (
     <HrPageShell
       title="HR Documents"
-      description="Contracts, appointment letters, certificates, and filed performance appraisals."
-      actions={
-        <Button onClick={() => toast.info('Document upload will connect to backend')}>
-          <Upload className="h-4 w-4 mr-2" /> Upload Document
-        </Button>
-      }
+      description="Completed appraisal filings"
     >
-      {expiringSoon.length > 0 ? (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2 text-amber-900">
-              <AlertTriangle className="h-4 w-4" />
-              Contracts expiring within 6 months
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-amber-900">
-            {expiringSoon.map((d) => (
-              <div key={d.id}>
-                {d.employeeName} — {d.title} (expires {d.expiresAt})
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Appraisal archives</CardTitle>
           <Input
-            placeholder="Search documents..."
+            placeholder="Search employee, cycle, or title…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
+            className="max-w-md mt-2"
           />
-          {loadingArchive ? (
-            <p className="text-xs text-gray-500 mt-2">Loading completed appraisal archives...</p>
-          ) : null}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -133,45 +111,45 @@ export default function HrDocumentsPage() {
               <TableRow>
                 <TableHead>Employee</TableHead>
                 <TableHead>Document</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Uploaded</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>File</TableHead>
+                <TableHead>Cycle</TableHead>
+                <TableHead>Filed</TableHead>
+                <TableHead>HR score</TableHead>
+                <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((d) => (
-                <TableRow key={d.id}>
-                  <TableCell>{d.employeeName}</TableCell>
-                  <TableCell className="font-medium">{d.title}</TableCell>
-                  <TableCell>
-                    <Badge variant={d.category === 'Appraisal Archive' ? 'default' : 'secondary'}>
-                      {d.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{d.uploadedAt}</TableCell>
-                  <TableCell>{d.expiresAt || '—'}</TableCell>
-                  <TableCell>
-                    {d.appraisalReviewId ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAppraisalArchive(d.appraisalReviewId!)}
-                      >
-                        <ClipboardCheck className="h-4 w-4 mr-1" /> {d.fileName}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toast.info('Preview will connect to file storage')}
-                      >
-                        <FileText className="h-4 w-4 mr-1" /> {d.fileName}
-                      </Button>
-                    )}
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    Loading…
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    No completed appraisals filed yet
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((d) => (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-medium">{d.employeeName}</TableCell>
+                    <TableCell>{d.title}</TableCell>
+                    <TableCell>{d.cycleName}</TableCell>
+                    <TableCell>{d.uploadedAt}</TableCell>
+                    <TableCell>{d.overallHrScore != null ? `${d.overallHrScore}%` : '—'}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAppraisalArchive(d.appraisalReviewId)}
+                      >
+                        <ClipboardCheck className="h-4 w-4 mr-1" /> View / Print
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

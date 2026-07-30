@@ -167,7 +167,6 @@ export function AppraisalSectionForm({
                       onChange={(e) =>
                         onChange(upsertCriterionResponse(responses, criterion.id, { achievement: e.target.value }))
                       }
-                      disabled={mode === 'readonly'}
                     />
                   ) : (
                     <span className="text-sm">{row?.achievement || '—'}</span>
