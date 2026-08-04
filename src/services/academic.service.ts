@@ -218,7 +218,7 @@ export const academicService = {
     }
   },
 
-  getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; unassigned?: boolean; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
+   getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; unassigned?: boolean; page?: number; limit?: number; search?: string }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
     try {
       const query = new URLSearchParams();
       if (params?.departmentId) query.set('departmentId', params.departmentId);
@@ -228,6 +228,8 @@ export const academicService = {
       if (params?.semester != null) query.set('semester', String(params.semester));
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
+        // Forward course search text to the backend so name/code lookups work.
+      if (params?.search?.trim()) query.set('search', params.search.trim());
       const res = await api.get<{ data: Course[]; total: number; page: number; pageSize: number }>('/academic/courses' + (query.toString() ? '?' + query.toString() : ''));
       return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 20 };
     } catch (error) {
