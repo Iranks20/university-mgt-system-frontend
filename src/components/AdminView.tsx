@@ -419,19 +419,6 @@ function StudentsTab({
       }
       
       await loadStudents(1);
-
-      if (addSelectedCourseIds.length > 0 && newStudent?.id) {
-        setEnrollmentsByClassId((prev) => {
-          const next = { ...prev };
-          for (const classId of addSelectedCourseIds) {
-            const existing = next[classId] ?? [];
-            if (!existing.includes(newStudent.id)) {
-              next[classId] = [...existing, newStudent.id];
-            }
-          }
-          return next;
-        });
-      }
       
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
@@ -1321,21 +1308,6 @@ function StudentsTab({
 
               await loadStudents(1);
 
-              const studentId = editingStudent.id;
-              setEnrollmentsByClassId((prev) => {
-                const next = { ...prev };
-                for (const classId of toAdd) {
-                  const existing = next[classId] ?? [];
-                  if (!existing.includes(studentId)) {
-                    next[classId] = [...existing, studentId];
-                  }
-                }
-                for (const classId of toRemove) {
-                  next[classId] = (next[classId] ?? []).filter((id) => id !== studentId);
-                }
-                return next;
-              });
-              
               setEditOpen(false);
               setEditingStudent(null);
               setPreviewCourses([]);
