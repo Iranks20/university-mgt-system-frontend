@@ -10,7 +10,7 @@ import { studentService } from '@/services/student.service';
 
 vi.mock('@/services/staff.service', () => ({
   staffService: {
-    getStaff: vi.fn(),
+    getLecturers: vi.fn(),
   },
 }));
 
@@ -67,7 +67,7 @@ describe('class-admin-utils', () => {
 
   describe('fetchAllLecturers', () => {
     it('paginates staff until all lecturers are loaded', async () => {
-      vi.mocked(staffService.getStaff)
+      vi.mocked(staffService.getLecturers)
         .mockResolvedValueOnce({
           data: [{ id: 'l1', firstName: 'Ann', lastName: 'A' }],
           total: 2,
@@ -86,9 +86,9 @@ describe('class-admin-utils', () => {
         { id: 'l1', name: 'Ann A' },
         { id: 'l2', name: 'Bob B' },
       ]);
-      expect(staffService.getStaff).toHaveBeenCalledTimes(2);
-      expect(staffService.getStaff).toHaveBeenCalledWith(
-        expect.objectContaining({ role: 'Lecturer', limit: 100 })
+      expect(staffService.getLecturers).toHaveBeenCalledTimes(2);
+      expect(staffService.getLecturers).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, limit: 100 })
       );
     });
   });
