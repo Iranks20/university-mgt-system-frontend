@@ -132,6 +132,7 @@ export default function Reports() {
   const [attendSelectedSemester, setAttendSelectedSemester] = useState(ALL_VALUE);
   const [attendDateFrom, setAttendDateFrom] = useState('');
   const [attendDateTo, setAttendDateTo] = useState('');
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
   const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
   const [classAttendLoading, setClassAttendLoading] = useState(false);
   const [classAttendExporting, setClassAttendExporting] = useState(false);
@@ -335,6 +336,15 @@ export default function Reports() {
     academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
     academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
     academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) return;
+        setActiveTermLabel(term.name);
+        setAttendDateFrom((prev) => prev || term.startDate);
+        setAttendDateTo((prev) => prev || term.endDate);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1525,7 +1535,9 @@ export default function Reports() {
                       <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Date to{activeTermLabel ? ` · ${activeTermLabel}` : ''}
+                      </label>
                       <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
                     </div>
                     <Button variant="outline" onClick={resetClassAttendanceFilters}>

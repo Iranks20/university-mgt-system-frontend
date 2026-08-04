@@ -12,6 +12,7 @@ export interface TimetableClass {
   capacity: number;
   enrolledCount: number;
   isActive?: boolean;
+  academicTermId?: string | null;
   course: {
     id: string;
     code: string;
@@ -73,6 +74,7 @@ export interface TimetableQuery {
   semester?: number;
   intakeType?: 'Day' | 'Evening' | 'Weekend';
   programIntakeId?: string;
+  academicTermId?: string;
   day?: string;
   courseCode?: string;
   page?: number;
@@ -133,6 +135,7 @@ export const timetableService = {
     if (query?.semester != null) params.append('semester', String(query.semester));
     if (query?.intakeType) params.append('intakeType', query.intakeType);
     if (query?.programIntakeId) params.append('programIntakeId', query.programIntakeId);
+    if (query?.academicTermId) params.append('academicTermId', query.academicTermId);
     if (query?.day) params.append('day', query.day);
     if (query?.courseCode) params.append('courseCode', query.courseCode);
     if (query?.page) params.append('page', String(query.page));

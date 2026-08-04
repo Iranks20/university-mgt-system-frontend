@@ -40,6 +40,9 @@ import {
   type LecturerOption,
 } from '@/lib/class-admin-utils';
 import { getApiErrorMessage } from '@/lib/api';
+import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
+import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
+import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
 
 type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
@@ -417,6 +420,19 @@ function StudentsTab({
       
       await loadStudents(1);
 
+      if (addSelectedCourseIds.length > 0 && newStudent?.id) {
+        setEnrollmentsByClassId((prev) => {
+          const next = { ...prev };
+          for (const classId of addSelectedCourseIds) {
+            const existing = next[classId] ?? [];
+            if (!existing.includes(newStudent.id)) {
+              next[classId] = [...existing, newStudent.id];
+            }
+          }
+          return next;
+        });
+      }
+      
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
@@ -1279,22 +1295,47 @@ function StudentsTab({
                 }
               }
 
-              for (const classId of toRemove) {
+              if (toRemove.length > 0) {
+                let studentEnrollmentsList: any[] = [];
                 try {
                   const enrollments = await enrollmentService.getStudentEnrollments(editingStudent.id);
                   const enrollmentsData = (enrollments as any)?.data || enrollments;
-                  const enrollment = enrollmentsData.find((e: any) => (e.classId || e.class?.id) === classId);
-                  if (enrollment?.id) {
-                    await enrollmentService.deleteEnrollment(enrollment.id);
-                  }
+                  studentEnrollmentsList = Array.isArray(enrollmentsData) ? enrollmentsData : [];
                 } catch (error: any) {
-                  console.error('Error removing enrollment:', error);
-                  enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                  enrollmentErrors.push(`Failed to load enrollments: ${error?.message || 'Unknown error'}`);
+                }
+                for (const classId of toRemove) {
+                  try {
+                    const enrollment = studentEnrollmentsList.find(
+                      (e: any) => (e.classId || e.class?.id) === classId
+                    );
+                    if (enrollment?.id) {
+                      await enrollmentService.deleteEnrollment(enrollment.id);
+                    }
+                  } catch (error: any) {
+                    console.error('Error removing enrollment:', error);
+                    enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                  }
                 }
               }
 
               await loadStudents(1);
 
+              const studentId = editingStudent.id;
+              setEnrollmentsByClassId((prev) => {
+                const next = { ...prev };
+                for (const classId of toAdd) {
+                  const existing = next[classId] ?? [];
+                  if (!existing.includes(studentId)) {
+                    next[classId] = [...existing, studentId];
+                  }
+                }
+                for (const classId of toRemove) {
+                  next[classId] = (next[classId] ?? []).filter((id) => id !== studentId);
+                }
+                return next;
+              });
+              
               setEditOpen(false);
               setEditingStudent(null);
               setPreviewCourses([]);
@@ -2895,7 +2936,16 @@ function CoursesTab() {
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CoursesTabRow | null>(null);
-  const [courseForm, setCourseForm] = useState({ code: '', name: '', departmentId: '', programId: '', credits: 0, level: 1, semester: 1 });
+  const [courseForm, setCourseForm] = useState({
+    code: '',
+    name: '',
+    departmentId: '',
+    programId: '',
+    credits: 0,
+    level: 1,
+    semester: 1,
+    enrollmentPolicy: 'Auto' as 'Auto' | 'Self' | 'StaffOnly',
+  });
 
   const loadCourses = async (pageNum: number = 1, search?: string) => {
     setLoading(true);
@@ -2962,7 +3012,16 @@ function CoursesTab() {
 
   const openAddCourse = () => {
     setEditingCourse(null);
-    setCourseForm({ code: '', name: '', departmentId: Object.keys(depts)[0] ?? '', programId: '', credits: 0, level: 1, semester: 1 });
+    setCourseForm({
+      code: '',
+      name: '',
+      departmentId: Object.keys(depts)[0] ?? '',
+      programId: '',
+      credits: 0,
+      level: 1,
+      semester: 1,
+      enrollmentPolicy: 'Auto',
+    });
     setAddCourseOpen(true);
   };
 
@@ -2983,6 +3042,7 @@ function CoursesTab() {
       credits: courseData.credits ?? course.credits,
       level: courseData.level || 1,
       semester: courseData.semester || 1,
+      enrollmentPolicy: (courseData.enrollmentPolicy as 'Auto' | 'Self' | 'StaffOnly') || 'Auto',
     });
     setEditCourseOpen(true);
   };
@@ -2999,6 +3059,7 @@ function CoursesTab() {
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
+          enrollmentPolicy: courseForm.enrollmentPolicy,
         });
       } else {
         await academicService.createCourse({
@@ -3009,6 +3070,7 @@ function CoursesTab() {
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
+          enrollmentPolicy: courseForm.enrollmentPolicy,
         });
       }
       await loadCourses(coursesPage);
@@ -3192,6 +3254,27 @@ function CoursesTab() {
               <Label>Credits</Label>
               <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
             </div>
+            <div>
+              <Label>Enrollment policy</Label>
+              <Select
+                value={courseForm.enrollmentPolicy}
+                onValueChange={(v) =>
+                  setCourseForm((f) => ({
+                    ...f,
+                    enrollmentPolicy: v as 'Auto' | 'Self' | 'StaffOnly',
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Auto">Auto (required — system seats)</SelectItem>
+                  <SelectItem value="Self">Self (student registration)</SelectItem>
+                  <SelectItem value="StaffOnly">Staff only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddCourseOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">Save</Button>
@@ -3271,6 +3354,27 @@ function CoursesTab() {
             <div>
               <Label>Credits</Label>
               <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
+            </div>
+            <div>
+              <Label>Enrollment policy</Label>
+              <Select
+                value={courseForm.enrollmentPolicy}
+                onValueChange={(v) =>
+                  setCourseForm((f) => ({
+                    ...f,
+                    enrollmentPolicy: v as 'Auto' | 'Self' | 'StaffOnly',
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Auto">Auto (required — system seats)</SelectItem>
+                  <SelectItem value="Self">Self (student registration)</SelectItem>
+                  <SelectItem value="StaffOnly">Staff only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditCourseOpen(false)}>Cancel</Button>
@@ -5978,7 +6082,15 @@ function ClassesTab({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEnrollForClass(cls)}><Users className="h-4 w-4 mr-1" /> Enrollments</Button>
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}><Edit className="h-4 w-4" /></Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEdit(cls)}
+                      disabled={cls.isActive === false}
+                      title={cls.isActive === false ? 'Inactive class is read-only' : 'Edit class'}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
                     {cls.isActive !== false && (
                       <Button
                         variant="ghost"
@@ -6480,6 +6592,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [importResult, setImportResult] = useState<any>(null);
   const [importScope, setImportScope] = useState({ programId: '', year: 1, semester: 1 });
   const [allPrograms, setAllPrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<TimetableClass | null>(null);
   const [editForm, setEditForm] = useState({ dayOfWeek: 1, lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
@@ -6558,6 +6671,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
       if (filters.classStatus) query.classStatus = filters.classStatus;
+      if (filters.classStatus === 'inactive' || filters.classStatus === 'all') {
+        query.academicTermId = 'all';
+      }
       const result = await timetableService.getTimetable(query);
       setClasses(result.data);
       setTotal(result.total);
@@ -6597,14 +6713,14 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       const allLecturers: any[] = [];
       let lecturerPage = 1;
       while (true) {
-        const result = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 100 });
+        const result = await staffService.getLecturers({ page: lecturerPage, limit: 100 });
         const arr = Array.isArray(result) ? result : (result.data || []);
         allLecturers.push(...arr);
         const total = Array.isArray(result) ? arr.length : (result.total ?? allLecturers.length);
         if (arr.length === 0 || allLecturers.length >= total) break;
         lecturerPage += 1;
       }
-      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer').map((s: any) => ({
+      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer' || !s.role).map((s: any) => ({
         id: s.id,
         name: `${s.firstName} ${s.lastName}`,
       })));
@@ -6641,6 +6757,20 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       const arr = res?.data ?? (Array.isArray(res) ? res : []);
       setTimetablePrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code || '', duration: p.duration ?? 4 })));
     }).catch(() => setTimetablePrograms([]));
+  }, []);
+
+  useEffect(() => {
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) {
+          setActiveTermLabel(null);
+          return;
+        }
+        setActiveTermLabel(term.name);
+        setImportScope((s) => ({ ...s, semester: term.semester === 2 ? 2 : 1 }));
+      })
+      .catch(() => setActiveTermLabel(null));
   }, []);
 
   useEffect(() => {
@@ -6873,8 +7003,10 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
         <CardHeader>
           <CardTitle>University Timetable</CardTitle>
           <CardDescription>
-            View and manage class schedules. Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
-            Deactivate instead of delete when students are still enrolled.
+            View and manage class schedules
+            {activeTermLabel ? ` for Active term “${activeTermLabel}”` : ''}
+            . Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
+            Inactive / prior-term schedules are read-only (deactivate stays available for active classes).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -6904,9 +7036,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               ) : (
                 classes.map((cls) => (
                   <TableRow key={cls.id} className={cls.isActive === false ? 'opacity-70 bg-muted/30' : undefined}>
-                    <TableCell>{(cls.course as any).program?.name ?? cls.course.department?.name ?? '—'}</TableCell>
-                    <TableCell>{cls.course.level}</TableCell>
-                    <TableCell>{cls.course.semester}</TableCell>
+                    <TableCell>{(cls.course as any)?.program?.name ?? cls.course?.department?.name ?? '—'}</TableCell>
+                    <TableCell>{cls.course?.level ?? '—'}</TableCell>
+                    <TableCell>{cls.course?.semester ?? '—'}</TableCell>
                     <TableCell className="font-medium">{cls.course?.name?.trim() || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{cls.course?.code || '—'}</TableCell>
                     <TableCell>
@@ -6923,7 +7055,13 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                     <TableCell className={cls.lecturer ? '' : 'text-amber-600 font-medium'}>{cls.lecturer?.name || 'Not assigned'}</TableCell>
                       <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(cls)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(cls)}
+                          disabled={cls.isActive === false}
+                          title={cls.isActive === false ? 'Inactive timetable is read-only' : 'Edit schedule'}
+                        >
                           <Edit className="h-4 w-4" />
                             </Button>
                         {cls.isActive === false ? (
@@ -7690,7 +7828,15 @@ function AcademicCalendarTab() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <AcademicRolloverWizard
+        onCompleted={() => {
+          window.dispatchEvent(new Event('academic-terms-updated'));
+        }}
+      />
+      <AcademicTermsPanel />
+      <AcademicRolloverPanel />
+      <div className="space-y-4">
       <div className="flex justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -7839,6 +7985,7 @@ function AcademicCalendarTab() {
           </form>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

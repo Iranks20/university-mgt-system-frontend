@@ -15,6 +15,7 @@ import ManagementOverview from './screens/ManagementOverview'
 import ManagementRiskRegister from './screens/ManagementRiskRegister'
 import ManagementEnrolmentHealth from './screens/ManagementEnrolmentHealth'
 import StudentClasses from './screens/StudentClasses'
+import StudentRegistration from './screens/StudentRegistration'
 import LecturerPerformance from './screens/LecturerPerformance'
 import LecturerCourseAttendance from './screens/LecturerCourseAttendance'
 import AdminSchools from './screens/AdminSchools'
@@ -134,6 +135,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-classes')}>
 						<StudentClasses />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/student-registration" 
+				element={
+					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-registration')}>
+						<StudentRegistration />
 					</ProtectedRoute>
 				} 
 			/>

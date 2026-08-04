@@ -196,9 +196,13 @@ export default function Timetable() {
           sortOrder: 'asc';
           day?: string;
           classStatus?: 'active' | 'inactive' | 'all';
+          academicTermId?: string;
         } = { page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc', classStatus: qaFilters.classStatus };
         if (qaFilters.day !== 'all') {
           query.day = qaFilters.day.toLowerCase();
+        }
+        if (qaFilters.classStatus === 'inactive' || qaFilters.classStatus === 'all') {
+          query.academicTermId = 'all';
         }
         const result = await timetableService.getTimetable(query);
         data = result.data || [];
@@ -663,7 +667,13 @@ export default function Timetable() {
                               variant="ghost"
                               size="sm"
                               onClick={() => openQaEdit(t.id)}
+                              disabled={qaRawClasses[t.id]?.isActive === false}
                               aria-label={`Edit ${t.course}`}
+                              title={
+                                qaRawClasses[t.id]?.isActive === false
+                                  ? 'Inactive timetable is read-only'
+                                  : 'Edit session'
+                              }
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
