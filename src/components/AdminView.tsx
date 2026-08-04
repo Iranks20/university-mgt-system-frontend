@@ -72,8 +72,6 @@ function StudentsTab({
   setStudents,
   classes,
   setClasses,
-  enrollmentsByClassId,
-  setEnrollmentsByClassId,
   studentsPage,
   studentsTotal,
   pageSize,
@@ -83,8 +81,6 @@ function StudentsTab({
   setStudents: React.Dispatch<React.SetStateAction<StudentRow[]>>;
   classes: ClassRow[];
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
-  enrollmentsByClassId: Record<string, string[]>;
-  setEnrollmentsByClassId: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   studentsPage: number;
   studentsTotal: number;
   pageSize: number;
@@ -5477,8 +5473,6 @@ function ClassesTab({
   setClasses,
   students,
   staff,
-  enrollmentsByClassId,
-  setEnrollmentsByClassId,
   classesPage,
   classesTotal,
   pageSize,
@@ -5490,8 +5484,6 @@ function ClassesTab({
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
   students: StudentRow[];
   staff: StaffRow[];
-  enrollmentsByClassId: Record<string, string[]>;
-  setEnrollmentsByClassId: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   classesPage: number;
   classesTotal: number;
   pageSize: number;
@@ -5899,7 +5891,6 @@ function ClassesTab({
         toast.warning('This class has no intake scope. Link it to a program intake in Timetable Builder first.');
       }
       setEnrollCandidates(candidates);
-      setEnrollmentsByClassId((prev) => ({ ...prev, [cls.id]: enrolledIds }));
     } catch (error) {
       console.error('Error loading enrollments:', error);
       setSelectedStudentIds([]);
@@ -5940,7 +5931,6 @@ function ClassesTab({
       const refreshed = await enrollmentService.getClassEnrollments(enrollClass.id);
       const finalIds = extractEnrolledStudentIdsFromClassEnrollments(refreshed);
 
-      setEnrollmentsByClassId((prev) => ({ ...prev, [enrollClass.id]: finalIds }));
       setClasses((prev) =>
         prev.map((c) => (c.id === enrollClass.id ? { ...c, students: finalIds.length } : c))
       );
@@ -6119,11 +6109,6 @@ function ClassesTab({
                         try {
                           await academicService.deleteClass(cls.id);
                           await refreshClassData();
-                          setEnrollmentsByClassId(prev => {
-                            const next = { ...prev };
-                            delete next[cls.id];
-                            return next;
-                          });
                           window.dispatchEvent(new CustomEvent('class-updated'));
                         } catch (error: any) {
                           const code = error?.response?.data?.code;
@@ -8029,7 +8014,6 @@ export default function AdminView({
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [schools, setSchools] = useState<SchoolRow[]>([]);
   const [venues, setVenues] = useState<VenueRow[]>([]);
-  const [enrollmentsByClassId, setEnrollmentsByClassId] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const loadStudents = async (
@@ -8254,7 +8238,7 @@ export default function AdminView({
 
       <Tabs value={currentTab} className="space-y-6">
         <TabsContent value="students" className="mt-0">
-          <StudentsTab students={students} setStudents={setStudents} classes={classes} setClasses={setClasses} enrollmentsByClassId={enrollmentsByClassId} setEnrollmentsByClassId={setEnrollmentsByClassId} studentsPage={studentsPage} studentsTotal={studentsTotal} pageSize={LIST_PAGE_SIZE} loadStudents={loadStudents} />
+          <StudentsTab students={students} setStudents={setStudents} classes={classes} setClasses={setClasses} studentsPage={studentsPage} studentsTotal={studentsTotal} pageSize={LIST_PAGE_SIZE} loadStudents={loadStudents} />
         </TabsContent>
         
         <TabsContent value="staff" className="mt-0">
@@ -8283,8 +8267,6 @@ export default function AdminView({
             setClasses={setClasses}
             students={students}
             staff={staff}
-            enrollmentsByClassId={enrollmentsByClassId}
-            setEnrollmentsByClassId={setEnrollmentsByClassId}
             classesPage={classesPage}
             classesTotal={classesTotal}
             pageSize={LIST_PAGE_SIZE}
