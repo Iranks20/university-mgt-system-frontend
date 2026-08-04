@@ -146,6 +146,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   ],
   '/lecturer-performance': [['analytics.lecturer_private', 'staff.lecturer_me']],
   '/student-classes': [['students.self', 'enrollment.self', 'settings.read', 'students.attendance_self']],
+  '/student-registration': [['students.self', 'enrollment.self']],
   '/student-history': [
     ['students.self', 'enrollment.self', 'students.attendance_self'],
     ['staff.timeclock'],
@@ -204,6 +205,7 @@ const HOME_PATH_CANDIDATES = [
   '/admin-settings',
   '/presence',
   '/student-classes',
+  '/student-registration',
 ] as const;
 
 export function permissionRequirementForRoute(path: string): PermissionRequirement | undefined {
@@ -263,6 +265,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/lecturer-course-attendance', label: 'Course Attendance', permissions: NAV_PERMISSION['/lecturer-course-attendance'] },
   { path: '/lecturer-performance', label: 'Performance (Lecturer)', permissions: NAV_PERMISSION['/lecturer-performance'] },
   { path: '/student-classes', label: 'My Classes', permissions: NAV_PERMISSION['/student-classes'] },
+  { path: '/student-registration', label: 'Course registration', permissions: NAV_PERMISSION['/student-registration'] },
   { path: '/student-history', label: 'Attendance History', permissions: NAV_PERMISSION['/student-history'] },
   { path: '/management-overview', label: 'University Overview', permissions: NAV_PERMISSION['/management-overview'] },
   { path: '/management-risk', label: 'Risk Register', permissions: NAV_PERMISSION['/management-risk'] },

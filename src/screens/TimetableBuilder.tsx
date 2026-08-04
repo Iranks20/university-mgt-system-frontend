@@ -83,6 +83,9 @@ export default function TimetableBuilder() {
 
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [creatingAll, setCreatingAll] = useState(false);
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
+  const [activeTermId, setActiveTermId] = useState<string | null>(null);
+  const [hasActiveTerm, setHasActiveTerm] = useState(true);
 
   const selectedProgram = useMemo(() => programs.find(p => p.id === programId) || null, [programId, programs]);
   const lecturerOptions = useMemo(
@@ -90,7 +93,6 @@ export default function TimetableBuilder() {
     [lecturers]
   );
 
-  // Prefill from URL: /timetable-builder?programId=...&year=1&semester=1&intakeType=Day
   useEffect(() => {
     const qProgramId = String(searchParams.get('programId') || '').trim();
     const qYear = parseInt(String(searchParams.get('year') || ''), 10);
@@ -101,9 +103,32 @@ export default function TimetableBuilder() {
     if (Number.isFinite(qYear) && qYear > 0) setYear(qYear);
     if (Number.isFinite(qSemester) && (qSemester === 1 || qSemester === 2)) setSemester(qSemester);
     if (qIntake && (qIntake === 'Day' || qIntake === 'Evening' || qIntake === 'Weekend')) setIntakeType(qIntake);
-    // only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) {
+          setHasActiveTerm(false);
+          setActiveTermLabel(null);
+          setActiveTermId(null);
+          return;
+        }
+        setHasActiveTerm(true);
+        setActiveTermId(term.id);
+        setActiveTermLabel(`${term.name} (Sem ${term.semester})`);
+        const qSemester = searchParams.get('semester');
+        if (!qSemester && (term.semester === 1 || term.semester === 2)) {
+          setSemester(term.semester);
+        }
+      })
+      .catch(() => {
+        setHasActiveTerm(false);
+        setActiveTermLabel(null);
+        setActiveTermId(null);
+      });
+  }, [searchParams]);
 
   // If we were deep-linked with programId, auto-load courses once refs/programs are ready
   useEffect(() => {
@@ -140,14 +165,14 @@ export default function TimetableBuilder() {
       try {
         const [venuesRes, firstLecturersPage] = await Promise.all([
           academicService.getVenues({ page: 1, limit: 50 }),
-          staffService.getStaff({ role: 'Lecturer', page: 1, limit: 50 }),
+          staffService.getLecturers({ page: 1, limit: 50 }),
         ]);
         const allLecturers = [...(firstLecturersPage?.data ?? [])];
         const totalLecturers = firstLecturersPage?.total ?? allLecturers.length;
         let lecturerPage = firstLecturersPage?.page ?? 1;
         while (allLecturers.length < totalLecturers) {
           lecturerPage += 1;
-          const next = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 50 });
+          const next = await staffService.getLecturers({ page: lecturerPage, limit: 50 });
           const arr = next?.data ?? [];
           if (arr.length === 0) break;
           allLecturers.push(...arr);
@@ -254,7 +279,13 @@ export default function TimetableBuilder() {
     const all: any[] = [];
     let page = 1;
     while (true) {
-      const res = await academicService.getClasses({ programIntakeId: intakeId, page, limit: 50 } as any);
+      const res = await academicService.getClasses({
+        programIntakeId: intakeId,
+        page,
+        limit: 50,
+        classStatus: 'active',
+        ...(activeTermId ? { academicTermId: activeTermId } : {}),
+      } as any);
       const arr = res?.data ?? [];
       all.push(...arr);
       const total = res?.total ?? all.length;
@@ -408,6 +439,11 @@ export default function TimetableBuilder() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Timetable Builder</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {activeTermLabel
+            ? `Scheduling for Active term: ${activeTermLabel}. New classes are stamped to this term.`
+            : 'No Active academic term — create/activate one under Admin → Calendar before scheduling.'}
+        </p>
         <p className="text-gray-500">
           Create and manage timetables using school data, with automatic conflict checks.
         </p>
@@ -467,15 +503,15 @@ export default function TimetableBuilder() {
             </Select>
           </div>
           <div className="lg:col-span-5 flex flex-col sm:flex-row sm:items-center gap-2">
-            <Button className="bg-[#015F2B] w-full sm:w-auto" onClick={ensureIntakeAndLoadCourses} disabled={coursesLoading || !programId}>
+            <Button className="bg-[#015F2B] w-full sm:w-auto" onClick={ensureIntakeAndLoadCourses} disabled={coursesLoading || !programId || !hasActiveTerm}>
               {coursesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               <span className="ml-2">Load courses</span>
             </Button>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId || !hasActiveTerm}>
               <Copy className="h-4 w-4" />
               <span className="ml-2">Copy timetable</span>
             </Button>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading || !hasActiveTerm}>
               {creatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               <span className="ml-2">Save timetable</span>
             </Button>

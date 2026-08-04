@@ -186,6 +186,7 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Performance', path: '/lecturer-performance', icon: BarChart },
   { label: 'My Appraisal', path: '/staff-appraisal', icon: ClipboardList },
   { label: 'My Classes', path: '/student-classes', icon: BookOpen },
+  { label: 'Course registration', path: '/student-registration', icon: ClipboardList },
   { label: 'Attendance History', path: '/student-history', icon: Clock },
   { label: 'University Overview', path: '/management-overview', icon: BarChart },
   { label: 'Department Stats', path: '/management-departments', icon: School },
