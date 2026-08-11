@@ -685,7 +685,7 @@ export const academicService = {
 
   updateAcademicTerm: async (
     id: string,
-    payload: Partial<{ name: string; startDate: string; endDate: string }>
+    payload: Partial<{ name: string; startDate: string; endDate: string; status: 'Draft' }>
   ): Promise<AcademicTerm> => {
     const response = await api.patch<{ data: AcademicTerm } | AcademicTerm>(
       `/academic/terms/${id}`,
