@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, CheckCircle2, Lock } from 'lucide-react';
+import { Plus, CheckCircle2, Lock, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService, type AcademicTerm } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
@@ -47,6 +47,8 @@ export function AcademicTermsPanel() {
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingTerm, setEditingTerm] = useState<AcademicTerm | null>(null);
   const [saving, setSaving] = useState(false);
   const yearNow = new Date().getFullYear();
   const [form, setForm] = useState({
@@ -56,6 +58,12 @@ export function AcademicTermsPanel() {
     startDate: `${yearNow}-01-15`,
     endDate: `${yearNow}-05-30`,
     activate: true,
+  });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    startDate: '',
+    endDate: '',
+    reopenAsDraft: false,
   });
 
   const load = async () => {
@@ -91,6 +99,44 @@ export function AcademicTermsPanel() {
       await load();
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Could not create term'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (term: AcademicTerm) => {
+    setEditingTerm(term);
+    setEditForm({
+      name: term.name,
+      startDate: term.startDate,
+      endDate: term.endDate,
+      reopenAsDraft: false,
+    });
+    setEditOpen(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingTerm) return;
+    setSaving(true);
+    try {
+      await academicService.updateAcademicTerm(editingTerm.id, {
+        name: editForm.name.trim(),
+        startDate: editForm.startDate,
+        endDate: editForm.endDate,
+        ...(editingTerm.status === 'Closed' && editForm.reopenAsDraft
+          ? { status: 'Draft' as const }
+          : {}),
+      });
+      toast.success(
+        editingTerm.status === 'Closed' && editForm.reopenAsDraft
+          ? 'Term updated and reopened as Draft — use Activate when ready'
+          : 'Term updated'
+      );
+      setEditOpen(false);
+      setEditingTerm(null);
+      await load();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not update term'));
     } finally {
       setSaving(false);
     }
@@ -159,7 +205,8 @@ export function AcademicTermsPanel() {
           <CardTitle>Academic Terms</CardTitle>
           <CardDescription>
             Define the current teaching period and registration window. Reports default to the Active
-            term date range.
+            term date range. Year + semester are unique — edit an existing term instead of recreating
+            it.
           </CardDescription>
         </div>
         <Button
@@ -207,6 +254,9 @@ export function AcademicTermsPanel() {
                   <TableCell>{statusBadge(term.status)}</TableCell>
                   <TableCell>{registrationBadge(term.registrationStatus)}</TableCell>
                   <TableCell className="text-right space-x-1">
+                    <Button variant="outline" size="sm" onClick={() => openEdit(term)}>
+                      <Pencil className="h-4 w-4 mr-1" /> Edit
+                    </Button>
                     {term.status === 'Draft' ? (
                       <Button variant="outline" size="sm" onClick={() => handleActivate(term.id)}>
                         <CheckCircle2 className="h-4 w-4 mr-1" /> Activate
@@ -326,6 +376,87 @@ export function AcademicTermsPanel() {
               onClick={handleCreate}
             >
               {saving ? 'Saving…' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editOpen}
+        onOpenChange={(next) => {
+          setEditOpen(next);
+          if (!next) setEditingTerm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit academic term</DialogTitle>
+          </DialogHeader>
+          {editingTerm ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Year {editingTerm.academicYear} · Semester {editingTerm.semester} (fixed). Status:{' '}
+                {editingTerm.status}.
+              </p>
+              <div>
+                <Label htmlFor="edit-term-name">Name</Label>
+                <Input
+                  id="edit-term-name"
+                  className="mt-1"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="edit-term-start">Start date</Label>
+                  <Input
+                    id="edit-term-start"
+                    type="date"
+                    className="mt-1"
+                    value={editForm.startDate}
+                    onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-term-end">End date</Label>
+                  <Input
+                    id="edit-term-end"
+                    type="date"
+                    className="mt-1"
+                    value={editForm.endDate}
+                    onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                  />
+                </div>
+              </div>
+              {editingTerm.status === 'Closed' ? (
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={editForm.reopenAsDraft}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, reopenAsDraft: e.target.checked })
+                    }
+                  />
+                  <span>
+                    Reopen as Draft after save (then use Activate). Needed when this year/semester
+                    was closed by mistake and you want to use it again.
+                  </span>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#015F2B] hover:bg-[#014a22]"
+              disabled={saving || !editingTerm}
+              onClick={handleUpdate}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
