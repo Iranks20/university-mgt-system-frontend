@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
-  ChevronDown, AlertTriangle,
+  ChevronDown, AlertTriangle, Layers,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
@@ -69,6 +69,7 @@ const ADMIN_CLINICAL_CHILD_PATHS = [
   '/clinical/sites',
   '/clinical/site-team',
   '/clinical/instructors',
+  '/clinical/cohorts',
   '/clinical/rotations',
   '/clinical/policies',
   '/clinical/sessions',
@@ -144,6 +145,7 @@ const ADMIN_CLINICAL_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Clinical Sites', icon: MapPin, path: '/clinical/sites' },
   { label: 'Site Team', icon: UsersRound, path: '/clinical/site-team' },
   { label: 'Instructors', icon: UsersRound, path: '/clinical/instructors' },
+  { label: 'Cohorts', icon: Layers, path: '/clinical/cohorts' },
   { label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
   { label: 'Eligibility Policies', icon: UserCheck, path: '/clinical/policies' },
   { label: 'Sessions', icon: BookOpen, path: '/clinical/sessions' },
