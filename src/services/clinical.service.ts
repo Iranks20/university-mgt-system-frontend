@@ -119,9 +119,9 @@ export const clinicalService = {
   createRotation: async (payload: {
     name: string;
     clinicalSiteId: string;
+    clinicalCohortId: string;
     programId?: string | null;
     programIntakeId?: string | null;
-    cohort?: string;
     year?: number | null;
     semester?: number | null;
     intakeType?: 'Day' | 'Evening' | 'Weekend' | null;
@@ -137,9 +137,9 @@ export const clinicalService = {
     payload: {
       name?: string;
       clinicalSiteId?: string;
+      clinicalCohortId?: string;
       programId?: string | null;
       programIntakeId?: string | null;
-      cohort?: string;
       year?: number | null;
       semester?: number | null;
       intakeType?: 'Day' | 'Evening' | 'Weekend' | null;
@@ -168,7 +168,10 @@ export const clinicalService = {
   },
 
   getClinicalClasses: async (params: {
-    programIntakeId: string;
+    programIntakeId?: string;
+    programId?: string;
+    year?: number;
+    semester?: number;
     page?: number;
     limit?: number;
     search?: string;
@@ -186,6 +189,73 @@ export const clinicalService = {
       console.error('Error fetching clinical classes:', error);
       return { data: [], total: 0, page: 1, pageSize: 100 };
     }
+  },
+
+  getCohorts: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: 'active' | 'inactive' | 'all';
+    programId?: string;
+  }): Promise<Paged<any>> => {
+    try {
+      const res = await api.get<Paged<any>>('/clinical/cohorts', params as any);
+      return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 50 };
+    } catch (error) {
+      console.error('Error fetching clinical cohorts:', error);
+      return { data: [], total: 0, page: 1, pageSize: 50 };
+    }
+  },
+
+  createCohort: async (payload: {
+    name: string;
+    programId?: string | null;
+    year?: number | null;
+    semester?: number | null;
+    description?: string | null;
+    isActive?: boolean;
+  }) => {
+    return api.post('/clinical/cohorts', payload);
+  },
+
+  updateCohort: async (
+    id: string,
+    payload: {
+      name?: string;
+      programId?: string | null;
+      year?: number | null;
+      semester?: number | null;
+      description?: string | null;
+      isActive?: boolean;
+    }
+  ) => {
+    return api.put(`/clinical/cohorts/${id}`, payload);
+  },
+
+  getCohortStudents: async (cohortId: string): Promise<any[]> => {
+    try {
+      const res = await api.get<any[] | { data: any[] }>(`/clinical/cohorts/${cohortId}/students`);
+      return Array.isArray(res) ? res : res?.data ?? [];
+    } catch (error) {
+      console.error('Error fetching cohort students:', error);
+      return [];
+    }
+  },
+
+  addCohortStudents: async (cohortId: string, payload: { studentIds: string[] }) => {
+    return api.post(`/clinical/cohorts/${cohortId}/students`, payload);
+  },
+
+  removeCohortStudent: async (cohortId: string, studentId: string) => {
+    return api.delete(`/clinical/cohorts/${cohortId}/students/${studentId}`);
+  },
+
+  copyCohortStudents: async (targetCohortId: string, payload: { sourceCohortId: string }) => {
+    const res = await api.post<{ data: any[]; meta?: { copied?: number } }>(
+      `/clinical/cohorts/${targetCohortId}/copy-students`,
+      payload
+    );
+    return { students: (res as any)?.data ?? [], copied: (res as any)?.meta?.copied ?? 0 };
   },
 
   getRotationRoster: async (rotationId: string, params?: { status?: string }): Promise<any[]> => {

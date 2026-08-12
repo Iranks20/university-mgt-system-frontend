@@ -38,7 +38,6 @@ const emptyForm = () => ({
   clinicalSiteId: '',
   clinicalRotationId: '',
   instructorPick: '',
-  instructorName: '',
   topic: '',
   date: '',
   startTime: '',
@@ -71,13 +70,9 @@ export function SessionsSection({
       toast.error('Site, topic, and date are required');
       return;
     }
-    const instructorPayload = instructorPickToSessionPayload(
-      form.instructorPick,
-      instructorLabelsRef.current,
-      form.instructorName
-    );
-    if (!instructorPayload.clinicalInstructorId && !instructorPayload.instructorName) {
-      toast.error('Select an instructor or enter a new name');
+    const instructorPayload = instructorPickToSessionPayload(form.instructorPick, instructorLabelsRef.current);
+    if (!instructorPayload.clinicalInstructorId) {
+      toast.error('Select an instructor');
       return;
     }
     setSaving(true);
@@ -85,9 +80,9 @@ export function SessionsSection({
       await clinicalService.createSession({
         clinicalSiteId: form.clinicalSiteId,
         clinicalRotationId: form.clinicalRotationId || null,
-        clinicalInstructorId: instructorPayload.clinicalInstructorId ?? null,
-        staffId: instructorPayload.staffId ?? null,
-        instructorName: instructorPayload.instructorName ?? null,
+        clinicalInstructorId: instructorPayload.clinicalInstructorId,
+        staffId: null,
+        instructorName: null,
         topic: form.topic.trim(),
         date: form.date,
         startTime: form.startTime || null,
@@ -190,9 +185,7 @@ export function SessionsSection({
                   <Label>Clinical site</Label>
                   <Select
                     value={form.clinicalSiteId}
-                    onValueChange={(v) =>
-                      setForm((f) => ({ ...f, clinicalSiteId: v, instructorPick: '' }))
-                    }
+                    onValueChange={(v) => setForm((f) => ({ ...f, clinicalSiteId: v }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select site" />
@@ -236,35 +229,18 @@ export function SessionsSection({
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Existing instructor (optional)</Label>
-                  <ClinicalInstructorPicker
-                    value={form.instructorPick}
-                    clinicalSiteId={form.clinicalSiteId || undefined}
-                    onValueChange={(pick, label) => {
-                      if (label) instructorLabelsRef.current.set(pick, label);
-                      setForm((f) => ({ ...f, instructorPick: pick, instructorName: '' }));
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Only instructors registered under Clinical → Instructors. To add someone new, register them there first.
-                  </p>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Or new instructor name</Label>
-                  <Input
-                    value={form.instructorName}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        instructorName: e.target.value,
-                        instructorPick: '',
-                      }))
-                    }
-                    placeholder="If not in list above"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>Instructor</Label>
+                <ClinicalInstructorPicker
+                  value={form.instructorPick}
+                  onValueChange={(pick, label) => {
+                    if (label) instructorLabelsRef.current.set(pick, label);
+                    setForm((f) => ({ ...f, instructorPick: pick }));
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Instructors come from Clinicals → Instructors. Add new ones there first.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Session topic</Label>

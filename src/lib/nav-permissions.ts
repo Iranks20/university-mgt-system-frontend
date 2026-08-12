@@ -89,6 +89,11 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['clinical.sessions.record'],
     ['clinical.sessions.verify'],
   ],
+  '/clinical/cohorts': [
+    ['clinical.rotations.manage'],
+    ['clinical.sessions.record'],
+    ['clinical.sessions.verify'],
+  ],
   '/clinical/rotations': [
     ['clinical.rotations.manage'],
     ['clinical.sessions.record'],
@@ -298,6 +303,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/clinical/sites', label: 'Clinical Sites', permissions: NAV_PERMISSION['/clinical/sites'] },
   { path: '/clinical/site-team', label: 'Site Team', permissions: NAV_PERMISSION['/clinical/site-team'] },
   { path: '/clinical/instructors', label: 'Clinical Instructors', permissions: NAV_PERMISSION['/clinical/instructors'] },
+  { path: '/clinical/cohorts', label: 'Clinical Cohorts', permissions: NAV_PERMISSION['/clinical/cohorts'] },
   { path: '/clinical/rotations', label: 'Clinical Rotations', permissions: NAV_PERMISSION['/clinical/rotations'] },
   { path: '/clinical/policies', label: 'Eligibility Policies', permissions: NAV_PERMISSION['/clinical/policies'] },
   { path: '/clinical/sessions', label: 'Clinical Sessions', permissions: NAV_PERMISSION['/clinical/sessions'] },

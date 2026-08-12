@@ -43,6 +43,7 @@ import ClinicalSitesPage from './screens/clinical/pages/ClinicalSitesPage'
 import ClinicalSiteTeamPage from './screens/clinical/pages/ClinicalSiteTeamPage'
 import ClinicalInstructorsPage from './screens/clinical/pages/ClinicalInstructorsPage'
 import ClinicalRotationsListPage from './screens/clinical/pages/ClinicalRotationsListPage'
+import ClinicalCohortsPage from './screens/clinical/pages/ClinicalCohortsPage'
 import ClinicalSessionsPage from './screens/clinical/pages/ClinicalSessionsPage'
 import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendancePage'
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
@@ -282,6 +283,7 @@ function AppRoutes() {
 			<Route path="/clinical/sites" element={<ProtectedRoute {...routeGuardProps('/clinical/sites')}><ClinicalSitesPage /></ProtectedRoute>} />
 			<Route path="/clinical/site-team" element={<ProtectedRoute {...routeGuardProps('/clinical/site-team')}><ClinicalSiteTeamPage /></ProtectedRoute>} />
 			<Route path="/clinical/instructors" element={<ProtectedRoute {...routeGuardProps('/clinical/instructors')}><ClinicalInstructorsPage /></ProtectedRoute>} />
+			<Route path="/clinical/cohorts" element={<ProtectedRoute {...routeGuardProps('/clinical/cohorts')}><ClinicalCohortsPage /></ProtectedRoute>} />
 			<Route path="/clinical/rotations" element={<ProtectedRoute {...routeGuardProps('/clinical/rotations')}><ClinicalRotationsListPage /></ProtectedRoute>} />
 			<Route path="/clinical/sessions" element={<ProtectedRoute {...routeGuardProps('/clinical/sessions')}><ClinicalSessionsPage /></ProtectedRoute>} />
 			<Route path="/clinical/attendance" element={<ProtectedRoute {...routeGuardProps('/clinical/attendance')}><ClinicalAttendancePage /></ProtectedRoute>} />

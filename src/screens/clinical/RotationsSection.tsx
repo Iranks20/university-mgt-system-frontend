@@ -14,13 +14,24 @@ import { RotationRosterSection } from './RotationRosterSection';
 
 type SiteOption = { id: string; name: string };
 type ProgramOption = { id: string; name: string; code?: string };
+type CohortOption = {
+  id: string;
+  name: string;
+  programId?: string | null;
+  year?: number | null;
+  semester?: number | null;
+  studentCount?: number;
+  isActive?: boolean;
+};
 type RotationRow = {
   id: string;
   name: string;
   clinicalSiteId?: string;
+  clinicalCohortId?: string | null;
   programId?: string | null;
   programIntakeId?: string | null;
   cohort?: string;
+  clinicalCohort?: CohortOption | null;
   year?: number | null;
   semester?: number | null;
   activeRosterCount?: number;
@@ -40,77 +51,56 @@ type RotationsSectionProps = {
   onRefresh: () => Promise<void>;
 };
 
-const YEAR_OPTIONS = [1, 2, 3, 4, 5, 6];
-const SEMESTER_OPTIONS = [1, 2];
-
 const emptyForm = () => ({
   name: '',
   clinicalSiteId: '',
-  programId: '',
-  cohort: '',
-  year: '3',
-  semester: '1',
+  clinicalCohortId: '',
   intakeType: 'Day',
   startDate: '',
   endDate: '',
   isActive: true,
 });
 
-function buildCohortLabel(program: ProgramOption | undefined, year: string, semester: string) {
-  if (!program || !year || !semester) return '';
-  const code = program.code?.trim() || program.name.trim();
-  return `${code} ${year}.${semester}`;
-}
-
-function buildSuggestedName(siteName: string | undefined, cohort: string) {
-  if (!siteName || !cohort) return '';
-  return `${cohort} — ${siteName}`;
+function buildSuggestedName(siteName: string | undefined, cohortName: string) {
+  if (!siteName || !cohortName) return '';
+  return `${cohortName} — ${siteName}`;
 }
 
 export function RotationsSection({ rotations, sites, programs, canManage, loading, onRefresh }: RotationsSectionProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RotationRow | null>(null);
   const [form, setForm] = useState(emptyForm());
-  const [cohortTouched, setCohortTouched] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rosterRotation, setRosterRotation] = useState<RotationRow | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
+  const [cohorts, setCohorts] = useState<CohortOption[]>([]);
 
-  const selectedProgram = useMemo(
-    () => programs.find((p) => p.id === form.programId),
-    [programs, form.programId]
-  );
   const selectedSite = useMemo(() => sites.find((s) => s.id === form.clinicalSiteId), [sites, form.clinicalSiteId]);
-
-  const programSelectOptions = useMemo(() => {
-    const opts = [...programs];
-    if (form.programId && !opts.some((p) => p.id === form.programId)) {
-      opts.push({ id: form.programId, name: 'Inactive program', code: '' });
-    }
-    return opts;
-  }, [programs, form.programId]);
+  const selectedCohort = useMemo(
+    () => cohorts.find((c) => c.id === form.clinicalCohortId),
+    [cohorts, form.clinicalCohortId]
+  );
 
   useEffect(() => {
-    if (!modalOpen || cohortTouched) return;
-    const cohort = buildCohortLabel(selectedProgram, form.year, form.semester);
-    if (cohort && cohort !== form.cohort) {
-      setForm((f) => ({ ...f, cohort }));
-    }
-  }, [modalOpen, cohortTouched, selectedProgram, form.year, form.semester, form.cohort]);
+    if (!modalOpen) return;
+    clinicalService
+      .getCohorts({ page: 1, limit: 200, status: 'active' })
+      .then((res) => setCohorts(res.data || []))
+      .catch(() => setCohorts([]));
+  }, [modalOpen]);
 
   useEffect(() => {
     if (!modalOpen || nameTouched) return;
-    const suggested = buildSuggestedName(selectedSite?.name, form.cohort);
+    const suggested = buildSuggestedName(selectedSite?.name, selectedCohort?.name || '');
     if (suggested && suggested !== form.name) {
       setForm((f) => ({ ...f, name: suggested }));
     }
-  }, [modalOpen, nameTouched, selectedSite?.name, form.cohort, form.name]);
+  }, [modalOpen, nameTouched, selectedSite?.name, selectedCohort?.name, form.name]);
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm());
-    setCohortTouched(false);
     setNameTouched(false);
     setModalOpen(true);
   };
@@ -120,16 +110,12 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
     setForm({
       name: row.name,
       clinicalSiteId: row.clinicalSiteId || '',
-      programId: row.programId || '',
-      cohort: row.cohort || '',
-      year: row.year != null ? String(row.year) : '3',
-      semester: row.semester != null ? String(row.semester) : '1',
+      clinicalCohortId: row.clinicalCohortId || row.clinicalCohort?.id || '',
       intakeType: row.intakeType || 'Day',
       startDate: row.startDate ? String(row.startDate).slice(0, 10) : '',
       endDate: row.endDate ? String(row.endDate).slice(0, 10) : '',
       isActive: row.isActive !== false,
     });
-    setCohortTouched(true);
     setNameTouched(true);
     setModalOpen(true);
   };
@@ -140,23 +126,20 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
       toast.error('Rotation name and site are required');
       return;
     }
-    if (!form.programId) {
-      toast.error('Program is required');
-      return;
-    }
-    if (!form.year || !form.semester) {
-      toast.error('Academic year and semester are required');
+    if (!form.clinicalCohortId) {
+      toast.error('Select a cohort');
       return;
     }
     setSaving(true);
     try {
+      const cohort = cohorts.find((c) => c.id === form.clinicalCohortId);
       const payload = {
         name: form.name.trim(),
         clinicalSiteId: form.clinicalSiteId,
-        programId: form.programId,
-        cohort: form.cohort.trim() || undefined,
-        year: Number(form.year),
-        semester: Number(form.semester),
+        clinicalCohortId: form.clinicalCohortId,
+        programId: cohort?.programId || null,
+        year: cohort?.year ?? null,
+        semester: cohort?.semester ?? null,
         intakeType: (form.intakeType as 'Day' | 'Evening' | 'Weekend') || null,
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
@@ -167,7 +150,7 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
         toast.success('Rotation updated');
       } else {
         await clinicalService.createRotation(payload);
-        toast.success('Rotation created');
+        toast.success('Rotation created — cohort students enrolled on roster');
       }
       setModalOpen(false);
       await onRefresh();
@@ -177,6 +160,8 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
       setSaving(false);
     }
   };
+
+  const cohortLabel = (r: RotationRow) => r.clinicalCohort?.name || r.cohort || '—';
 
   return (
     <>
@@ -209,7 +194,7 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
             {rotations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={canManage ? 7 : 6} className="py-10 text-center text-muted-foreground">
-                  No rotations defined.
+                  No rotations defined. Create a cohort first, then add a rotation linked to it.
                 </TableCell>
               </TableRow>
             ) : (
@@ -217,10 +202,11 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.name}</TableCell>
                   <TableCell>{r.clinicalSite?.name || '—'}</TableCell>
-                  <TableCell>{r.cohort || '—'}</TableCell>
+                  <TableCell>{cohortLabel(r)}</TableCell>
                   <TableCell>{r.activeRosterCount ?? 0} active</TableCell>
                   <TableCell>
-                    {r.startDate ? String(r.startDate).slice(0, 10) : '—'} – {r.endDate ? String(r.endDate).slice(0, 10) : '—'}
+                    {r.startDate ? String(r.startDate).slice(0, 10) : '—'} –{' '}
+                    {r.endDate ? String(r.endDate).slice(0, 10) : '—'}
                   </TableCell>
                   <TableCell>{clinicalActiveBadge(r.isActive !== false)}</TableCell>
                   {canManage && (
@@ -228,7 +214,7 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
                       <Button
                         variant="ghost"
                         size="sm"
-                        title="Manage roster"
+                        title="View roster"
                         onClick={() => {
                           setRosterRotation(r);
                           setRosterOpen(true);
@@ -254,104 +240,71 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
             <DialogHeader>
               <DialogTitle>{editing ? 'Edit rotation' : 'Add rotation'}</DialogTitle>
               <DialogDescription>
-                Link the placement to a program, academic year, and semester. Cohort and name are suggested from your selections.
+                Link a clinical site to a cohort. Students in that cohort are live-synced onto this rotation roster.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={save} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Clinical site</Label>
-                  <Select value={form.clinicalSiteId} onValueChange={(v) => setForm((f) => ({ ...f, clinicalSiteId: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select site" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sites.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Program</Label>
-                  <Select
-                    value={form.programId || undefined}
-                    onValueChange={(v) => setForm((f) => ({ ...f, programId: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select program" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {programSelectOptions.map((p) => (
-                        <SelectItem
-                          key={p.id}
-                          value={p.id}
-                          disabled={!programs.some((active) => active.id === p.id)}
-                        >
-                          {p.code ? `${p.name} (${p.code})` : p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Academic year</Label>
-                  <Select value={form.year} onValueChange={(v) => setForm((f) => ({ ...f, year: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {YEAR_OPTIONS.map((y) => (
-                        <SelectItem key={y} value={String(y)}>
-                          Year {y}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Semester</Label>
-                  <Select value={form.semester} onValueChange={(v) => setForm((f) => ({ ...f, semester: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Semester" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SEMESTER_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={String(s)}>
-                          Semester {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Intake</Label>
-                  <Select value={form.intakeType} onValueChange={(v) => setForm((f) => ({ ...f, intakeType: v }))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Day">Day</SelectItem>
-                      <SelectItem value="Evening">Evening</SelectItem>
-                      <SelectItem value="Weekend">Weekend</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Clinical site</Label>
+                <Select value={form.clinicalSiteId} onValueChange={(v) => setForm((f) => ({ ...f, clinicalSiteId: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select site" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sites.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Cohort label</Label>
-                <Input
-                  value={form.cohort}
-                  onChange={(e) => {
-                    setCohortTouched(true);
-                    setForm((f) => ({ ...f, cohort: e.target.value }));
-                  }}
-                  placeholder="e.g. MBChB 3.1"
-                />
+                <Label>Cohort</Label>
+                <Select
+                  value={form.clinicalCohortId || undefined}
+                  onValueChange={(v) => setForm((f) => ({ ...f, clinicalCohortId: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select cohort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cohorts.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                        {c.studentCount != null ? ` (${c.studentCount} students)` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {cohorts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No active cohorts. Create one under Clinicals → Cohorts first.
+                  </p>
+                ) : null}
+                {selectedCohort ? (
+                  <p className="text-xs text-muted-foreground">
+                    {programs.find((p) => p.id === selectedCohort.programId)?.code ||
+                      programs.find((p) => p.id === selectedCohort.programId)?.name ||
+                      'Program'}
+                    {selectedCohort.year != null && selectedCohort.semester != null
+                      ? ` · Y${selectedCohort.year} S${selectedCohort.semester}`
+                      : ''}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <Label>Intake</Label>
+                <Select value={form.intakeType} onValueChange={(v) => setForm((f) => ({ ...f, intakeType: v }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Day">Day</SelectItem>
+                    <SelectItem value="Evening">Evening</SelectItem>
+                    <SelectItem value="Weekend">Weekend</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Rotation name</Label>
@@ -367,16 +320,27 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Start date</Label>
-                  <Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} />
+                  <Input
+                    type="date"
+                    value={form.startDate}
+                    onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>End date</Label>
-                  <Input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} />
+                  <Input
+                    type="date"
+                    value={form.endDate}
+                    onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={form.isActive ? 'active' : 'inactive'} onValueChange={(v) => setForm((f) => ({ ...f, isActive: v === 'active' }))}>
+                <Select
+                  value={form.isActive ? 'active' : 'inactive'}
+                  onValueChange={(v) => setForm((f) => ({ ...f, isActive: v === 'active' }))}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
