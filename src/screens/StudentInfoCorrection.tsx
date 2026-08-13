@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -15,12 +15,63 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
+  type StudentInfoAddressFormat,
+  type StudentInfoHowHeard,
   type StudentInfoSearchResult,
+  type StudentInfoSponsorType,
   studentInfoFormService,
   type StudentInfoFormOptions,
   type StudentInfoIntakeType,
+  type StudentInfoLookupStudent,
 } from '@/services/student-info-form.service';
 import { toast } from 'sonner';
+
+const HOW_HEARD: StudentInfoHowHeard[] = [
+  'Facebook',
+  'Twitter',
+  'Our website',
+  'LinkedIn',
+  'Other',
+];
+
+function parseHowHeard(value: string | null | undefined): {
+  channel: '' | StudentInfoHowHeard;
+  other: string;
+} {
+  if (!value?.trim()) return { channel: '', other: '' };
+  const trimmed = value.trim();
+  if (HOW_HEARD.includes(trimmed as StudentInfoHowHeard)) {
+    return { channel: trimmed as StudentInfoHowHeard, other: '' };
+  }
+  if (trimmed.toLowerCase().startsWith('other:')) {
+    return { channel: 'Other', other: trimmed.slice(6).trim() };
+  }
+  return { channel: 'Other', other: trimmed };
+}
+
+function parseSponsor(student: StudentInfoLookupStudent): {
+  funding: '' | 'Private' | 'Sponsored';
+  kcdk: boolean;
+  sponsorName: string;
+  sponsorType: '' | StudentInfoSponsorType;
+} {
+  const raw = (student.sponsorType || '').trim();
+  if (raw === 'Private') {
+    return { funding: 'Private', kcdk: false, sponsorName: '', sponsorType: 'Private' };
+  }
+  if (raw === 'KCDK') {
+    return { funding: 'Sponsored', kcdk: true, sponsorName: '', sponsorType: 'KCDK' };
+  }
+  if (raw === 'Other' || raw === 'Funded') {
+    return {
+      funding: 'Sponsored',
+      kcdk: false,
+      sponsorName: student.sponsorName || (raw === 'Funded' ? '' : student.sponsorName || ''),
+      sponsorType: 'Other',
+    };
+  }
+  return { funding: '', kcdk: false, sponsorName: student.sponsorName || '', sponsorType: '' };
+}
 
 const emptyForm = {
   studentNumber: '',
@@ -30,13 +81,31 @@ const emptyForm = {
   gender: '' as '' | 'Male' | 'Female' | 'Other',
   dateOfBirth: '',
   nationality: '',
+  nin: '',
   oLevelSchool: '',
   aLevelSchool: '',
-  homeDistrict: '',
   maritalStatus: '' as '' | 'Married' | 'Single',
-  sponsorType: '' as '' | 'Private' | 'Funded',
-  physicalAddress: '',
-  howHeardAboutUs: '',
+  fundingType: '' as '' | 'Private' | 'Sponsored',
+  sponsoredByKcdk: false,
+  sponsorName: '',
+  permanentAddressFormat: 'Uganda' as StudentInfoAddressFormat,
+  village: '',
+  parish: '',
+  subcounty: '',
+  county: '',
+  district: '',
+  region: '',
+  country: 'Uganda',
+  homePlotStreet: '',
+  poBoxNumber: '',
+  intlStreetAddress: '',
+  intlCity: '',
+  intlStateProvince: '',
+  intlAreaLga: '',
+  intlPostalCode: '',
+  intlCountry: '',
+  howHeardAboutUs: '' as '' | StudentInfoHowHeard,
+  howHeardAboutUsOther: '',
   hasDisability: false,
   disabilityDetails: '',
   schoolId: '',
@@ -74,6 +143,8 @@ export default function StudentInfoCorrection() {
     if (!form.schoolId) return options.programs;
     return options.programs.filter((p) => p.schoolId === form.schoolId);
   }, [options, form.schoolId]);
+
+  const isUgandaAddress = form.permanentAddressFormat === 'Uganda';
 
   useEffect(() => {
     const term = searchTerm.trim();
@@ -132,6 +203,10 @@ export default function StudentInfoCorrection() {
       if (result.found && result.student && result.lookupToken) {
         const s = result.student;
         const schoolId = resolveSchoolId(s.programId, s.schoolId, formOptions);
+        const heard = parseHowHeard(s.howHeardAboutUs);
+        const sponsor = parseSponsor(s);
+        const format =
+          s.permanentAddressFormat === 'International' ? 'International' : 'Uganda';
         setLookupToken(result.lookupToken);
         setManualMode(false);
         setForm({
@@ -143,13 +218,31 @@ export default function StudentInfoCorrection() {
           gender: (s.gender as typeof emptyForm.gender) || '',
           dateOfBirth: s.dateOfBirth || '',
           nationality: s.nationality || '',
+          nin: s.nin || '',
           oLevelSchool: s.oLevelSchool || '',
           aLevelSchool: s.aLevelSchool || '',
-          homeDistrict: s.homeDistrict || '',
           maritalStatus: (s.maritalStatus as typeof emptyForm.maritalStatus) || '',
-          sponsorType: (s.sponsorType as typeof emptyForm.sponsorType) || '',
-          physicalAddress: s.physicalAddress || '',
-          howHeardAboutUs: s.howHeardAboutUs || '',
+          fundingType: sponsor.funding,
+          sponsoredByKcdk: sponsor.kcdk,
+          sponsorName: sponsor.sponsorName,
+          permanentAddressFormat: format,
+          village: s.village || '',
+          parish: s.parish || '',
+          subcounty: s.subcounty || '',
+          county: s.county || '',
+          district: s.district || s.homeDistrict || '',
+          region: s.region || '',
+          country: s.country || (format === 'Uganda' ? 'Uganda' : ''),
+          homePlotStreet: s.homePlotStreet || '',
+          poBoxNumber: s.poBoxNumber || '',
+          intlStreetAddress: s.intlStreetAddress || s.physicalAddress || '',
+          intlCity: s.intlCity || '',
+          intlStateProvince: s.intlStateProvince || '',
+          intlAreaLga: s.intlAreaLga || '',
+          intlPostalCode: s.intlPostalCode || '',
+          intlCountry: s.intlCountry || '',
+          howHeardAboutUs: heard.channel,
+          howHeardAboutUsOther: heard.other,
           hasDisability: Boolean(s.hasDisability),
           disabilityDetails: s.disabilityDetails || '',
           schoolId,
@@ -195,18 +288,40 @@ export default function StudentInfoCorrection() {
     setForm(emptyForm);
   };
 
+  const resolveSponsorType = (): StudentInfoSponsorType | null => {
+    if (form.fundingType === 'Private') return 'Private';
+    if (form.fundingType === 'Sponsored') {
+      if (form.sponsoredByKcdk) return 'KCDK';
+      return 'Other';
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.programId) {
       toast.error('Select a program');
       return;
     }
-    if (!form.gender || !form.maritalStatus || !form.sponsorType) {
+    const sponsorType = resolveSponsorType();
+    if (!form.gender || !form.maritalStatus || !sponsorType || !form.howHeardAboutUs) {
       toast.error('Please complete all required fields');
+      return;
+    }
+    if (sponsorType === 'Other' && !form.sponsorName.trim()) {
+      toast.error('Enter the sponsor name');
+      return;
+    }
+    if (form.howHeardAboutUs === 'Other' && !form.howHeardAboutUsOther.trim()) {
+      toast.error('Please specify how you heard about us');
       return;
     }
     if (form.hasDisability && !form.disabilityDetails.trim()) {
       toast.error('Please describe the disability');
+      return;
+    }
+    if (!form.nin.trim()) {
+      toast.error('Enter National ID (NIN) or passport number');
       return;
     }
     if (!form.email.trim().toLowerCase().endsWith('@kcu.ac.ug')) {
@@ -226,13 +341,31 @@ export default function StudentInfoCorrection() {
         gender: form.gender,
         dateOfBirth: form.dateOfBirth,
         nationality: form.nationality.trim(),
+        nin: form.nin.trim(),
         oLevelSchool: form.oLevelSchool.trim(),
-        aLevelSchool: form.aLevelSchool.trim(),
-        homeDistrict: form.homeDistrict.trim(),
+        aLevelSchool: form.aLevelSchool.trim() || null,
         maritalStatus: form.maritalStatus,
-        sponsorType: form.sponsorType,
-        physicalAddress: form.physicalAddress.trim(),
-        howHeardAboutUs: form.howHeardAboutUs.trim(),
+        sponsorType,
+        sponsorName: sponsorType === 'Other' ? form.sponsorName.trim() : null,
+        permanentAddressFormat: form.permanentAddressFormat,
+        village: isUgandaAddress ? form.village.trim() : null,
+        parish: isUgandaAddress ? form.parish.trim() : null,
+        subcounty: isUgandaAddress ? form.subcounty.trim() : null,
+        county: isUgandaAddress ? form.county.trim() : null,
+        district: isUgandaAddress ? form.district.trim() : null,
+        region: isUgandaAddress ? form.region.trim() : null,
+        country: isUgandaAddress ? form.country.trim() || 'Uganda' : null,
+        homePlotStreet: isUgandaAddress ? form.homePlotStreet.trim() : null,
+        poBoxNumber: isUgandaAddress ? form.poBoxNumber.trim() || null : null,
+        intlStreetAddress: !isUgandaAddress ? form.intlStreetAddress.trim() : null,
+        intlCity: !isUgandaAddress ? form.intlCity.trim() : null,
+        intlStateProvince: !isUgandaAddress ? form.intlStateProvince.trim() : null,
+        intlAreaLga: !isUgandaAddress ? form.intlAreaLga.trim() || null : null,
+        intlPostalCode: !isUgandaAddress ? form.intlPostalCode.trim() || null : null,
+        intlCountry: !isUgandaAddress ? form.intlCountry.trim() : null,
+        howHeardAboutUs: form.howHeardAboutUs,
+        howHeardAboutUsOther:
+          form.howHeardAboutUs === 'Other' ? form.howHeardAboutUsOther.trim() : null,
         hasDisability: form.hasDisability,
         disabilityDetails: form.hasDisability ? form.disabilityDetails.trim() : null,
         programId: form.programId,
@@ -432,11 +565,12 @@ export default function StudentInfoCorrection() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Home District *</Label>
+                <Label>National ID (NIN) / Passport *</Label>
                 <Input
                   required
-                  value={form.homeDistrict}
-                  onChange={(e) => setField('homeDistrict', e.target.value)}
+                  value={form.nin}
+                  onChange={(e) => setField('nin', e.target.value)}
+                  placeholder="NIN or passport number"
                 />
               </div>
               <div className="space-y-2">
@@ -455,22 +589,234 @@ export default function StudentInfoCorrection() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Sponsor *</Label>
+                <Label>Funding *</Label>
                 <Select
-                  value={form.sponsorType}
-                  onValueChange={(v) => setField('sponsorType', v as typeof form.sponsorType)}
+                  value={form.fundingType}
+                  onValueChange={(v) => {
+                    const funding = v as typeof form.fundingType;
+                    setForm((prev) => ({
+                      ...prev,
+                      fundingType: funding,
+                      sponsoredByKcdk: funding === 'Sponsored' ? prev.sponsoredByKcdk : false,
+                      sponsorName: funding === 'Sponsored' ? prev.sponsorName : '',
+                    }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Private">Private</SelectItem>
-                    <SelectItem value="Funded">Funded</SelectItem>
+                    <SelectItem value="Private">Private (self-funded)</SelectItem>
+                    <SelectItem value="Sponsored">Sponsored / funded</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {form.fundingType === 'Sponsored' ? (
+                <div className="space-y-3 sm:col-span-2 rounded-md border p-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="sponsoredByKcdk"
+                      checked={form.sponsoredByKcdk}
+                      onCheckedChange={(v) => {
+                        const checked = Boolean(v);
+                        setForm((prev) => ({
+                          ...prev,
+                          sponsoredByKcdk: checked,
+                          sponsorName: checked ? '' : prev.sponsorName,
+                        }));
+                      }}
+                    />
+                    <Label htmlFor="sponsoredByKcdk">Sponsored by KCDK</Label>
+                  </div>
+                  {!form.sponsoredByKcdk ? (
+                    <div className="space-y-2">
+                      <Label>Sponsor name *</Label>
+                      <Input
+                        required
+                        value={form.sponsorName}
+                        onChange={(e) => setField('sponsorName', e.target.value)}
+                        placeholder="Organisation or individual sponsor"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Home address</CardTitle>
+              <CardDescription>
+                Ugandan students use LC1–LC5 (country down to village). International students use
+                the address format for their country.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label>Secondary School (O' Level) *</Label>
+                <Label>Permanent home address *</Label>
+                <Select
+                  value={form.permanentAddressFormat}
+                  onValueChange={(v) => {
+                    const format = v as StudentInfoAddressFormat;
+                    setForm((prev) => ({
+                      ...prev,
+                      permanentAddressFormat: format,
+                      country: format === 'Uganda' ? prev.country || 'Uganda' : prev.country,
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Uganda">Uganda (LC1–LC5)</SelectItem>
+                    <SelectItem value="International">Outside Uganda</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {isUgandaAddress ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Country *</Label>
+                    <Input
+                      required
+                      value={form.country}
+                      onChange={(e) => setField('country', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Region *</Label>
+                    <Input
+                      required
+                      value={form.region}
+                      onChange={(e) => setField('region', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>District (LC5) *</Label>
+                    <Input
+                      required
+                      value={form.district}
+                      onChange={(e) => setField('district', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>County (LC4) *</Label>
+                    <Input
+                      required
+                      value={form.county}
+                      onChange={(e) => setField('county', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subcounty (LC3) *</Label>
+                    <Input
+                      required
+                      value={form.subcounty}
+                      onChange={(e) => setField('subcounty', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Parish (LC2) *</Label>
+                    <Input
+                      required
+                      value={form.parish}
+                      onChange={(e) => setField('parish', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Village (LC1) *</Label>
+                    <Input
+                      required
+                      value={form.village}
+                      onChange={(e) => setField('village', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Home plot / street *</Label>
+                    <Input
+                      required
+                      placeholder="e.g. Plot 29 Main Street"
+                      value={form.homePlotStreet}
+                      onChange={(e) => setField('homePlotStreet', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>P.O. Box number</Label>
+                    <Input
+                      value={form.poBoxNumber}
+                      onChange={(e) => setField('poBoxNumber', e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Country *</Label>
+                    <Input
+                      required
+                      placeholder="e.g. Nigeria"
+                      value={form.intlCountry}
+                      onChange={(e) => setField('intlCountry', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>State / province *</Label>
+                    <Input
+                      required
+                      value={form.intlStateProvince}
+                      onChange={(e) => setField('intlStateProvince', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>City / town *</Label>
+                    <Input
+                      required
+                      value={form.intlCity}
+                      onChange={(e) => setField('intlCity', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Area / LGA / neighbourhood</Label>
+                    <Input
+                      value={form.intlAreaLga}
+                      onChange={(e) => setField('intlAreaLga', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Postal / ZIP code</Label>
+                    <Input
+                      value={form.intlPostalCode}
+                      onChange={(e) => setField('intlPostalCode', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Street / house address *</Label>
+                    <Input
+                      required
+                      placeholder="e.g. 12 Admiralty Way, Lekki"
+                      value={form.intlStreetAddress}
+                      onChange={(e) => setField('intlStreetAddress', e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Academic background</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label>
+                  {isUgandaAddress
+                    ? "Secondary School (O' Level) *"
+                    : 'Secondary school (O-Level / JSS / equivalent) *'}
+                </Label>
                 <Input
                   required
                   value={form.oLevelSchool}
@@ -478,47 +824,92 @@ export default function StudentInfoCorrection() {
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Secondary School (A' Level) *</Label>
+                <Label>
+                  {isUgandaAddress
+                    ? "Secondary School (A' Level) *"
+                    : 'Secondary school (A-Level / SS / equivalent)'}
+                </Label>
                 <Input
-                  required
+                  required={isUgandaAddress}
+                  placeholder={
+                    isUgandaAddress
+                      ? undefined
+                      : 'Optional if not applicable to your education pathway'
+                  }
                   value={form.aLevelSchool}
                   onChange={(e) => setField('aLevelSchool', e.target.value)}
                 />
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Physical Address *</Label>
-                <Textarea
-                  required
-                  value={form.physicalAddress}
-                  onChange={(e) => setField('physicalAddress', e.target.value)}
-                />
-              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Other information</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>How did you hear about us? *</Label>
-                <Input
-                  required
+                <Select
                   value={form.howHeardAboutUs}
-                  onChange={(e) => setField('howHeardAboutUs', e.target.value)}
-                />
+                  onValueChange={(v) =>
+                    setField('howHeardAboutUs', v as typeof form.howHeardAboutUs)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(options?.howHeardChannels || HOW_HEARD).map((channel) => (
+                      <SelectItem key={channel} value={channel}>
+                        {channel}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={form.hasDisability}
-                    onCheckedChange={(v) => setField('hasDisability', Boolean(v))}
-                    id="hasDisability"
+              {form.howHeardAboutUs === 'Other' ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Please specify *</Label>
+                  <Input
+                    required
+                    value={form.howHeardAboutUsOther}
+                    onChange={(e) => setField('howHeardAboutUsOther', e.target.value)}
                   />
-                  <Label htmlFor="hasDisability">Any Disability</Label>
                 </div>
-                {form.hasDisability && (
+              ) : null}
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Do you have any disability? *</Label>
+                <Select
+                  value={form.hasDisability ? 'Yes' : 'No'}
+                  onValueChange={(v) => {
+                    const yes = v === 'Yes';
+                    setForm((prev) => ({
+                      ...prev,
+                      hasDisability: yes,
+                      disabilityDetails: yes ? prev.disabilityDetails : '',
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="No">No</SelectItem>
+                    <SelectItem value="Yes">Yes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.hasDisability ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Please describe *</Label>
                   <Textarea
                     required
-                    placeholder="Please describe"
                     value={form.disabilityDetails}
                     onChange={(e) => setField('disabilityDetails', e.target.value)}
                   />
-                )}
-              </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
