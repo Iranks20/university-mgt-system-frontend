@@ -5,6 +5,14 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/,
 export type StudentInfoSourceType = 'Existing' | 'New';
 export type StudentInfoStatus = 'Pending' | 'Approved' | 'Rejected';
 export type StudentInfoIntakeType = 'Day' | 'Evening' | 'Weekend';
+export type StudentInfoSponsorType = 'Private' | 'KCDK' | 'Other';
+export type StudentInfoAddressFormat = 'Uganda' | 'International';
+export type StudentInfoHowHeard =
+  | 'Facebook'
+  | 'Twitter'
+  | 'Our website'
+  | 'LinkedIn'
+  | 'Other';
 
 export interface StudentInfoFormOptions {
   schools: Array<{ id: string; name: string }>;
@@ -12,7 +20,9 @@ export interface StudentInfoFormOptions {
   intakeTypes: StudentInfoIntakeType[];
   genders: Array<'Male' | 'Female' | 'Other'>;
   maritalStatuses: Array<'Married' | 'Single'>;
-  sponsorTypes: Array<'Private' | 'Funded'>;
+  sponsorTypes: StudentInfoSponsorType[];
+  howHeardChannels: StudentInfoHowHeard[];
+  addressFormats: StudentInfoAddressFormat[];
 }
 
 export interface StudentInfoClassOption {
@@ -33,11 +43,29 @@ export interface StudentInfoLookupStudent {
   gender: string | null;
   dateOfBirth: string | null;
   nationality: string | null;
+  nin: string | null;
   oLevelSchool: string | null;
   aLevelSchool: string | null;
   homeDistrict: string | null;
   maritalStatus: string | null;
   sponsorType: string | null;
+  sponsorName: string | null;
+  permanentAddressFormat: string | null;
+  village: string | null;
+  parish: string | null;
+  subcounty: string | null;
+  county: string | null;
+  district: string | null;
+  region: string | null;
+  country: string | null;
+  homePlotStreet: string | null;
+  poBoxNumber: string | null;
+  intlStreetAddress: string | null;
+  intlCity: string | null;
+  intlStateProvince: string | null;
+  intlAreaLga: string | null;
+  intlPostalCode: string | null;
+  intlCountry: string | null;
   physicalAddress: string | null;
   howHeardAboutUs: string | null;
   hasDisability: boolean | null;
@@ -80,11 +108,29 @@ export interface StudentInfoFormSubmission {
   gender: string;
   dateOfBirth: string;
   nationality: string;
+  nin: string;
   oLevelSchool: string;
   aLevelSchool: string;
   homeDistrict: string;
   maritalStatus: string;
   sponsorType: string;
+  sponsorName: string | null;
+  permanentAddressFormat: StudentInfoAddressFormat;
+  village: string | null;
+  parish: string | null;
+  subcounty: string | null;
+  county: string | null;
+  district: string | null;
+  region: string | null;
+  country: string | null;
+  homePlotStreet: string | null;
+  poBoxNumber: string | null;
+  intlStreetAddress: string | null;
+  intlCity: string | null;
+  intlStateProvince: string | null;
+  intlAreaLga: string | null;
+  intlPostalCode: string | null;
+  intlCountry: string | null;
   physicalAddress: string;
   howHeardAboutUs: string;
   hasDisability: boolean;
@@ -112,13 +158,30 @@ export type StudentInfoSubmitPayload = {
   gender: 'Male' | 'Female' | 'Other';
   dateOfBirth: string;
   nationality: string;
+  nin: string;
   oLevelSchool: string;
-  aLevelSchool: string;
-  homeDistrict: string;
+  aLevelSchool?: string | null;
   maritalStatus: 'Married' | 'Single';
-  sponsorType: 'Private' | 'Funded';
-  physicalAddress: string;
-  howHeardAboutUs: string;
+  sponsorType: StudentInfoSponsorType;
+  sponsorName?: string | null;
+  permanentAddressFormat: StudentInfoAddressFormat;
+  village?: string | null;
+  parish?: string | null;
+  subcounty?: string | null;
+  county?: string | null;
+  district?: string | null;
+  region?: string | null;
+  country?: string | null;
+  homePlotStreet?: string | null;
+  poBoxNumber?: string | null;
+  intlStreetAddress?: string | null;
+  intlCity?: string | null;
+  intlStateProvince?: string | null;
+  intlAreaLga?: string | null;
+  intlPostalCode?: string | null;
+  intlCountry?: string | null;
+  howHeardAboutUs: StudentInfoHowHeard;
+  howHeardAboutUsOther?: string | null;
   hasDisability: boolean;
   disabilityDetails?: string | null;
   programId: string;
@@ -202,6 +265,7 @@ export const studentInfoFormService = {
     search?: string;
     sourceType?: StudentInfoSourceType | '';
     status?: StudentInfoStatus | '';
+    sponsorType?: StudentInfoSponsorType | '';
     page?: number;
     limit?: number;
   }) {

@@ -33,6 +33,7 @@ import {
   studentInfoFormService,
   type StudentInfoFormSubmission,
   type StudentInfoSourceType,
+  type StudentInfoSponsorType,
   type StudentInfoStatus,
 } from '@/services/student-info-form.service';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ export default function AdminStudentInfoForms() {
   const [search, setSearch] = useState('');
   const [sourceType, setSourceType] = useState<StudentInfoSourceType | '__all__'>('__all__');
   const [status, setStatus] = useState<StudentInfoStatus | '__all__'>('Pending');
+  const [sponsorType, setSponsorType] = useState<StudentInfoSponsorType | '__all__'>('__all__');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selected, setSelected] = useState<StudentInfoFormSubmission | null>(null);
@@ -56,6 +58,7 @@ export default function AdminStudentInfoForms() {
         search: search.trim() || undefined,
         sourceType: sourceType === '__all__' ? '' : sourceType,
         status: status === '__all__' ? '' : status,
+        sponsorType: sponsorType === '__all__' ? '' : sponsorType,
         page,
         limit: 20,
       });
@@ -66,7 +69,7 @@ export default function AdminStudentInfoForms() {
     } finally {
       setLoading(false);
     }
-  }, [search, sourceType, status, page]);
+  }, [search, sourceType, status, sponsorType, page]);
 
   useEffect(() => {
     load();
@@ -120,7 +123,7 @@ export default function AdminStudentInfoForms() {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Search and filter by source and status.</CardDescription>
+          <CardDescription>Search and filter by source, status, and sponsor.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
           <div className="relative min-w-[220px] flex-1">
@@ -164,6 +167,21 @@ export default function AdminStudentInfoForms() {
               <SelectItem value="Rejected">Rejected</SelectItem>
             </SelectContent>
           </Select>
+          <Select
+            value={sponsorType}
+            onValueChange={(v) => {
+              setPage(1);
+              setSponsorType(v as typeof sponsorType);
+            }}
+          >
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sponsor" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All sponsors</SelectItem>
+              <SelectItem value="KCDK">KCDK</SelectItem>
+              <SelectItem value="Other">Other sponsored</SelectItem>
+              <SelectItem value="Private">Private</SelectItem>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
@@ -181,6 +199,7 @@ export default function AdminStudentInfoForms() {
                     <TableHead>Submitted</TableHead>
                     <TableHead>Source</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Sponsor</TableHead>
                     <TableHead>Reg No</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
@@ -191,7 +210,7 @@ export default function AdminStudentInfoForms() {
                 <TableBody>
                   {rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground">
                         No submissions found
                       </TableCell>
                     </TableRow>
@@ -218,6 +237,11 @@ export default function AdminStudentInfoForms() {
                           >
                             {row.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {row.sponsorType === 'Other'
+                            ? row.sponsorName || 'Other'
+                            : row.sponsorType}
                         </TableCell>
                         <TableCell className="font-mono text-xs">{row.studentNumber}</TableCell>
                         <TableCell>{row.fullName}</TableCell>
@@ -283,18 +307,39 @@ export default function AdminStudentInfoForms() {
                 <div><span className="text-muted-foreground">Gender:</span> {selected.gender}</div>
                 <div><span className="text-muted-foreground">DOB:</span> {selected.dateOfBirth}</div>
                 <div><span className="text-muted-foreground">Nationality:</span> {selected.nationality}</div>
-                <div><span className="text-muted-foreground">District:</span> {selected.homeDistrict}</div>
+                <div><span className="text-muted-foreground">NIN / Passport:</span> {selected.nin || '—'}</div>
                 <div><span className="text-muted-foreground">Marital:</span> {selected.maritalStatus}</div>
-                <div><span className="text-muted-foreground">Sponsor:</span> {selected.sponsorType}</div>
+                <div>
+                  <span className="text-muted-foreground">Sponsor:</span>{' '}
+                  {selected.sponsorType}
+                  {selected.sponsorName ? ` (${selected.sponsorName})` : ''}
+                </div>
                 <div className="sm:col-span-2">
                   <span className="text-muted-foreground">O Level:</span> {selected.oLevelSchool}
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-muted-foreground">A Level:</span> {selected.aLevelSchool}
+                  <span className="text-muted-foreground">A Level:</span> {selected.aLevelSchool || '—'}
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-muted-foreground">Address format:</span>{' '}
+                  {selected.permanentAddressFormat}
                 </div>
                 <div className="sm:col-span-2">
                   <span className="text-muted-foreground">Address:</span> {selected.physicalAddress}
                 </div>
+                {selected.permanentAddressFormat === 'Uganda' ? (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    {[selected.country, selected.region, selected.district, selected.county, selected.subcounty, selected.parish, selected.village]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                ) : (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground">
+                    {[selected.intlCountry, selected.intlStateProvince, selected.intlCity, selected.intlStreetAddress]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                )}
                 <div className="sm:col-span-2">
                   <span className="text-muted-foreground">Heard about us:</span> {selected.howHeardAboutUs}
                 </div>
