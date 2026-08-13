@@ -50,7 +50,19 @@ import {
   type AcademicTermFilterValue,
 } from '@/components/AcademicTermFilter';
 
-type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
+type StudentRow = {
+  id: string;
+  name: string;
+  email: string;
+  studentId: string;
+  dept: string;
+  year: string;
+  status: string;
+  holdbackReason?: string | null;
+  programId?: string;
+  departmentId?: string;
+  semester?: number;
+};
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
 type ClassRow = {
   id: string;
@@ -99,6 +111,7 @@ function StudentsTab({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     }
   ) => Promise<void>;
 }) {
@@ -125,7 +138,18 @@ function StudentsTab({
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1', newPassword: '' });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    studentId: '',
+    schoolId: '',
+    departmentId: '',
+    programId: '',
+    year: 'Year 1',
+    semester: '1',
+    newPassword: '',
+    clearHoldback: false,
+  });
   const [editStudentPasswordVisible, setEditStudentPasswordVisible] = useState(false);
   const [programs, setPrograms] = useState<any[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
@@ -194,6 +218,7 @@ function StudentsTab({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     } = {};
     const s = searchTerm.trim();
     if (s) params.search = s;
@@ -201,7 +226,12 @@ function StudentsTab({
     if (filters.year !== '__all__') params.year = parseInt(filters.year, 10);
     if (filters.semester !== '__all__') params.semester = parseInt(filters.semester, 10);
     if (filters.intakeType !== '__all__') params.intakeType = filters.intakeType as 'Day' | 'Evening' | 'Weekend';
-    if (filters.status !== '__all__') params.status = filters.status;
+    if (filters.status === '__held_back__') {
+      params.heldBack = true;
+      params.status = 'Active';
+    } else if (filters.status !== '__all__') {
+      params.status = filters.status;
+    }
     return params;
   };
 
@@ -214,7 +244,9 @@ function StudentsTab({
     if (y) parts.push(y);
     if (s) parts.push(s);
     if (filters.intakeType !== '__all__') parts.push(filters.intakeType);
-    if (filters.status !== '__all__') parts.push(filters.status);
+    if (filters.status !== '__all__') {
+      parts.push(filters.status === '__held_back__' ? 'HeldBack' : filters.status);
+    }
     const today = new Date().toISOString().slice(0, 10);
     parts.push(today);
     return `${parts.join('_')}.xlsx`;
@@ -591,9 +623,11 @@ function StudentsTab({
               <SelectContent>
                 <SelectItem value="__all__">All statuses</SelectItem>
                 <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="__held_back__">Held back</SelectItem>
                 <SelectItem value="Inactive">Inactive</SelectItem>
                 <SelectItem value="Suspended">Suspended</SelectItem>
                 <SelectItem value="Graduated">Graduated</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -665,9 +699,11 @@ function StudentsTab({
                 <SelectContent>
                   <SelectItem value="__all__">All statuses</SelectItem>
                   <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="__held_back__">Held back</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
                   <SelectItem value="Suspended">Suspended</SelectItem>
                   <SelectItem value="Graduated">Graduated</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -720,7 +756,23 @@ function StudentsTab({
                 <TableCell>{student.dept}</TableCell>
                 <TableCell>{student.year}</TableCell>
                 <TableCell>
-                  <Badge variant={student.status === 'Active' ? 'default' : 'destructive'} className={student.status === 'Active' ? 'bg-[#015F2B] hover:bg-[#015F2B]/90' : ''}>{student.status}</Badge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge
+                      variant={student.status === 'Active' ? 'default' : 'destructive'}
+                      className={student.status === 'Active' ? 'bg-[#015F2B] hover:bg-[#015F2B]/90' : ''}
+                    >
+                      {student.status}
+                    </Badge>
+                    {student.holdbackReason ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-600 text-amber-800 bg-amber-50"
+                        title={student.holdbackReason}
+                      >
+                        Held back
+                      </Badge>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -744,6 +796,7 @@ function StudentsTab({
                           year: student.year,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
+                          clearHoldback: false,
                         });
                         setEditStudentPasswordVisible(false);
                         setPreviewCourses([]);
@@ -1261,6 +1314,7 @@ function StudentsTab({
                 year,
                 semester,
                 ...(newPw ? { tempPassword: newPw } : {}),
+                ...(editForm.clearHoldback ? { holdbackReason: null } : {}),
               } as any);
               
               // Handle enrollments
@@ -1380,6 +1434,22 @@ function StudentsTab({
                       </Button>
                     </div>
                   </div>
+                  {editingStudent?.holdbackReason ? (
+                    <div className="space-y-2 min-w-0 sm:col-span-2 xl:col-span-3 rounded-md border border-amber-200 bg-amber-50/60 p-3">
+                      <p className="text-sm text-amber-900">
+                        <span className="font-medium">Held back:</span> {editingStudent.holdbackReason}
+                      </p>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={editForm.clearHoldback}
+                          onCheckedChange={(v) =>
+                            setEditForm((f) => ({ ...f, clearHoldback: v === true }))
+                          }
+                        />
+                        Clear holdback (allow promote on next run)
+                      </label>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -8110,6 +8180,7 @@ export default function AdminView({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     }
   ) => {
     try {
@@ -8123,6 +8194,7 @@ export default function AdminView({
         dept: s.program || '',
         year: `Year ${s.year || 1}`,
         status: s.status || 'Active',
+        holdbackReason: s.holdbackReason ?? null,
         programId: s.programId,
         departmentId: s.departmentId,
         semester: s.semester,

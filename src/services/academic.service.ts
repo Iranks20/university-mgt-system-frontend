@@ -23,18 +23,40 @@ export type PromoteStudentsResult = {
     year: number | null;
     semester: number | null;
   };
+  holdbackGroups?: Array<{
+    programId: string;
+    year: number;
+    semester: number;
+    reason: string;
+  }>;
   totalActiveStudents: number;
   toPromote: number;
   heldBack: number;
+  heldBackExisting?: number;
+  heldBackByGroup?: number;
+  heldBackIndividual?: number;
   completedCandidates: number;
   skippedNoProgram: number;
   promoted: number;
   errors: string[];
   samples: {
     promote: Array<{ id: string; studentNumber: string; from: string; to: string }>;
-    holdback: Array<{ id: string; studentNumber: string; at: string }>;
+    holdback: Array<{
+      id: string;
+      studentNumber: string;
+      at: string;
+      reason?: string | null;
+      source?: 'existing' | 'group' | 'individual';
+    }>;
     completed: Array<{ id: string; studentNumber: string; at: string }>;
   };
+};
+
+export type HoldbackGroupPayload = {
+  programId: string;
+  year: number;
+  semester: number;
+  reason: string;
 };
 
 export type GenerateClassListsResult = {
@@ -790,6 +812,7 @@ export const academicService = {
 
   previewPromoteStudents: async (payload?: {
     holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
     programId?: string;
     year?: number;
     semester?: number;
@@ -803,6 +826,7 @@ export const academicService = {
 
   promoteStudents: async (payload?: {
     holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
     programId?: string;
     year?: number;
     semester?: number;
@@ -875,6 +899,7 @@ export const academicService = {
       endDate: string;
     };
     holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
     programId?: string;
     year?: number;
     semester?: number;
@@ -901,6 +926,7 @@ export const academicService = {
       endDate: string;
     };
     holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
     programId?: string;
     year?: number;
     semester?: number;

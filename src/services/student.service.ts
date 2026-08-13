@@ -24,6 +24,7 @@ export const studentService = {
     intakeType?: 'Day' | 'Evening' | 'Weekend';
     programIntakeId?: string;
     status?: string;
+    heldBack?: boolean;
     page?: number;
     limit?: number;
   }): Promise<{ data: Student[]; total: number; page: number; pageSize: number }> => {
@@ -51,6 +52,7 @@ export const studentService = {
     intakeType?: 'Day' | 'Evening' | 'Weekend';
     programIntakeId?: string;
     status?: string;
+    heldBack?: boolean;
   }, filename?: string): Promise<void> => {
     const token = localStorage.getItem('kcu-token');
     const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
@@ -63,6 +65,8 @@ export const studentService = {
     if (params?.intakeType) qs.set('intakeType', params.intakeType);
     if (params?.programIntakeId) qs.set('programIntakeId', params.programIntakeId);
     if (params?.status) qs.set('status', params.status);
+    if (params?.heldBack === true) qs.set('heldBack', 'true');
+    if (params?.heldBack === false) qs.set('heldBack', 'false');
 
     const response = await fetch(`${base}/students/export?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },

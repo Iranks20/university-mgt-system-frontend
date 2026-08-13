@@ -46,7 +46,7 @@ Manual test guide for academic terms, closing a semester, publishing offerings, 
 
 1. A **program** that lasts at least 2 years.
 2. A few **Active students** on that program (Year 1 Sem 1 at least).
-3. One student to **hold back** — copy their student **ID** for the holdback box.
+3. One student to **hold back** individually — copy their student **UUID** for the individual holdback box, **or** prepare a whole cohort (program + year + semester) for cohort holdback with a reason.
 4. **Courses** for the relevant year/semester:
    - At least one course with enrollment policy **Auto** (default)
    - At least one course marked **Self** (elective) for self-enroll tests
@@ -243,17 +243,39 @@ Manual test guide for academic terms, closing a semester, publishing offerings, 
 - Only the selected group advances (e.g. Y2S1 → Y2S2).
 - Leaving Program/Year/Semester as **All** still promotes every Active student (bulk).
 
-### TC-3.3 Holdbacks
+### TC-3.3 Holdbacks (individual)
 
 **Steps**
 
-1. Paste a student ID in holdbacks.
+1. Paste a student ID in individual holdbacks.
 2. Preview promote — that student listed as holdback.
 3. Promote.
 
 **Pass if**
 
 - Holdback student stays on the same year/semester.
+- Student shows **Held back** standing (reason: Individual holdback) on the Students list.
+
+### TC-3.3a Hold back a whole cohort (program + year + semester)
+
+**Scenario:** e.g. BCFCI Year 2 Sem 1 stays for internship while other classes promote.
+
+**Steps**
+
+1. Calendar → **Promote**.
+2. Under **Hold back cohort**, pick program, year, semester, and a reason (e.g. “Clinical internship”).
+3. Click **Add cohort holdback**.
+4. Leave promote Program/Year/Semester as **All** (or a broader scope that includes other cohorts).
+5. Preview → Promote.
+
+**Pass if**
+
+- Preview lists the cohort students under holdbacks with the reason.
+- Those students keep the same year/semester and stay **Active**.
+- Students list shows a **Held back** badge; hover/title shows the reason.
+- Filter Status → **Held back** finds them.
+- A later promote still skips them until you **Edit student → Clear holdback**.
+- Other programs / years / semesters still promote normally.
 
 ### TC-3.4 Register — Auto
 
