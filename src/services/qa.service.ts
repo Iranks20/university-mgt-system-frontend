@@ -392,13 +392,19 @@ export const qaService = {
    * Get classes for a specific school
    * Maps classes to schools based on lecturer summary data and common patterns
    */
-  getClassesBySchool: async (school: string): Promise<string[]> => {
+  getClassesBySchool: async (
+    school: string,
+    params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
+  ): Promise<string[]> => {
     try {
       const schools = await api.get<Array<{ id: string; name: string }>>('/academic/schools');
       const schoolObj = schools.find(s => s.name === school);
       if (!schoolObj) return [];
-      
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes', { schoolId: schoolObj.id });
+
+      const query: Record<string, string> = { schoolId: schoolObj.id };
+      if (params?.academicTermId) query.academicTermId = params.academicTermId;
+      if (params?.classStatus) query.classStatus = params.classStatus;
+      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
       return classes.map(c => c.name).sort();
     } catch (error) {
       console.error('Error fetching classes by school:', error);
@@ -409,9 +415,14 @@ export const qaService = {
   /**
    * Get all unique classes (across all schools)
    */
-  getAllClasses: async (): Promise<string[]> => {
+  getAllClasses: async (
+    params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
+  ): Promise<string[]> => {
     try {
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes');
+      const query: Record<string, string> = {};
+      if (params?.academicTermId) query.academicTermId = params.academicTermId;
+      if (params?.classStatus) query.classStatus = params.classStatus;
+      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
       return classes.map(c => c.name).sort();
     } catch (error) {
       console.error('Error fetching all classes:', error);

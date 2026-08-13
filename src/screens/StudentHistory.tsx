@@ -21,6 +21,8 @@ import { enrollmentService } from "@/services/enrollment.service";
 import { studentService } from "@/services/student.service";
 import { staffService } from "@/services/staff.service";
 import { exportAttendanceHistoryToCSV } from "@/utils/excel";
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function AttendanceHistory() {
   return <AttendanceHistoryContent />;
@@ -36,6 +38,7 @@ function AttendanceHistoryContent() {
   const [historyLoading, setHistoryLoading] = useState(role === 'Student' || role === 'Staff');
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+  const { termFilter, onTermChange } = useAcademicTermFilterState();
   const [dateRangeOpen, setDateRangeOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
@@ -162,7 +165,17 @@ function AttendanceHistoryContent() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="flex gap-2 w-full md:w-auto">
+            <div className="flex gap-2 w-full md:w-auto flex-wrap">
+               <AcademicTermFilter
+                 value={termFilter}
+                 showLabel={false}
+                 triggerClassName="w-[220px]"
+                 onChange={(sel) => {
+                   onTermChange(sel);
+                   if (sel.term?.startDate) setDateFrom(new Date(`${sel.term.startDate}T00:00:00`));
+                   if (sel.term?.endDate) setDateTo(new Date(`${sel.term.endDate}T00:00:00`));
+                 }}
+               />
                <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="Status" />

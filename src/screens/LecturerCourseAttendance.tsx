@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import Components from "@/components";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +10,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { exportLectureRecordsToCSV } from '@/utils/excel';
 import { toast } from 'sonner';
 import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function LecturerCourseAttendance() {
   const { user } = useAuth();
+  const { termFilter, academicTermId, classStatusHint, termStartDate, termEndDate, onTermChange } =
+    useAcademicTermFilterState();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -21,7 +24,7 @@ export default function LecturerCourseAttendance() {
 
   useEffect(() => {
     loadLecturerCourses();
-  }, [user]);
+  }, [user, termFilter, academicTermId, classStatusHint, termStartDate, termEndDate]);
 
   const loadLecturerCourses = async () => {
     if (!user?.id) return;
@@ -29,7 +32,10 @@ export default function LecturerCourseAttendance() {
     try {
       setLoading(true);
       
-      const timetable = await academicService.getTimetable();
+      const timetable = await academicService.getTimetable({
+        ...(academicTermId ? { academicTermId } : {}),
+        classStatus: classStatusHint,
+      });
       if (!timetable || timetable.length === 0) {
         setCourses([]);
         return;
@@ -42,16 +48,15 @@ export default function LecturerCourseAttendance() {
           const enrollments = await enrollmentService.getClassEnrollments(classData.id, { roster: true });
           const studentIds = enrollments.map((e: any) => e.studentId);
           
-          // Get QA lecture records for this class
-          // Note: QAFilter doesn't have classId/lecturerId, so we'll filter by className
-          const allRecords = await qaService.getLectureRecords();
+          const allRecords = await qaService.getLectureRecords({
+            ...(termStartDate ? { startDate: termStartDate } : {}),
+            ...(termEndDate ? { endDate: termEndDate } : {}),
+          } as any);
           const recordsArray = Array.isArray(allRecords) ? allRecords : (allRecords as any)?.data || [];
           const lectureRecords = recordsArray.filter((r: any) => 
             r.className === classData.name || r.class === classData.name
           );
           
-          // Calculate attendance from student attendance records
-          // Use ALL students, not a sample, to get accurate data
           let totalAttendance = 0;
           let totalSessions = 0;
           let hasAttendanceData = false;
@@ -60,6 +65,8 @@ export default function LecturerCourseAttendance() {
             try {
               const attendance = await studentService.getStudentAttendance(studentId, {
                 classId: classData.id,
+                ...(termStartDate ? { startDate: termStartDate } : {}),
+                ...(termEndDate ? { endDate: termEndDate } : {}),
               });
               if (attendance && attendance.length > 0) {
                 hasAttendanceData = true;
@@ -68,18 +75,14 @@ export default function LecturerCourseAttendance() {
                 totalSessions += metrics.expected;
               }
             } catch (error) {
-              // Skip students with no attendance data
               continue;
             }
           }
           
-          // Only calculate average if we have real attendance data
           const avgAttendance = hasAttendanceData && totalSessions > 0 
             ? Math.round((totalAttendance / totalSessions) * 100) 
             : null;
           
-          // Get recent sessions from lecture records
-          // Sort by date descending and take most recent 5
           const sortedRecords = [...lectureRecords].sort((a: any, b: any) => {
             const dateA = a.date ? new Date(a.date).getTime() : 0;
             const dateB = b.date ? new Date(b.date).getTime() : 0;
@@ -92,16 +95,13 @@ export default function LecturerCourseAttendance() {
               .map(async (record: any) => {
                 const date = record.date ? new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
                 
-                // Fetch actual attendance data for this session
                 let present: number | null = null;
                 let absent: number | null = null;
                 let late: number | null = null;
                 
                 try {
-                  // Get attendance records for this class on this date
                   const sessionDate = record.date ? new Date(record.date).toISOString().split('T')[0] : null;
                   if (sessionDate && classData.id) {
-                    // Fetch attendance for all enrolled students for this class on this date
                     const attendancePromises = studentIds.map(async (studentId: string) => {
                       try {
                         const attendance = await studentService.getStudentAttendance(studentId, {
@@ -124,14 +124,12 @@ export default function LecturerCourseAttendance() {
                     present = presentRecords.length + lateRecords.length;
                     absent = absentRecords.length;
                   } else {
-                    // No real data available - set to null to show "—"
                     present = null;
                     absent = null;
                     late = null;
                   }
                 } catch (error) {
                   console.warn(`Error fetching attendance for session ${record.id}:`, error);
-                  // No real data available - set to null to show "—"
                   present = null;
                   absent = null;
                   late = null;
@@ -140,10 +138,10 @@ export default function LecturerCourseAttendance() {
                 return {
                   date,
                   topic: record.courseUnit || record.class || record.className || '—',
-                  present: present ?? null, // null means no real data available
-                  absent: absent ?? null, // null means no real data available
+                  present: present ?? null,
+                  absent: absent ?? null,
                   late: late ?? null,
-                  hasRealData: present !== null && absent !== null, // Track if we have real data
+                  hasRealData: present !== null && absent !== null,
                   recordId: record.id,
                 };
               })
@@ -176,8 +174,10 @@ export default function LecturerCourseAttendance() {
     try {
       const records = await qaService.getLectureRecords({ 
         courseCode: course.code,
-        lecturerName: user?.name 
-      });
+        lecturerName: user?.name,
+        ...(termStartDate ? { startDate: termStartDate } : {}),
+        ...(termEndDate ? { endDate: termEndDate } : {}),
+      } as any);
       const recordList = Array.isArray(records) ? records : (records as any)?.data || [];
       if (recordList.length > 0) {
         exportLectureRecordsToCSV(recordList, `Course_${course.code}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -197,6 +197,11 @@ export default function LecturerCourseAttendance() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Course Attendance</h1>
           <p className="text-gray-500">Track and manage attendance for your assigned courses.</p>
         </div>
+        <AcademicTermFilter
+          value={termFilter}
+          onChange={onTermChange}
+          triggerClassName="w-[240px]"
+        />
         <div className="flex items-center justify-center py-12">
           <p className="text-gray-500">Loading courses...</p>
         </div>
@@ -210,6 +215,12 @@ export default function LecturerCourseAttendance() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Course Attendance</h1>
           <p className="text-gray-500">Track and manage attendance for your assigned courses.</p>
         </div>
+
+        <AcademicTermFilter
+          value={termFilter}
+          onChange={onTermChange}
+          triggerClassName="w-[240px]"
+        />
 
         {courses.length === 0 ? (
           <div className="flex items-center justify-center py-12">
@@ -295,9 +306,7 @@ export default function LecturerCourseAttendance() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-4 text-muted-foreground text-sm">
-                            No sessions recorded yet
-                          </TableCell>
+                          <TableCell colSpan={5} className="text-center text-gray-500">No recent sessions</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -309,7 +318,6 @@ export default function LecturerCourseAttendance() {
         </div>
         )}
 
-        {/* Session Details Dialog */}
         <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
           <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -350,11 +358,6 @@ export default function LecturerCourseAttendance() {
                   <div className="pt-4 border-t">
                     <p className="text-sm text-gray-500">
                       Total enrolled: {selectedSession.present + selectedSession.absent}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Attendance rate: {selectedSession.present + selectedSession.absent > 0 
-                        ? Math.round(((selectedSession.present - 0.5 * (selectedSession.late ?? 0)) / (selectedSession.present + selectedSession.absent)) * 100)
-                        : 0}%
                     </p>
                   </div>
                 )}

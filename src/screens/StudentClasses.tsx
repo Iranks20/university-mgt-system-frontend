@@ -1,27 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import Components from "@/components";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BookOpen } from "lucide-react";
-import { enrollmentService, studentService, settingsService } from '@/services';
+import { enrollmentService, studentService, settingsService, academicService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
+import { AcademicTermFilter, TERM_FILTER_ACTIVE, TERM_FILTER_ALL } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function StudentClasses() {
   const { user } = useAuth();
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [thresholds, setThresholds] = useState<{ student: { excellent: number; good: number; warning: number; critical: number } } | null>(null);
+  const [activeTermId, setActiveTermId] = useState<string | null>(null);
+  const { termFilter, academicTermId, termStartDate, termEndDate, onTermChange } =
+    useAcademicTermFilterState();
 
   useEffect(() => {
     settingsService.getPerformanceThresholds().then(setThresholds).catch(() => setThresholds(null));
+    academicService.getActiveAcademicTerm().then((t) => setActiveTermId(t?.id ?? null)).catch(() => setActiveTermId(null));
   }, []);
 
   useEffect(() => {
     loadStudentClasses();
-  }, [user, thresholds]);
+  }, [user, thresholds, termFilter, academicTermId, termStartDate, termEndDate, activeTermId]);
 
   const loadStudentClasses = async () => {
     if (!user?.id) return;
@@ -40,14 +45,25 @@ export default function StudentClasses() {
       const th = thresholds ?? await settingsService.getPerformanceThresholds().catch(() => null);
       const studentTh = th?.student ?? { excellent: 80, good: 70, warning: 60, critical: 50 };
 
+      const filtered = (enrollments as any[]).filter((enrollment) => {
+        const classTermId = enrollment.class?.academicTermId ?? null;
+        if (termFilter === TERM_FILTER_ALL) return true;
+        if (termFilter === TERM_FILTER_ACTIVE) {
+          return classTermId === activeTermId || classTermId == null;
+        }
+        return classTermId === academicTermId;
+      });
+
       const classesWithAttendance = await Promise.all(
-        enrollments.map(async (enrollment: any) => {
+        filtered.map(async (enrollment: any) => {
           const classData = enrollment.class;
           const studentId = enrollment.studentId ?? student.id;
           let attendance = 0;
           try {
             const attendanceRecords = await studentService.getStudentAttendance(studentId, {
               classId: enrollment.classId,
+              ...(termStartDate ? { startDate: termStartDate } : {}),
+              ...(termEndDate ? { endDate: termEndDate } : {}),
             });
             attendance = computeAttendanceFromRecords(attendanceRecords, {
               percentageDecimalPlaces: 0,
@@ -95,63 +111,73 @@ export default function StudentClasses() {
           <p className="text-gray-500">View your enrolled courses and attendance status.</p>
         </div>
 
+        <AcademicTermFilter value={termFilter} onChange={onTermChange} triggerClassName="w-[260px]" />
+
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <p className="text-gray-500">Loading classes...</p>
           </div>
         ) : classes.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-gray-500">No classes enrolled yet.</p>
-          </div>
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No classes found for this term.
+            </CardContent>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {classes.map((cls) => (
-              <Card key={cls.code}>
-                <CardContent className="p-6">
-                   <div className="flex flex-col md:flex-row justify-between gap-4">
-                      <div className="flex gap-4">
-                         <div className="h-12 w-12 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
-                            <BookOpen className="text-[#015F2B]" />
-                         </div>
-                         <div>
-                            <h3 className="font-bold text-lg text-gray-900">{cls.name}</h3>
-                            <div className="flex items-center gap-2 text-sm text-gray-500">
-                               <span className="font-medium text-gray-700">{cls.code}</span>
-                               <span>•</span>
-                               <span className={cls.lecturer === 'Not assigned' ? 'text-gray-400' : ''}>{cls.lecturer}</span>
-                            </div>
-                            <p className={`text-sm mt-1 ${cls.schedule === 'Not scheduled' ? 'text-gray-400' : 'text-gray-500'}`}>{cls.schedule}</p>
-                            <p className={`text-sm mt-1 ${cls.venue === 'Not assigned' ? 'text-gray-400' : 'text-gray-600 font-medium'}`}>
-                              Venue: {cls.venue}
-                            </p>
-                         </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" /> Enrolled classes
+            </CardTitle>
+            <CardDescription>Attendance for the selected academic term.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Course</TableHead>
+                  <TableHead>Schedule</TableHead>
+                  <TableHead>Lecturer</TableHead>
+                  <TableHead>Venue</TableHead>
+                  <TableHead>Attendance</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {classes.map((c, i) => (
+                  <TableRow key={`${c.code}-${i}`}>
+                    <TableCell className="font-medium">{c.code || '—'}</TableCell>
+                    <TableCell>{c.name || '—'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{c.schedule}</TableCell>
+                    <TableCell>{c.lecturer}</TableCell>
+                    <TableCell>{c.venue}</TableCell>
+                    <TableCell className="w-[140px]">
+                      <div className="flex items-center gap-2">
+                        <Progress value={c.attendance} className="h-2" />
+                        <span className="text-sm tabular-nums">{c.attendance}%</span>
                       </div>
-                      
-                      <div className="min-w-[200px] space-y-2">
-                         <div className="flex justify-between text-sm items-center">
-                            <span className="text-gray-500">Attendance</span>
-                            <span className={`font-bold ${cls.attendance < (thresholds?.student?.good ?? 75) ? 'text-red-600' : 'text-[#015F2B]'}`}>
-                              {cls.attendance}%
-                            </span>
-                         </div>
-                         <Progress 
-                           value={cls.attendance} 
-                           className={`h-2 ${cls.attendance < (thresholds?.student?.good ?? 75) ? '[&>div]:bg-red-600' : '[&>div]:bg-[#015F2B]'}`} 
-                         />
-                         <div className="flex justify-end">
-                            {cls.attendance < (thresholds?.student?.good ?? 75) ? (
-                               <Badge variant="destructive" className="text-[10px] px-2 py-0.5">At Risk</Badge>
-                            ) : (
-                               <Badge variant="outline" className="text-[10px] px-2 py-0.5 text-green-700 bg-green-50 border-green-200">On Track</Badge>
-                            )}
-                         </div>
-                      </div>
-                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={
+                          c.status === 'Good'
+                            ? 'bg-green-100 text-green-800'
+                            : c.status === 'Warning'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-red-100 text-red-800'
+                        }
+                      >
+                        {c.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
         )}
-      </div>
+    </div>
   );
 }

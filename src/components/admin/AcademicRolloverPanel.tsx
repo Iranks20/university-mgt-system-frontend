@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, Layers, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   academicService,
@@ -12,6 +11,7 @@ import { getApiErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
+type RolloverSection = 'offerings' | 'promote' | 'register';
 
 function parseHoldbackIds(raw: string): string[] {
   return [
@@ -33,10 +35,18 @@ function parseHoldbackIds(raw: string): string[] {
 }
 
 function PromoteSummary({ result }: { result: PromoteStudentsResult }) {
+  const scopeParts = [
+    result.scope?.programId ? 'selected program' : 'all programs',
+    result.scope?.year != null ? `Y${result.scope.year}` : null,
+    result.scope?.semester != null ? `S${result.scope.semester}` : null,
+  ].filter(Boolean);
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
       <p>
-        Active students: <strong>{result.totalActiveStudents}</strong>
+        Scope: <strong>{scopeParts.join(' · ')}</strong>
+      </p>
+      <p>
+        Active students in scope: <strong>{result.totalActiveStudents}</strong>
       </p>
       <p>
         To promote: <strong>{result.toPromote}</strong>
@@ -106,8 +116,20 @@ function RegisterSummary({ result }: { result: RegisterStudentsResult }) {
   );
 }
 
-export function AcademicRolloverPanel() {
+export function AcademicRolloverPanel({
+  sections = ['offerings', 'promote', 'register'],
+}: {
+  sections?: RolloverSection[];
+}) {
+  const showOfferings = sections.includes('offerings');
+  const showPromote = sections.includes('promote');
+  const showRegister = sections.includes('register');
+  const multi = sections.length > 1;
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const [promoteProgramId, setPromoteProgramId] = useState<string>('__all__');
+  const [promoteYear, setPromoteYear] = useState<string>('__all__');
+  const [promoteSemester, setPromoteSemester] = useState<string>('__all__');
   const [holdbackRaw, setHoldbackRaw] = useState('');
   const [promotePreview, setPromotePreview] = useState<PromoteStudentsResult | null>(null);
   const [promoteBusy, setPromoteBusy] = useState(false);
@@ -130,17 +152,35 @@ export function AcademicRolloverPanel() {
         if (closed) setSourceTermId(closed.id);
       })
       .catch(() => setTerms([]));
+    academicService
+      .getPrograms()
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows as { data?: unknown[] })?.data ?? [];
+        setPrograms(
+          (list as Array<{ id: string; name: string; code?: string }>).map((p) => ({
+            id: p.id,
+            name: p.name,
+            code: p.code,
+          }))
+        );
+      })
+      .catch(() => setPrograms([]));
   }, []);
 
   const closedTerms = terms.filter((t) => t.status === 'Closed');
   const hasActive = terms.some((t) => t.status === 'Active');
 
+  const promotePayload = () => ({
+    holdbackStudentIds: parseHoldbackIds(holdbackRaw),
+    ...(promoteProgramId !== '__all__' ? { programId: promoteProgramId } : {}),
+    ...(promoteYear !== '__all__' ? { year: Number(promoteYear) } : {}),
+    ...(promoteSemester !== '__all__' ? { semester: Number(promoteSemester) } : {}),
+  });
+
   const runPromotePreview = async () => {
     setPromoteBusy(true);
     try {
-      const data = await academicService.previewPromoteStudents({
-        holdbackStudentIds: parseHoldbackIds(holdbackRaw),
-      });
+      const data = await academicService.previewPromoteStudents(promotePayload());
       setPromotePreview(data);
       toast.success('Promote preview ready');
     } catch (error) {
@@ -155,8 +195,19 @@ export function AcademicRolloverPanel() {
       toast.error('Run preview first');
       return;
     }
+    const scopeLabel = [
+      promoteProgramId !== '__all__'
+        ? programs.find((p) => p.id === promoteProgramId)?.code ||
+          programs.find((p) => p.id === promoteProgramId)?.name ||
+          'program'
+        : 'all programs',
+      promoteYear !== '__all__' ? `Y${promoteYear}` : null,
+      promoteSemester !== '__all__' ? `S${promoteSemester}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     const ok = window.confirm(
-      `Promote ${promotePreview.toPromote} student(s)?\n` +
+      `Promote ${promotePreview.toPromote} student(s) in scope (${scopeLabel})?\n` +
         `${promotePreview.heldBack} held back · ${promotePreview.completedCandidates} marked Completed.\n` +
         `Year/semester only — use Register to seat students.`
     );
@@ -164,9 +215,7 @@ export function AcademicRolloverPanel() {
 
     setPromoteBusy(true);
     try {
-      const data = await academicService.promoteStudents({
-        holdbackStudentIds: parseHoldbackIds(holdbackRaw),
-      });
+      const data = await academicService.promoteStudents(promotePayload());
       setPromotePreview(data);
       toast.success(`Promoted ${data.promoted} student(s)`);
     } catch (error) {
@@ -266,22 +315,21 @@ export function AcademicRolloverPanel() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className={multi ? 'grid gap-6 lg:grid-cols-3' : 'max-w-xl'}>
+      {showOfferings ? (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" /> Publish offerings
-          </CardTitle>
-          <CardDescription>
-            Create class offerings for the Active term. Does not enroll students — use Register.
-          </CardDescription>
+          <CardTitle>Publish offerings</CardTitle>
+          <CardDescription>Create class offerings for the Active term.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!hasActive ? (
             <p className="text-sm text-amber-700">Activate an academic term before publishing.</p>
           ) : null}
           <div>
-            <Label>Mode</Label>
+            <LabelWithInfo info="Clone copies offerings from a closed term. Curriculum builds offerings from program intakes for the Active term. Students are not enrolled here — use Register.">
+              Mode
+            </LabelWithInfo>
             <Select
               value={classMode}
               onValueChange={(v) => setClassMode(v as 'clone-from-term' | 'from-curriculum')}
@@ -327,22 +375,96 @@ export function AcademicRolloverPanel() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
 
+      {showPromote ? (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ArrowUpRight className="h-5 w-5" /> Promote students
-          </CardTitle>
-          <CardDescription>
-            Sem 1 → Sem 2, Sem 2 → next year Sem 1. Updates standing only; seating is Register.
-          </CardDescription>
+          <CardTitle>Promote students</CardTitle>
+          <CardDescription>Advance student year/semester standing.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!hasActive ? (
             <p className="text-sm text-amber-700">Activate an academic term before promoting.</p>
           ) : null}
           <div>
-            <Label htmlFor="holdbacks">Holdback student IDs (optional)</Label>
+            <LabelWithInfo info="Leave All to promote every Active student, or pick a program to limit the run.">
+              Program
+            </LabelWithInfo>
+            <Select
+              value={promoteProgramId}
+              onValueChange={(v) => {
+                setPromoteProgramId(v);
+                setPromotePreview(null);
+              }}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="All programs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All programs</SelectItem>
+                {programs.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.code ? `${p.name} (${p.code})` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <LabelWithInfo info="Optional filter. With semester, promotes one cohort group (e.g. Year 2 Sem 1).">
+                Year
+              </LabelWithInfo>
+              <Select
+                value={promoteYear}
+                onValueChange={(v) => {
+                  setPromoteYear(v);
+                  setPromotePreview(null);
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="All years" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All years</SelectItem>
+                  {[1, 2, 3, 4, 5, 6].map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      Year {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <LabelWithInfo info="Optional filter. Sem 1 students move to Sem 2; Sem 2 students move to next year Sem 1.">
+                Semester
+              </LabelWithInfo>
+              <Select
+                value={promoteSemester}
+                onValueChange={(v) => {
+                  setPromoteSemester(v);
+                  setPromotePreview(null);
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="All semesters" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All semesters</SelectItem>
+                  <SelectItem value="1">Semester 1</SelectItem>
+                  <SelectItem value="2">Semester 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <LabelWithInfo
+              htmlFor="holdbacks"
+              info="Students listed here keep their current year/semester. Paste UUIDs, one per line."
+            >
+              Holdbacks
+            </LabelWithInfo>
             <Textarea
               id="holdbacks"
               className="mt-1 font-mono text-xs"
@@ -367,22 +489,22 @@ export function AcademicRolloverPanel() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
 
+      {showRegister ? (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <UserCheck className="h-5 w-5" /> Register students
-          </CardTitle>
-          <CardDescription>
-            Auto-enroll into Auto courses and/or open the self-registration window for Self courses.
-          </CardDescription>
+          <CardTitle>Register students</CardTitle>
+          <CardDescription>Enroll students into Active-term offerings.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!hasActive ? (
             <p className="text-sm text-amber-700">Activate an academic term before registering.</p>
           ) : null}
           <div>
-            <Label>Policy</Label>
+            <LabelWithInfo info="Auto enrolls required courses. Hybrid also opens self-registration for elective/Self courses. Self opens the registration window only.">
+              Policy
+            </LabelWithInfo>
             <Select
               value={regPolicy}
               onValueChange={(v) => setRegPolicy(v as 'auto' | 'hybrid' | 'self')}
@@ -412,6 +534,7 @@ export function AcademicRolloverPanel() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
     </div>
   );
 }

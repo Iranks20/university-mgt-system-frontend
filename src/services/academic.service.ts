@@ -18,6 +18,11 @@ export type AcademicTerm = {
 
 export type PromoteStudentsResult = {
   dryRun: boolean;
+  scope?: {
+    programId: string | null;
+    year: number | null;
+    semester: number | null;
+  };
   totalActiveStudents: number;
   toPromote: number;
   heldBack: number;
@@ -555,9 +560,18 @@ export const academicService = {
     }
   },
 
-  getTimetable: async (): Promise<any[]> => {
+  getTimetable: async (params?: {
+    academicTermId?: string;
+    classStatus?: 'active' | 'inactive' | 'all';
+  }): Promise<any[]> => {
     try {
-      const response = await api.get<{ data: any[] }>('/academic/timetable');
+      const query = new URLSearchParams();
+      if (params?.academicTermId) query.set('academicTermId', params.academicTermId);
+      if (params?.classStatus) query.set('classStatus', params.classStatus);
+      const qs = query.toString();
+      const response = await api.get<{ data: any[] }>(
+        '/academic/timetable' + (qs ? `?${qs}` : '')
+      );
       return Array.isArray(response) ? response : response?.data ?? [];
     } catch (error) {
       console.error('Error fetching timetable:', error);
@@ -674,10 +688,11 @@ export const academicService = {
   createAcademicTerm: async (payload: {
     name: string;
     academicYear: number;
-    semester: 1 | 2;
+    semester: 0 | 1 | 2;
     startDate: string;
     endDate: string;
     activate?: boolean;
+    asClosed?: boolean;
   }): Promise<AcademicTerm> => {
     const response = await api.post<{ data: AcademicTerm } | AcademicTerm>('/academic/terms', payload);
     return (response as any)?.data ?? response;
@@ -735,6 +750,31 @@ export const academicService = {
     return (response as any)?.data ?? response;
   },
 
+  previewAttachUnscopedClasses: async (
+    id: string
+  ): Promise<{
+    term: AcademicTerm;
+    unscopedClassCount: number;
+    linkedClassCount: number;
+  }> => {
+    const response = await api.get<
+      | { data: { term: AcademicTerm; unscopedClassCount: number; linkedClassCount: number } }
+      | { term: AcademicTerm; unscopedClassCount: number; linkedClassCount: number }
+    >(`/academic/terms/${id}/attach-unscoped/preview`);
+    return (response as any)?.data ?? response;
+  },
+
+  attachUnscopedClasses: async (
+    id: string,
+    payload?: { deactivate?: boolean }
+  ): Promise<AcademicTerm & { attachedClassCount: number; deactivated: boolean }> => {
+    const response = await api.post<
+      | { data: AcademicTerm & { attachedClassCount: number; deactivated: boolean } }
+      | (AcademicTerm & { attachedClassCount: number; deactivated: boolean })
+    >(`/academic/terms/${id}/attach-unscoped`, payload ?? {});
+    return (response as any)?.data ?? response;
+  },
+
   getAcademicTermClosePreview: async (
     id: string
   ): Promise<{
@@ -751,6 +791,8 @@ export const academicService = {
   previewPromoteStudents: async (payload?: {
     holdbackStudentIds?: string[];
     programId?: string;
+    year?: number;
+    semester?: number;
   }): Promise<PromoteStudentsResult> => {
     const response = await api.post<{ data: PromoteStudentsResult } | PromoteStudentsResult>(
       '/academic/terms/promote/preview',
@@ -762,6 +804,8 @@ export const academicService = {
   promoteStudents: async (payload?: {
     holdbackStudentIds?: string[];
     programId?: string;
+    year?: number;
+    semester?: number;
   }): Promise<PromoteStudentsResult> => {
     const response = await api.post<{ data: PromoteStudentsResult } | PromoteStudentsResult>(
       '/academic/terms/promote',
@@ -826,12 +870,14 @@ export const academicService = {
     nextTerm: {
       name: string;
       academicYear: number;
-      semester: 1 | 2;
+      semester: 0 | 1 | 2;
       startDate: string;
       endDate: string;
     };
     holdbackStudentIds?: string[];
     programId?: string;
+    year?: number;
+    semester?: number;
     classListMode?: 'clone-from-term' | 'from-curriculum';
     sourceTermId?: string;
     skipPromote?: boolean;
@@ -850,12 +896,14 @@ export const academicService = {
     nextTerm: {
       name: string;
       academicYear: number;
-      semester: 1 | 2;
+      semester: 0 | 1 | 2;
       startDate: string;
       endDate: string;
     };
     holdbackStudentIds?: string[];
     programId?: string;
+    year?: number;
+    semester?: number;
     classListMode?: 'clone-from-term' | 'from-curriculum';
     sourceTermId?: string;
     skipPromote?: boolean;

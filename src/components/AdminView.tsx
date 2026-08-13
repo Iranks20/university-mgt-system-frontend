@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -43,6 +43,12 @@ import { getApiErrorMessage } from '@/lib/api';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
 import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+  TERM_FILTER_ALL,
+  type AcademicTermFilterValue,
+} from '@/components/AcademicTermFilter';
 
 type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
@@ -5459,12 +5465,23 @@ function ClassesTab({
   classesPage: number;
   classesTotal: number;
   pageSize: number;
-  loadClasses: (page: number, params?: { programIntakeId?: string | null; search?: string }) => Promise<void>;
+  loadClasses: (
+    page: number,
+    params?: {
+      programIntakeId?: string | null;
+      search?: string;
+      academicTermId?: string;
+      classStatus?: 'active' | 'inactive' | 'all';
+    }
+  ) => Promise<void>;
   programIntakeId: string | null;
   setProgramIntakeId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [termFilter, setTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
+  const [termClassStatus, setTermClassStatus] = useState<'active' | 'all'>('active');
+  const [termQueryId, setTermQueryId] = useState<string | undefined>(undefined);
   const [lecturerFilter, setLecturerFilter] = useState<string>('all');
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [addEditOpen, setAddEditOpen] = useState(false);
@@ -5503,6 +5520,17 @@ function ClassesTab({
   const classIntakeScope = useProgramIntakeScope({ showSchool: false, intakeField: 'type' });
   const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
   const [scopeLoading, setScopeLoading] = useState<boolean>(false);
+  const classListParams = (overrides?: {
+    programIntakeId?: string | null;
+    search?: string;
+  }) => ({
+    programIntakeId:
+      overrides && 'programIntakeId' in overrides ? overrides.programIntakeId : programIntakeId,
+    search: overrides?.search ?? (searchTerm.trim() || undefined),
+    ...(termQueryId ? { academicTermId: termQueryId } : {}),
+    classStatus: termClassStatus,
+  });
+
   const openTimetableBuilderForScope = () => {
     if (!scopeEnabled || !classIntakeScope.programId) {
       toast.error('Enable the intake scope filter and select a program first');
@@ -5555,7 +5583,7 @@ function ClassesTab({
           label: formatProgramIntakeOptionLabel(i, programById),
         }))
       );
-      await loadClasses(classesPage, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
+      await loadClasses(classesPage, classListParams({ programIntakeId, search: searchTerm.trim() || undefined }));
     } catch (error) {
       console.error('Error refreshing class data:', error);
     }
@@ -5590,10 +5618,10 @@ function ClassesTab({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadClasses(1, { programIntakeId, search: searchTerm.trim() || undefined });
+      loadClasses(1, classListParams());
     }, 250);
     return () => clearTimeout(timer);
-  }, [searchTerm, programIntakeId, loadClasses]);
+  }, [searchTerm, programIntakeId, termFilter, termQueryId, termClassStatus, loadClasses]);
 
   const applyScopeFilter = async () => {
     if (!classIntakeScope.programId) {
@@ -5608,7 +5636,7 @@ function ClassesTab({
         return;
       }
       setProgramIntakeId(resolved.id);
-      await loadClasses(1, { programIntakeId: resolved.id, search: searchTerm.trim() || undefined });
+      await loadClasses(1, classListParams({ programIntakeId: resolved.id }));
       toast.success('Filtered classes by intake scope');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply intake filter');
@@ -5619,7 +5647,7 @@ function ClassesTab({
 
   const clearScopeFilter = async () => {
     setProgramIntakeId(null);
-    await loadClasses(1, { programIntakeId: null, search: searchTerm.trim() || undefined });
+    await loadClasses(1, classListParams({ programIntakeId: null }));
     toast.success('Showing all classes');
   };
 
@@ -5968,6 +5996,15 @@ function ClassesTab({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <AcademicTermFilter
+          value={termFilter}
+          onChange={(sel) => {
+            setTermFilter(sel.value);
+            setTermQueryId(sel.academicTermId);
+            setTermClassStatus(sel.classStatusHint);
+          }}
+          triggerClassName="w-[240px]"
+        />
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search classes..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -6105,9 +6142,9 @@ function ClassesTab({
           <div className="flex items-center justify-between border-t px-4 py-2">
             <span className="text-sm text-muted-foreground">{classesTotal} total</span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, classListParams())}>Previous</Button>
               <span className="text-sm">Page {classesPage} of {Math.max(1, Math.ceil(classesTotal / pageSize))}</span>
-              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Next</Button>
+              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, classListParams())}>Next</Button>
             </div>
           </div>
         )}
@@ -6585,6 +6622,8 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     day: '',
     courseCode: '',
     classStatus: 'active' as 'active' | 'inactive' | 'all',
+    academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
+    academicTermId: undefined as string | undefined,
   });
   const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
@@ -6643,8 +6682,12 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
       if (filters.classStatus) query.classStatus = filters.classStatus;
-      if (filters.classStatus === 'inactive' || filters.classStatus === 'all') {
-        query.academicTermId = 'all';
+      if (filters.academicTermId) {
+        query.academicTermId = filters.academicTermId;
+      } else if (filters.classStatus === 'inactive' || filters.classStatus === 'all') {
+        if (filters.academicTermFilter === TERM_FILTER_ACTIVE) {
+          query.academicTermId = 'all';
+        }
       }
       const result = await timetableService.getTimetable(query);
       setClasses(result.data);
@@ -6740,7 +6783,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
           return;
         }
         setActiveTermLabel(term.name);
-        setImportScope((s) => ({ ...s, semester: term.semester === 2 ? 2 : 1 }));
+        if (term.semester === 1 || term.semester === 2) {
+          setImportScope((s) => ({ ...s, semester: term.semester }));
+        }
       })
       .catch(() => setActiveTermLabel(null));
   }, []);
@@ -6954,6 +6999,22 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               <SelectItem value="all">All classes</SelectItem>
             </SelectContent>
           </Select>
+          <AcademicTermFilter
+            value={filters.academicTermFilter}
+            showLabel={false}
+            triggerClassName="w-[220px]"
+            onChange={(sel) =>
+              setFilters({
+                ...filters,
+                academicTermFilter: sel.value,
+                academicTermId: sel.academicTermId,
+                classStatus:
+                  sel.classStatusHint === 'all' && filters.classStatus === 'active'
+                    ? 'all'
+                    : filters.classStatus,
+              })
+            }
+          />
               <Input
             placeholder="Course Code"
             value={filters.courseCode}
@@ -6976,7 +7037,11 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
           <CardTitle>University Timetable</CardTitle>
           <CardDescription>
             View and manage class schedules
-            {activeTermLabel ? ` for Active term “${activeTermLabel}”` : ''}
+            {filters.academicTermFilter === TERM_FILTER_ACTIVE && activeTermLabel
+              ? ` for Active term “${activeTermLabel}”`
+              : filters.academicTermFilter === TERM_FILTER_ALL
+                ? ' across all terms'
+                : ' for the selected term'}
             . Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
             Inactive / prior-term schedules are read-only (deactivate stays available for active classes).
           </CardDescription>
@@ -7800,59 +7865,108 @@ function AcademicCalendarTab() {
   };
 
   return (
-    <div className="space-y-6">
-      <AcademicRolloverWizard
-        onCompleted={() => {
-          window.dispatchEvent(new Event('academic-terms-updated'));
-        }}
-      />
-      <AcademicTermsPanel />
-      <AcademicRolloverPanel />
-      <div className="space-y-4">
-      <div className="flex justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search calendar..." className="pl-8" />
-        </div>
-        <Button className="bg-[#015F2B]" onClick={openAdd}><Plus className="mr-2 h-4 w-4" /> Add Event</Button>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Event / Period Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Start Date</TableHead>
-              <TableHead>End Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : events.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No calendar events. Click "Add Event" to create one.</TableCell></TableRow>
-            ) : (
-              events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-medium">{event.name}</TableCell>
-                  <TableCell>{event.type}</TableCell>
-                  <TableCell>{event.startDate ? new Date(event.startDate).toLocaleDateString() : '—'}</TableCell>
-                  <TableCell>{event.endDate ? new Date(event.endDate).toLocaleDateString() : '—'}</TableCell>
-                  <TableCell><Badge>{event.status || 'Scheduled'}</Badge></TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(event)}><Edit className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteEvent(event.id)}><Trash2 className="h-4 w-4 text-red-600" /></Button>
-                    </div>
-                  </TableCell>
+    <div className="space-y-4">
+      <Tabs defaultValue="terms" className="w-full">
+        <TabsList className="bg-gray-100 h-auto w-full max-w-full flex flex-wrap items-center justify-start gap-1 p-1 [&_[data-slot=tabs-trigger]]:h-8 [&_[data-slot=tabs-trigger]]:shrink-0 [&_[data-slot=tabs-trigger]]:flex-none">
+          <TabsTrigger value="terms">Terms</TabsTrigger>
+          <TabsTrigger value="rollover">Rollover</TabsTrigger>
+          <TabsTrigger value="offerings">Offerings</TabsTrigger>
+          <TabsTrigger value="promote">Promote</TabsTrigger>
+          <TabsTrigger value="register">Register</TabsTrigger>
+          <TabsTrigger value="events">Events</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="terms" className="mt-4">
+          <AcademicTermsPanel />
+        </TabsContent>
+
+        <TabsContent value="rollover" className="mt-4">
+          <AcademicRolloverWizard
+            onCompleted={() => {
+              window.dispatchEvent(new Event('academic-terms-updated'));
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="offerings" className="mt-4">
+          <AcademicRolloverPanel sections={['offerings']} />
+        </TabsContent>
+
+        <TabsContent value="promote" className="mt-4">
+          <AcademicRolloverPanel sections={['promote']} />
+        </TabsContent>
+
+        <TabsContent value="register" className="mt-4">
+          <AcademicRolloverPanel sections={['register']} />
+        </TabsContent>
+
+        <TabsContent value="events" className="mt-4 space-y-4">
+          <div className="flex justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search events…" className="pl-8" />
+            </div>
+            <Button className="bg-[#015F2B]" onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" /> Add Event
+            </Button>
+          </div>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event / Period Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>End Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : events.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                      No calendar events. Click "Add Event" to create one.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell className="font-medium">{event.name}</TableCell>
+                      <TableCell>{event.type}</TableCell>
+                      <TableCell>
+                        {event.startDate ? new Date(event.startDate).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {event.endDate ? new Date(event.endDate).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge>{event.status || 'Scheduled'}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(event)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteEvent(event.id)}>
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
@@ -7957,7 +8071,6 @@ function AcademicCalendarTab() {
           </form>
         </DialogContent>
       </Dialog>
-      </div>
     </div>
   );
 }
@@ -8058,7 +8171,15 @@ export default function AdminView({
   classesProgramIntakeIdRef.current = classesProgramIntakeId;
 
   const loadClasses = useCallback(
-    async (pageNum: number, params?: { programIntakeId?: string | null; search?: string }) => {
+    async (
+      pageNum: number,
+      params?: {
+        programIntakeId?: string | null;
+        search?: string;
+        academicTermId?: string;
+        classStatus?: 'active' | 'inactive' | 'all';
+      }
+    ) => {
       try {
         const intakeFromParams = params && 'programIntakeId' in params ? params.programIntakeId : undefined;
         const programIntakeId =
@@ -8071,6 +8192,8 @@ export default function AdminView({
           limit: LIST_PAGE_SIZE,
           ...(programIntakeId ? { programIntakeId } : {}),
           ...(search && search.trim() ? { search: search.trim() } : {}),
+          ...(params?.academicTermId ? { academicTermId: params.academicTermId } : {}),
+          ...(params?.classStatus ? { classStatus: params.classStatus } : {}),
         });
         const arr = res.data ?? [];
         setClasses(
