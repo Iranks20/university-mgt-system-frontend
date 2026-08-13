@@ -34,7 +34,7 @@ Manual test guide for academic terms, closing a semester, publishing offerings, 
 
 | What | How to open |
 |------|-------------|
-| Terms, wizard, promote, publish, register | Left menu → **Calendar** |
+| Terms, wizard, promote, publish, register | Left menu → **Calendar** (tabs: Terms, Rollover, Offerings, Promote, Register, Events) |
 | Timetable Builder | Left menu → **Timetable Builder** |
 | Student course registration | Student menu → **Course registration** |
 | Student my classes | Student menu → **My Classes** |
@@ -64,14 +64,58 @@ Manual test guide for academic terms, closing a semester, publishing offerings, 
 
 1. Log in as Admin → open **Calendar**.
 2. Under **Academic Terms**, click **New term**.
-3. Fill in name, academic year, semester, start date, end date.
+3. Fill in name, academic year, **Coverage** (prefer **Both** when Sem 1 and Sem 2 classes share the same dates), start date, end date.
 4. **Uncheck** “Set as Active term”.
 5. Click **Create**.
 
 **Pass if**
 
 - The new term appears with status **Draft**.
+- Coverage shows **Both** (or Sem 1 / Sem 2 if you chose those).
 - **Registration** column shows **Closed**.
+
+### TC-1.1a Combined term (Sem 1 and Sem 2 together)
+
+**Steps**
+
+1. Create/activate a term with Coverage = **Both**.
+2. Publish Sem 1 and Sem 2 class offerings onto that Active term.
+3. On **Promote**, leave Year/Semester as All (or run Sem 1 then Sem 2 separately).
+
+**Pass if**
+
+- Both Sem 1 and Sem 2 classes can sit on the same Active term.
+- Promote advances Sem 1 students to Sem 2 and Sem 2 students to next year Sem 1 (or scoped groups as selected).
+
+### TC-1.1b Historical term + attach legacy classes
+
+**Steps**
+
+1. Create a term with **Create as Closed (historical archive)** for the semester already run.
+2. Confirm attach prompt (or click **Attach legacy** on the Closed term).
+3. Create & **Activate** a new current term (Coverage = Both recommended).
+4. On **Classes**, **Timetable**, or **Reports**, use **Academic term** filter: Active (default), a Closed term, or All.
+
+**Pass if**
+
+- Legacy classes (`academicTermId` was empty) are linked to the Closed term and deactivated.
+- Day-to-day lists default to the Active term.
+- Selecting the Closed term shows archived classes without reactivating that term.
+
+### TC-1.1c Term picker on academic pages
+
+**Steps**
+
+1. After creating Active + Closed historical terms, open: Student Records, Lecture Records, My Classes, Timetable (any role), Lecturer Course Attendance, Cancellations, Timetable Builder, Reports (attendance / course-wise / at-risk / weekly matrix), and performance dashboards.
+2. Confirm **Academic term** defaults to **Active term**.
+3. Switch to the Closed historical term and confirm lists/dates reflect that period (or archived classes).
+4. On Timetable Builder, confirm schedule writes are disabled when not on Active.
+
+**Pass if**
+
+- Active is the default on each of those pages.
+- Closed-term browse does not require reactivating the old term.
+- Dashboard and Presence remain without a term picker (today / live session only).
 
 ### TC-1.2 Activate a term (only one Active)
 
@@ -183,6 +227,21 @@ Manual test guide for academic terms, closing a semester, publishing offerings, 
 - Student is Year 1 Sem 2 (or Year 2 Sem 1 if they were Sem 2).
 - They are registration-eligible.
 - They are **not** necessarily enrolled yet until Register runs (unless an Admin used legacy enroll-after-promote).
+
+### TC-3.2a Promote by group (program + year + semester)
+
+**Steps**
+
+1. On Calendar → Promote, select a **program**, **year**, and **semester** (not All).
+2. Preview — only students in that group appear in the promote sample.
+3. Promote.
+4. Confirm a student in another year/semester (same or other program) is unchanged.
+
+**Pass if**
+
+- Scope line shows the selected program / Yn / Sn.
+- Only the selected group advances (e.g. Y2S1 → Y2S2).
+- Leaving Program/Year/Semester as **All** still promotes every Active student (bulk).
 
 ### TC-3.3 Holdbacks
 

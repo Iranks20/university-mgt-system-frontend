@@ -24,8 +24,11 @@ import { exportStudentAttendanceReport } from '@/utils/excel';
 import { reportService } from '@/services/report.service';
 import { toast } from 'sonner';
 import type { StudentAttendanceReport } from '@/types/student';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function ManagementStudentPerformance() {
+  const { termFilter, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
   const [programFilter, setProgramFilter] = useState<string>('All');
@@ -58,7 +61,7 @@ export default function ManagementStudentPerformance() {
         const performanceData = await Promise.all(
           students.slice(0, 100).map(async (student: any) => {
             const [perfData, academicData] = await Promise.all([
-              analyticsService.getStudentPerformance(student.id) as any,
+              analyticsService.getStudentPerformance(student.id, termStartDate, termEndDate) as any,
               analyticsService.getStudentAcademicPerformance(student.id).catch(() => null),
             ]);
             const attendanceRate = perfData?.attendanceRate ?? 0;
@@ -101,7 +104,7 @@ export default function ManagementStudentPerformance() {
       }
     };
     fetchData();
-  }, [programFilter, yearFilter, searchTerm]);
+  }, [programFilter, yearFilter, searchTerm, termFilter, termStartDate, termEndDate]);
 
   const filteredStudents = studentPerformance.filter(student => {
     const matchesSearch = 
@@ -301,6 +304,11 @@ export default function ManagementStudentPerformance() {
         <CardContent className="p-4">
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
+              <AcademicTermFilter
+                value={termFilter}
+                onChange={onTermChange}
+                triggerClassName="w-full md:w-[240px]"
+              />
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 

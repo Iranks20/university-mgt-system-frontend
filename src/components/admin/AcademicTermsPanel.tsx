@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, CheckCircle2, Lock, Pencil } from 'lucide-react';
+import { Plus, CheckCircle2, Lock, Pencil, CircleHelp } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService, type AcademicTerm } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -52,12 +54,13 @@ export function AcademicTermsPanel() {
   const [saving, setSaving] = useState(false);
   const yearNow = new Date().getFullYear();
   const [form, setForm] = useState({
-    name: `Academic Year ${yearNow} — Semester 1`,
+    name: `Academic Year ${yearNow}`,
     academicYear: String(yearNow),
-    semester: '1',
+    semester: '0',
     startDate: `${yearNow}-01-15`,
     endDate: `${yearNow}-05-30`,
     activate: true,
+    asClosed: false,
   });
   const [editForm, setEditForm] = useState({
     name: '',
@@ -86,21 +89,57 @@ export function AcademicTermsPanel() {
   const handleCreate = async () => {
     setSaving(true);
     try {
-      await academicService.createAcademicTerm({
+      const created = await academicService.createAcademicTerm({
         name: form.name.trim(),
         academicYear: Number(form.academicYear),
-        semester: Number(form.semester) as 1 | 2,
+        semester: Number(form.semester) as 0 | 1 | 2,
         startDate: form.startDate,
         endDate: form.endDate,
-        activate: form.activate,
+        activate: form.asClosed ? false : form.activate,
+        asClosed: form.asClosed,
       });
-      toast.success(form.activate ? 'Term created and set as Active' : 'Draft term created');
+      toast.success(
+        form.asClosed
+          ? 'Closed historical term created'
+          : form.activate
+            ? 'Term created and set as Active'
+            : 'Draft term created'
+      );
       setOpen(false);
       await load();
+      if (form.asClosed && created?.id) {
+        const attach = window.confirm(
+          'Attach existing legacy classes (no term) to this Closed term now?\nThey will be archived under this term.'
+        );
+        if (attach) {
+          await handleAttachLegacy(created.id);
+        }
+      }
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Could not create term'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAttachLegacy = async (id: string) => {
+    try {
+      const preview = await academicService.previewAttachUnscopedClasses(id);
+      if (preview.unscopedClassCount === 0) {
+        toast.message('No legacy classes without a term to attach');
+        return;
+      }
+      const ok = window.confirm(
+        `Attach ${preview.unscopedClassCount} legacy class(es) to "${preview.term.name}"?\n` +
+          `They will be linked to this term and deactivated (archived).\n` +
+          `Already linked to this term: ${preview.linkedClassCount}.`
+      );
+      if (!ok) return;
+      const result = await academicService.attachUnscopedClasses(id, { deactivate: true });
+      toast.success(`Attached ${result.attachedClassCount} class(es) to historical term`);
+      await load();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not attach legacy classes'));
     }
   };
 
@@ -202,12 +241,8 @@ export function AcademicTermsPanel() {
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>Academic Terms</CardTitle>
-          <CardDescription>
-            Define the current teaching period and registration window. Reports default to the Active
-            term date range. Year + semester are unique — edit an existing term instead of recreating
-            it.
-          </CardDescription>
+          <CardTitle>Academic terms</CardTitle>
+          <CardDescription>Teaching periods and registration windows.</CardDescription>
         </div>
         <Button
           onClick={() => setOpen(true)}
@@ -222,7 +257,7 @@ export function AcademicTermsPanel() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Year</TableHead>
-              <TableHead>Semester</TableHead>
+              <TableHead>Coverage</TableHead>
               <TableHead>Dates</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Registration</TableHead>
@@ -247,7 +282,9 @@ export function AcademicTermsPanel() {
                 <TableRow key={term.id}>
                   <TableCell className="font-medium">{term.name}</TableCell>
                   <TableCell>{term.academicYear}</TableCell>
-                  <TableCell>{term.semester}</TableCell>
+                  <TableCell>
+                    {term.semester === 0 ? 'Both' : `Sem ${term.semester}`}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {term.startDate} → {term.endDate}
                   </TableCell>
@@ -285,6 +322,15 @@ export function AcademicTermsPanel() {
                         <Lock className="h-4 w-4 mr-1" /> Close term
                       </Button>
                     ) : null}
+                    {term.status === 'Closed' || term.status === 'Draft' ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAttachLegacy(term.id)}
+                      >
+                        Attach legacy
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))
@@ -320,7 +366,9 @@ export function AcademicTermsPanel() {
                 />
               </div>
               <div>
-                <Label>Semester</Label>
+                <LabelWithInfo info="Both lets Sem 1 and Sem 2 classes share this term. Promote still moves each group by its own year/semester.">
+                  Coverage
+                </LabelWithInfo>
                 <Select
                   value={form.semester}
                   onValueChange={(v) => setForm({ ...form, semester: v })}
@@ -329,8 +377,9 @@ export function AcademicTermsPanel() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Semester 1</SelectItem>
-                    <SelectItem value="2">Semester 2</SelectItem>
+                    <SelectItem value="0">Both (Sem 1 & Sem 2)</SelectItem>
+                    <SelectItem value="1">Semester 1 only</SelectItem>
+                    <SelectItem value="2">Semester 2 only</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -360,11 +409,60 @@ export function AcademicTermsPanel() {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
+                checked={form.asClosed}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    asClosed: e.target.checked,
+                    activate: e.target.checked ? false : form.activate,
+                  })
+                }
+              />
+              <span className="inline-flex items-center gap-1.5">
+                Create as Closed (historical archive)
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      aria-label="About Create as Closed"
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-left leading-relaxed">
+                    Use for the semester already run before terms existed. Then attach legacy
+                    classes. Keep a separate Active term for current work.
+                  </TooltipContent>
+                </Tooltip>
+              </span>
+            </label>
+            {!form.asClosed ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
                 checked={form.activate}
                 onChange={(e) => setForm({ ...form, activate: e.target.checked })}
               />
-              Set as Active term (closes any currently Active term)
+              <span className="inline-flex items-center gap-1.5">
+                Set as Active term
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      aria-label="About Set as Active term"
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-left leading-relaxed">
+                    Closes any currently Active term and makes this one Active.
+                  </TooltipContent>
+                </Tooltip>
+              </span>
             </label>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>

@@ -6,9 +6,12 @@ import { Award, Clock, Star, ThumbsUp, Loader2 } from "lucide-react";
 import { staffService } from '@/services/staff.service';
 import { analyticsService } from '@/services/analytics.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function LecturerPerformance() {
   const { user } = useAuth();
+  const { termFilter, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [stats, setStats] = useState<{ teachingRate?: number; classesTaught?: number } | null>(null);
   const [perf, setPerf] = useState<{ attendanceRate?: number; taught?: number } | null>(null);
   const [studentRating, setStudentRating] = useState<{ rating: number; maxRating: number; totalRatings: number } | null>(null);
@@ -23,7 +26,7 @@ export default function LecturerPerformance() {
       try {
         const [dashboardRes, perfRes, ratingRes, rankRes, qualityRes, complianceRes] = await Promise.all([
           staffService.getDashboardStats(),
-          user?.id ? analyticsService.getLecturerPerformance() : Promise.resolve(null),
+          user?.id ? analyticsService.getLecturerPerformance(undefined, termStartDate, termEndDate) : Promise.resolve(null),
           staffService.getLecturerStudentRating(),
           staffService.getLecturerDepartmentRank(),
           analyticsService.getLecturerQualityTrend(6),
@@ -51,7 +54,7 @@ export default function LecturerPerformance() {
 
   useEffect(() => {
     loadData();
-  }, [user?.id, retryCount]);
+  }, [user?.id, retryCount, termFilter, termStartDate, termEndDate]);
 
   const teachingRate = perf?.attendanceRate ?? stats?.teachingRate ?? 0;
   const classesTaught = perf?.taught ?? stats?.classesTaught ?? 0;
@@ -66,6 +69,12 @@ export default function LecturerPerformance() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Performance</h1>
           <p className="text-gray-500">Analytics on your teaching effectiveness and attendance compliance.</p>
         </div>
+
+        <AcademicTermFilter
+          value={termFilter}
+          onChange={onTermChange}
+          triggerClassName="w-[240px]"
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
            <Card>

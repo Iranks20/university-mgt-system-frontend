@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,8 @@ interface WeeklyAttendanceMatrixPanelProps {
   programs: Array<{ id: string; name: string; code: string; departmentId: string }>;
   programToSchoolMap: Map<string, string>;
   generatedBy?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export default function WeeklyAttendanceMatrixPanel({
@@ -44,6 +46,8 @@ export default function WeeklyAttendanceMatrixPanel({
   programs,
   programToSchoolMap,
   generatedBy,
+  dateFrom: dateFromProp,
+  dateTo: dateToProp,
 }: WeeklyAttendanceMatrixPanelProps) {
   const intakeScope = useProgramIntakeScope({
     intakeField: 'cohortList',
@@ -58,14 +62,23 @@ export default function WeeklyAttendanceMatrixPanel({
     programToSchoolMap,
   });
   const [dateFrom, setDateFrom] = useState(() => {
+    if (dateFromProp) return dateFromProp;
     const d = new Date();
     d.setDate(d.getDate() - 6);
     return d.toISOString().slice(0, 10);
   });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(() => dateToProp || new Date().toISOString().slice(0, 10));
   const [report, setReport] = useState<WeeklyAttendanceMatrixReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    if (dateFromProp) setDateFrom(dateFromProp);
+  }, [dateFromProp]);
+
+  useEffect(() => {
+    if (dateToProp) setDateTo(dateToProp);
+  }, [dateToProp]);
 
   const loadReport = async () => {
     if (!intakeScope.isComplete) {

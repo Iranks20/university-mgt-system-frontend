@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { CheckCircle2, ChevronRight, Loader2, Wand2 } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   academicService,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -79,13 +80,14 @@ function parseHoldbackIds(raw: string): string[] {
 
 function suggestNextTerm(active: AcademicTerm | null) {
   const yearNow = new Date().getFullYear();
-  if (!active) {
+  if (!active || active.semester === 0) {
+    const year = active ? active.academicYear + 1 : yearNow;
     return {
-      name: `Academic Year ${yearNow} — Semester 1`,
-      academicYear: String(yearNow),
-      semester: '1',
-      startDate: `${yearNow}-01-15`,
-      endDate: `${yearNow}-05-30`,
+      name: `Academic Year ${year}`,
+      academicYear: String(year),
+      semester: '0',
+      startDate: `${year}-01-15`,
+      endDate: `${year}-05-30`,
     };
   }
   if (active.semester === 1) {
@@ -99,9 +101,9 @@ function suggestNextTerm(active: AcademicTerm | null) {
   }
   const nextYear = active.academicYear + 1;
   return {
-    name: `Academic Year ${nextYear} — Semester 1`,
+    name: `Academic Year ${nextYear}`,
     academicYear: String(nextYear),
-    semester: '1',
+    semester: '0',
     startDate: `${nextYear}-01-15`,
     endDate: `${nextYear}-05-30`,
   };
@@ -125,6 +127,10 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
   const [preview, setPreview] = useState<WizardPreview | null>(null);
   const [result, setResult] = useState<WizardResult | null>(null);
   const [holdbackRaw, setHoldbackRaw] = useState('');
+  const [promoteProgramId, setPromoteProgramId] = useState<string>('__all__');
+  const [promoteYear, setPromoteYear] = useState<string>('__all__');
+  const [promoteSemester, setPromoteSemester] = useState<string>('__all__');
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
   const [closeTermId, setCloseTermId] = useState<string>('');
   const [classListMode, setClassListMode] = useState<'clone-from-term' | 'from-curriculum'>(
     'clone-from-term'
@@ -159,6 +165,19 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
 
   useEffect(() => {
     load();
+    academicService
+      .getPrograms()
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows as { data?: unknown[] })?.data ?? [];
+        setPrograms(
+          (list as Array<{ id: string; name: string; code?: string }>).map((p) => ({
+            id: p.id,
+            name: p.name,
+            code: p.code,
+          }))
+        );
+      })
+      .catch(() => setPrograms([]));
   }, []);
 
   const closeable = useMemo(
@@ -172,11 +191,14 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
     nextTerm: {
       name: form.name.trim(),
       academicYear: Number(form.academicYear),
-      semester: Number(form.semester) as 1 | 2,
+      semester: Number(form.semester) as 0 | 1 | 2,
       startDate: form.startDate,
       endDate: form.endDate,
     },
     holdbackStudentIds: parseHoldbackIds(holdbackRaw),
+    ...(promoteProgramId !== '__all__' ? { programId: promoteProgramId } : {}),
+    ...(promoteYear !== '__all__' ? { year: Number(promoteYear) } : {}),
+    ...(promoteSemester !== '__all__' ? { semester: Number(promoteSemester) } : {}),
     classListMode,
     sourceTermId: closeTermId || undefined,
     skipPromote,
@@ -233,15 +255,10 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
   };
 
   return (
-    <Card className="border-[#015F2B]/30">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Wand2 className="h-5 w-5 text-[#015F2B]" /> Semester rollover wizard
-        </CardTitle>
-        <CardDescription>
-          Industry flow: close → activate next term → publish offerings → promote (standing only) →
-          register by policy → timetable. Admin / academic.write only.
-        </CardDescription>
+        <CardTitle>Semester rollover</CardTitle>
+        <CardDescription>Close the current term and open the next one.</CardDescription>
         <div className="flex flex-wrap gap-2 pt-2">
           {STEPS.map((label, i) => (
             <button
@@ -313,7 +330,9 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                 />
               </div>
               <div>
-                <Label>Semester</Label>
+                <LabelWithInfo info="Both lets Sem 1 and Sem 2 classes share this term. Student year/semester is still advanced under Promote.">
+                  Coverage
+                </LabelWithInfo>
                 <Select
                   value={form.semester}
                   onValueChange={(v) => setForm({ ...form, semester: v })}
@@ -322,8 +341,9 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Semester 1</SelectItem>
-                    <SelectItem value="2">Semester 2</SelectItem>
+                    <SelectItem value="0">Both (Sem 1 & Sem 2)</SelectItem>
+                    <SelectItem value="1">Semester 1 only</SelectItem>
+                    <SelectItem value="2">Semester 2 only</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -404,8 +424,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
         {step === 3 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Promote updates year/semester and marks students registration-eligible. It does not
-              enroll into classes (that is the Register step).
+              Update student standing for the next period.
             </p>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -416,17 +435,77 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
               Skip promote step
             </label>
             {!skipPromote ? (
-              <div>
-                <Label htmlFor="wiz-holdbacks">Holdback student IDs (optional)</Label>
-                <Textarea
-                  id="wiz-holdbacks"
-                  className="mt-1 font-mono text-xs"
-                  rows={3}
-                  placeholder="Paste student UUIDs, one per line"
-                  value={holdbackRaw}
-                  onChange={(e) => setHoldbackRaw(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <LabelWithInfo info="Leave All to promote every Active student, or pick a program to limit the run.">
+                    Program
+                  </LabelWithInfo>
+                  <Select value={promoteProgramId} onValueChange={setPromoteProgramId}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="All programs" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All programs</SelectItem>
+                      {programs.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.code ? `${p.name} (${p.code})` : p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <LabelWithInfo info="Optional filter. With semester, promotes one cohort group (e.g. Year 2 Sem 1).">
+                      Year
+                    </LabelWithInfo>
+                    <Select value={promoteYear} onValueChange={setPromoteYear}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="All years" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All years</SelectItem>
+                        {[1, 2, 3, 4, 5, 6].map((y) => (
+                          <SelectItem key={y} value={String(y)}>
+                            Year {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <LabelWithInfo info="Optional filter. Sem 1 students move to Sem 2; Sem 2 students move to next year Sem 1.">
+                      Semester
+                    </LabelWithInfo>
+                    <Select value={promoteSemester} onValueChange={setPromoteSemester}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="All semesters" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All semesters</SelectItem>
+                        <SelectItem value="1">Semester 1</SelectItem>
+                        <SelectItem value="2">Semester 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <LabelWithInfo
+                    htmlFor="wiz-holdbacks"
+                    info="Students listed here keep their current year/semester. Paste UUIDs, one per line."
+                  >
+                    Holdbacks
+                  </LabelWithInfo>
+                  <Textarea
+                    id="wiz-holdbacks"
+                    className="mt-1 font-mono text-xs"
+                    rows={3}
+                    placeholder="Paste student UUIDs, one per line"
+                    value={holdbackRaw}
+                    onChange={(e) => setHoldbackRaw(e.target.value)}
+                  />
+                </div>
+              </>
             ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(2)}>
@@ -441,11 +520,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
 
         {step === 4 && (
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Auto: enroll eligible students into Auto (required) courses. Hybrid: Auto plus open
-              student self-enrollment for Self courses. Self: open registration window only. None:
-              skip seating.
-            </p>
+            <p className="text-sm text-muted-foreground">Seat students into Active-term offerings.</p>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -456,7 +531,9 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
             </label>
             {!skipRegister ? (
               <div>
-                <Label>Registration policy</Label>
+                <LabelWithInfo info="Auto enrolls required courses. Hybrid also opens self-registration for elective/Self courses. Self opens the registration window only.">
+                  Registration policy
+                </LabelWithInfo>
                 <Select
                   value={registrationPolicy}
                   onValueChange={(v) => setRegistrationPolicy(v as RegistrationPolicy)}
