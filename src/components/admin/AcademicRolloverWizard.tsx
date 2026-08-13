@@ -6,6 +6,7 @@ import {
   academicService,
   type AcademicTerm,
   type GenerateClassListsResult,
+  type HoldbackGroupPayload,
   type PromoteStudentsResult,
   type RegisterStudentsResult,
 } from '@/services/academic.service';
@@ -127,6 +128,11 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
   const [preview, setPreview] = useState<WizardPreview | null>(null);
   const [result, setResult] = useState<WizardResult | null>(null);
   const [holdbackRaw, setHoldbackRaw] = useState('');
+  const [holdbackGroups, setHoldbackGroups] = useState<HoldbackGroupPayload[]>([]);
+  const [groupProgramId, setGroupProgramId] = useState<string>('');
+  const [groupYear, setGroupYear] = useState<string>('2');
+  const [groupSemester, setGroupSemester] = useState<string>('1');
+  const [groupReason, setGroupReason] = useState('');
   const [promoteProgramId, setPromoteProgramId] = useState<string>('__all__');
   const [promoteYear, setPromoteYear] = useState<string>('__all__');
   const [promoteSemester, setPromoteSemester] = useState<string>('__all__');
@@ -196,6 +202,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
       endDate: form.endDate,
     },
     holdbackStudentIds: parseHoldbackIds(holdbackRaw),
+    holdbackGroups,
     ...(promoteProgramId !== '__all__' ? { programId: promoteProgramId } : {}),
     ...(promoteYear !== '__all__' ? { year: Number(promoteYear) } : {}),
     ...(promoteSemester !== '__all__' ? { semester: Number(promoteSemester) } : {}),
@@ -489,12 +496,129 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                     </Select>
                   </div>
                 </div>
+                <div className="rounded-md border p-3 space-y-2">
+                  <LabelWithInfo info="Hold an entire cohort while others promote (e.g. internship year). Students stay Active with a Held back reason.">
+                    Hold back cohort
+                  </LabelWithInfo>
+                  <Select value={groupProgramId || undefined} onValueChange={setGroupProgramId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {programs.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.code ? `${p.name} (${p.code})` : p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select value={groupYear} onValueChange={setGroupYear}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6].map((y) => (
+                          <SelectItem key={y} value={String(y)}>
+                            Year {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={groupSemester} onValueChange={setGroupSemester}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Semester 1</SelectItem>
+                        <SelectItem value="2">Semester 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input
+                    placeholder="Reason (e.g. Clinical internship)"
+                    value={groupReason}
+                    onChange={(e) => setGroupReason(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!groupProgramId) {
+                        toast.error('Select a program for the holdback group');
+                        return;
+                      }
+                      const reason = groupReason.trim();
+                      if (reason.length < 3) {
+                        toast.error('Enter a holdback reason (at least 3 characters)');
+                        return;
+                      }
+                      const year = Number(groupYear);
+                      const semester = Number(groupSemester);
+                      if (
+                        holdbackGroups.some(
+                          (g) =>
+                            g.programId === groupProgramId &&
+                            g.year === year &&
+                            g.semester === semester
+                        )
+                      ) {
+                        toast.error('That cohort is already in the holdback list');
+                        return;
+                      }
+                      setHoldbackGroups((prev) => [
+                        ...prev,
+                        { programId: groupProgramId, year, semester, reason },
+                      ]);
+                      setGroupReason('');
+                    }}
+                  >
+                    Add cohort holdback
+                  </Button>
+                  {holdbackGroups.length > 0 ? (
+                    <ul className="space-y-1 text-xs">
+                      {holdbackGroups.map((g) => {
+                        const prog = programs.find((p) => p.id === g.programId);
+                        const label = prog?.code || prog?.name || g.programId.slice(0, 8);
+                        return (
+                          <li
+                            key={`${g.programId}-${g.year}-${g.semester}`}
+                            className="flex items-start justify-between gap-2 rounded border bg-amber-50/50 px-2 py-1"
+                          >
+                            <span>
+                              {label} Y{g.year}.S{g.semester} — {g.reason}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-destructive shrink-0"
+                              onClick={() =>
+                                setHoldbackGroups((prev) =>
+                                  prev.filter(
+                                    (x) =>
+                                      !(
+                                        x.programId === g.programId &&
+                                        x.year === g.year &&
+                                        x.semester === g.semester
+                                      )
+                                  )
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
                 <div>
                   <LabelWithInfo
                     htmlFor="wiz-holdbacks"
-                    info="Students listed here keep their current year/semester. Paste UUIDs, one per line."
+                    info="Optional individual UUID holdbacks. Prefer cohort holdbacks for whole year/sem groups."
                   >
-                    Holdbacks
+                    Individual holdbacks
                   </LabelWithInfo>
                   <Textarea
                     id="wiz-holdbacks"
