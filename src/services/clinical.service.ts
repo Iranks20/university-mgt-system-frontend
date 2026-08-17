@@ -106,6 +106,12 @@ export const clinicalService = {
     return api.put(`/clinical/instructors/${id}`, payload);
   },
 
+  deleteInstructor: async (
+    id: string
+  ): Promise<{ outcome: 'deleted' | 'deactivated'; sessionCount: number; instructor: any }> => {
+    return api.delete(`/clinical/instructors/${id}`);
+  },
+
   getRotations: async (params?: { page?: number; limit?: number; search?: string; clinicalSiteId?: string }): Promise<Paged<any>> => {
     try {
       const res = await api.get<Paged<any>>('/clinical/rotations', params as any);
@@ -230,6 +236,17 @@ export const clinicalService = {
     }
   ) => {
     return api.put(`/clinical/cohorts/${id}`, payload);
+  },
+
+  deleteCohort: async (
+    id: string
+  ): Promise<{
+    outcome: 'deleted' | 'deactivated';
+    studentCount: number;
+    rotationCount: number;
+    cohort: any;
+  }> => {
+    return api.delete(`/clinical/cohorts/${id}`);
   },
 
   getCohortStudents: async (cohortId: string): Promise<any[]> => {
@@ -472,8 +489,16 @@ export const clinicalService = {
     return api.post(`/clinical/sessions/${sessionId}/attendance`, payload);
   },
 
+  deleteAttendance: async (sessionId: string, studentId: string) => {
+    return api.delete(`/clinical/sessions/${sessionId}/attendance/${studentId}`);
+  },
+
   verifySession: async (sessionId: string) => {
     return api.post(`/clinical/sessions/${sessionId}/verify`, {});
+  },
+
+  deleteSession: async (sessionId: string) => {
+    return api.delete(`/clinical/sessions/${sessionId}`);
   },
 
   getSiteSummary: async (params?: { dateFrom?: string; dateTo?: string }): Promise<any[]> => {
