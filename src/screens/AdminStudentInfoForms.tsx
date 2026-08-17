@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, Search, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Copy, Download, Loader2, QrCode, Search, X } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { saveAs } from 'file-saver';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +52,13 @@ export default function AdminStudentInfoForms() {
   const [selected, setSelected] = useState<StudentInfoFormSubmission | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [acting, setActing] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const publicFormUrl = useMemo(
+    () => `${window.location.origin}/student-info-correction`,
+    [],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,14 +119,41 @@ export default function AdminStudentInfoForms() {
     }
   };
 
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(publicFormUrl);
+      toast.success('Link copied to clipboard');
+    } catch {
+      toast.error('Could not copy link');
+    }
+  };
+
+  const handleDownloadQr = () => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        toast.error('Could not generate QR code image');
+        return;
+      }
+      saveAs(blob, 'student-info-correction-qr.png');
+    });
+  };
+
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Student info form submissions</h1>
-        <p className="text-sm text-muted-foreground">
-          Review public form submissions. Existing = matched a current student; New = not in the system.
-          Public link: <code className="text-xs">/student-info-correction</code>
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Student info form submissions</h1>
+          <p className="text-sm text-muted-foreground">
+            Review public form submissions. Existing = matched a current student; New = not in the system.
+            Public link: <code className="text-xs">/student-info-correction</code>
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setQrOpen(true)}>
+          <QrCode className="h-4 w-4" />
+          <span className="ml-2">Share QR code</span>
+        </Button>
       </div>
 
       <Card>
@@ -381,6 +417,38 @@ export default function AdminStudentInfoForms() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Public form QR code</DialogTitle>
+            <DialogDescription>
+              Scan with a phone camera to open the student info correction form, or share the link
+              below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-2">
+            <div className="rounded-lg border bg-white p-4">
+              <QRCodeCanvas ref={qrCanvasRef} value={publicFormUrl} size={200} marginSize={2} />
+            </div>
+            <div className="flex w-full items-center gap-2">
+              <Input readOnly value={publicFormUrl} className="text-xs" />
+              <Button type="button" size="icon" variant="outline" onClick={handleCopyLink}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setQrOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={handleDownloadQr}>
+              <Download className="h-4 w-4" />
+              <span className="ml-2">Download PNG</span>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
