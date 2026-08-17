@@ -85,6 +85,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<'all' | 'university' | 'external' | 'teaching'>('all');
   const [siteFilter, setSiteFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   const [detailRow, setDetailRow] = useState<InstructorDirectoryRow | null>(null);
   const [externalModalOpen, setExternalModalOpen] = useState(false);
@@ -110,6 +111,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
         search: search.trim() || undefined,
         clinicalSiteId: siteFilter || undefined,
         scope,
+        status: statusFilter,
       });
       setRows((res.data || []) as InstructorDirectoryRow[]);
     } catch (e: any) {
@@ -118,7 +120,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
     } finally {
       setLoading(false);
     }
-  }, [search, scope, siteFilter]);
+  }, [search, scope, siteFilter, statusFilter]);
 
   useEffect(() => {
     const t = setTimeout(() => load(), 300);
@@ -232,15 +234,20 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
     setDeleting(true);
     try {
       const result = await clinicalService.deleteInstructor(deleteTarget.clinicalInstructorId);
+      setDeleteTarget(null);
       if (result.outcome === 'deactivated') {
         toast.success(
           `Instructor deactivated (${result.sessionCount} recorded session${result.sessionCount === 1 ? '' : 's'}).`
         );
+        if (statusFilter === 'active') {
+          setStatusFilter('inactive');
+        } else {
+          await load();
+        }
       } else {
         toast.success('Instructor removed');
+        await load();
       }
-      setDeleteTarget(null);
-      await load();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to remove instructor');
     } finally {
@@ -304,6 +311,16 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
               Clear site filter
             </Button>
           ) : null}
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+            <SelectTrigger className="sm:w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active only</SelectItem>
+              <SelectItem value="inactive">Inactive only</SelectItem>
+              <SelectItem value="all">All instructors</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Table>
@@ -322,7 +339,9 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No registered instructors yet. Use Register university lecturer or Add external instructor.
+                  {statusFilter === 'inactive'
+                    ? 'No inactive instructors.'
+                    : 'No registered instructors yet. Use Register university lecturer or Add external instructor.'}
                 </TableCell>
               </TableRow>
             ) : (

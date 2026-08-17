@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ClinicalPageShell } from '@/components/clinical/ClinicalPageShell';
 import { buildClinicalAccess } from '@/lib/clinical-access';
 import { clinicalService } from '@/services/clinical.service';
-import { CohortsSection } from '../CohortsSection';
+import { CohortsSection, type ClinicalCohortStatusFilter } from '../CohortsSection';
 
 export default function ClinicalCohortsPage() {
   const { user } = useAuth();
@@ -12,12 +12,13 @@ export default function ClinicalCohortsPage() {
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [programs, setPrograms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<ClinicalCohortStatusFilter>('active');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [cohortsRes, policies] = await Promise.all([
-        clinicalService.getCohorts({ page: 1, limit: 200, status: 'all' }),
+        clinicalService.getCohorts({ page: 1, limit: 200, status: statusFilter }),
         clinicalService.getProgramPolicies('active'),
       ]);
       setCohorts(cohortsRes.data || []);
@@ -37,7 +38,7 @@ export default function ClinicalCohortsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter]);
 
   useEffect(() => {
     load();
@@ -55,6 +56,8 @@ export default function ClinicalCohortsPage() {
         programs={programs}
         canManage={canManage}
         loading={loading}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
         onRefresh={load}
       />
     </ClinicalPageShell>
