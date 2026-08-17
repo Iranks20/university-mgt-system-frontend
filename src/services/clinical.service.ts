@@ -157,6 +157,17 @@ export const clinicalService = {
     return api.put(`/clinical/rotations/${id}`, payload);
   },
 
+  deleteRotation: async (
+    id: string
+  ): Promise<{
+    outcome: 'deleted' | 'deactivated';
+    rosterStudentCount: number;
+    sessionCount: number;
+    rotation: any;
+  }> => {
+    return api.delete(`/clinical/rotations/${id}`);
+  },
+
   getClinicalProgramIntakes: async (params?: {
     programId?: string;
     year?: number;
