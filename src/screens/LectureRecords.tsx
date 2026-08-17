@@ -51,11 +51,14 @@ import {
   normalizeDeliveryMode,
   type DeliveryMode,
 } from '@/lib/delivery-mode';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 const COMMENT_FILTER_LABELS = LECTURE_COMMENT_LABELS;
 
 export default function LectureRecords() {
   const { user } = useAuth();
+  const { termFilter, academicTermId, classStatusHint, onTermChange } = useAcademicTermFilterState();
   const canSeedFromTimetable = useMemo(
     () => (user?.permissions ?? []).includes('qa.seed_timetable'),
     [user?.permissions]
@@ -140,6 +143,14 @@ export default function LectureRecords() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsRecord, setDetailsRecord] = useState<QALectureRecord | null>(null);
 
+  const classTermParams = useMemo(
+    () => ({
+      ...(academicTermId ? { academicTermId } : {}),
+      classStatus: classStatusHint,
+    }),
+    [academicTermId, classStatusHint]
+  );
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -150,20 +161,26 @@ export default function LectureRecords() {
   useEffect(() => {
     loadSchools();
     loadLecturers();
-    loadAllClasses();
   }, []);
 
   useEffect(() => {
+    loadAllClasses();
+    if (selectedSchool) {
+      loadClasses(selectedSchool);
+    }
+  }, [termFilter, academicTermId, classStatusHint]);
+
+  useEffect(() => {
     setPage(1);
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter]);
 
   useEffect(() => {
     loadRecords();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page, termFilter]);
 
   useEffect(() => {
     loadSummary();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter]);
 
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
@@ -424,7 +441,7 @@ export default function LectureRecords() {
 
   const loadAllClasses = async () => {
     try {
-      const classList = await qaService.getAllClasses();
+      const classList = await qaService.getAllClasses(classTermParams);
       setAllClasses(classList);
     } catch (error) {
       console.error('Error loading all classes:', error);
@@ -433,7 +450,6 @@ export default function LectureRecords() {
   };
 
 
-  // Load classes when school changes
   useEffect(() => {
     if (selectedSchool) {
       loadClasses(selectedSchool);
@@ -453,7 +469,7 @@ export default function LectureRecords() {
 
   const loadClasses = async (school: string) => {
     try {
-      const classList = await qaService.getClassesBySchool(school);
+      const classList = await qaService.getClassesBySchool(school, classTermParams);
       setClasses(classList);
     } catch (error) {
       console.error('Error loading classes:', error);
@@ -844,7 +860,7 @@ export default function LectureRecords() {
       qaService.getSchools().then((allSchools) => {
         Promise.all(
           allSchools.map((school) =>
-            qaService.getClassesBySchool(school).then((classes) => ({ school, classes }))
+            qaService.getClassesBySchool(school, classTermParams).then((classes) => ({ school, classes }))
           )
         ).then((results) => {
           const match = results.find(({ classes }) => classes.includes(record.class));
@@ -1151,7 +1167,7 @@ export default function LectureRecords() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col md:flex-row flex-wrap items-end gap-4">
               <Select value={schoolFilter} onValueChange={setSchoolFilter}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Filter by School" />
@@ -1186,6 +1202,15 @@ export default function LectureRecords() {
                   <SelectItem value="EarlyDeparture">Early Departure</SelectItem>
                 </SelectContent>
               </Select>
+              <AcademicTermFilter
+                value={termFilter}
+                onChange={(sel) => {
+                  onTermChange(sel);
+                  if (sel.term?.startDate) setDateFrom(sel.term.startDate);
+                  if (sel.term?.endDate) setDateTo(sel.term.endDate);
+                }}
+                triggerClassName="w-[240px]"
+              />
               <Input
                 type="date"
                 placeholder="Date From"

@@ -35,6 +35,11 @@ import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } 
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+  type AcademicTermFilterValue,
+} from '@/components/AcademicTermFilter';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const REPORT_TABLE_PAGE_SIZE = 20;
@@ -132,6 +137,10 @@ export default function Reports() {
   const [attendSelectedSemester, setAttendSelectedSemester] = useState(ALL_VALUE);
   const [attendDateFrom, setAttendDateFrom] = useState('');
   const [attendDateTo, setAttendDateTo] = useState('');
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
+  const [attendTermFilter, setAttendTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
+  const [attendTermId, setAttendTermId] = useState<string | undefined>(undefined);
+  const [attendTermClassStatus, setAttendTermClassStatus] = useState<'active' | 'all'>('active');
   const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
   const [classAttendLoading, setClassAttendLoading] = useState(false);
   const [classAttendExporting, setClassAttendExporting] = useState(false);
@@ -335,6 +344,15 @@ export default function Reports() {
     academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
     academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
     academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) return;
+        setActiveTermLabel(term.name);
+        setAttendDateFrom((prev) => prev || term.startDate);
+        setAttendDateTo((prev) => prev || term.endDate);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -432,10 +450,15 @@ export default function Reports() {
       return;
     }
     academicService
-      .getClasses({ courseId: attendSelectedCourseId, limit: 200 })
+      .getClasses({
+        courseId: attendSelectedCourseId,
+        limit: 200,
+        ...(attendTermId ? { academicTermId: attendTermId } : {}),
+        classStatus: attendTermClassStatus,
+      })
       .then((r) => setAttendClasses(r.data || []))
       .catch(() => setAttendClasses([]));
-  }, [attendSelectedCourseId]);
+  }, [attendSelectedCourseId, attendTermId, attendTermClassStatus]);
 
   useEffect(() => {
     if (attendSelectedProgramId === ALL_VALUE) {
@@ -1439,6 +1462,18 @@ export default function Reports() {
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                     <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                    <AcademicTermFilter
+                      value={attendTermFilter}
+                      triggerClassName="w-[220px]"
+                      onChange={(sel) => {
+                        setAttendTermFilter(sel.value);
+                        setAttendTermId(sel.academicTermId);
+                        setAttendTermClassStatus(sel.classStatusHint);
+                        setAttendSelectedClassId(ALL_VALUE);
+                        if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
+                        if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
+                      }}
+                    />
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">School</label>
                       <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
@@ -1525,7 +1560,9 @@ export default function Reports() {
                       <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Date to{activeTermLabel ? ` · ${activeTermLabel}` : ''}
+                      </label>
                       <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
                     </div>
                     <Button variant="outline" onClick={resetClassAttendanceFilters}>
@@ -1626,6 +1663,18 @@ export default function Reports() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                  <AcademicTermFilter
+                    value={attendTermFilter}
+                    triggerClassName="w-[220px]"
+                    onChange={(sel) => {
+                      setAttendTermFilter(sel.value);
+                      setAttendTermId(sel.academicTermId);
+                      setAttendTermClassStatus(sel.classStatusHint);
+                      setAttendSelectedClassId(ALL_VALUE);
+                      if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
+                      if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
+                    }}
+                  />
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
                     <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
@@ -1820,11 +1869,24 @@ export default function Reports() {
           </TabsContent>
 
           <TabsContent value="weekly-matrix" className="space-y-4">
+            <AcademicTermFilter
+              value={attendTermFilter}
+              triggerClassName="w-[220px]"
+              onChange={(sel) => {
+                setAttendTermFilter(sel.value);
+                setAttendTermId(sel.academicTermId);
+                setAttendTermClassStatus(sel.classStatusHint);
+                if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
+                if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
+              }}
+            />
             <WeeklyAttendanceMatrixPanel
               schools={attendSchools.map((s) => ({ id: s.id, name: s.name }))}
               programs={attendPrograms}
               programToSchoolMap={attendProgramToSchoolMap}
               generatedBy={user?.name || user?.email}
+              dateFrom={attendDateFrom || undefined}
+              dateTo={attendDateTo || undefined}
             />
           </TabsContent>
 
@@ -1841,6 +1903,18 @@ export default function Reports() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                  <AcademicTermFilter
+                    value={attendTermFilter}
+                    triggerClassName="w-[220px]"
+                    onChange={(sel) => {
+                      setAttendTermFilter(sel.value);
+                      setAttendTermId(sel.academicTermId);
+                      setAttendTermClassStatus(sel.classStatusHint);
+                      setAttendSelectedClassId(ALL_VALUE);
+                      if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
+                      if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
+                    }}
+                  />
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Period</label>
                     <Select value={studentAttendDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setStudentAttendDateRange(v)}>

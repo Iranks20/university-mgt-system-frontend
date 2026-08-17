@@ -13,6 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSearchParams } from 'react-router';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+} from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 type IntakeType = 'Day' | 'Evening' | 'Weekend';
 type DeliveryMode = 'InPerson' | 'Online' | 'Hybrid';
@@ -83,6 +88,11 @@ export default function TimetableBuilder() {
 
   const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
   const [creatingAll, setCreatingAll] = useState(false);
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
+  const [activeTermId, setActiveTermId] = useState<string | null>(null);
+  const [hasActiveTerm, setHasActiveTerm] = useState(true);
+  const { termFilter, academicTermId, classStatusHint, onTermChange } = useAcademicTermFilterState();
+  const canWriteSchedule = termFilter === TERM_FILTER_ACTIVE && hasActiveTerm;
 
   const selectedProgram = useMemo(() => programs.find(p => p.id === programId) || null, [programId, programs]);
   const lecturerOptions = useMemo(
@@ -90,7 +100,6 @@ export default function TimetableBuilder() {
     [lecturers]
   );
 
-  // Prefill from URL: /timetable-builder?programId=...&year=1&semester=1&intakeType=Day
   useEffect(() => {
     const qProgramId = String(searchParams.get('programId') || '').trim();
     const qYear = parseInt(String(searchParams.get('year') || ''), 10);
@@ -101,9 +110,34 @@ export default function TimetableBuilder() {
     if (Number.isFinite(qYear) && qYear > 0) setYear(qYear);
     if (Number.isFinite(qSemester) && (qSemester === 1 || qSemester === 2)) setSemester(qSemester);
     if (qIntake && (qIntake === 'Day' || qIntake === 'Evening' || qIntake === 'Weekend')) setIntakeType(qIntake);
-    // only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) {
+          setHasActiveTerm(false);
+          setActiveTermLabel(null);
+          setActiveTermId(null);
+          return;
+        }
+        setHasActiveTerm(true);
+        setActiveTermId(term.id);
+        setActiveTermLabel(
+          term.semester === 0 ? term.name : `${term.name} (Sem ${term.semester})`
+        );
+        const qSemester = searchParams.get('semester');
+        if (!qSemester && (term.semester === 1 || term.semester === 2)) {
+          setSemester(term.semester);
+        }
+      })
+      .catch(() => {
+        setHasActiveTerm(false);
+        setActiveTermLabel(null);
+        setActiveTermId(null);
+      });
+  }, [searchParams]);
 
   // If we were deep-linked with programId, auto-load courses once refs/programs are ready
   useEffect(() => {
@@ -117,6 +151,12 @@ export default function TimetableBuilder() {
     ensureIntakeAndLoadCourses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [programsLoading, refsLoading, programId]);
+
+  useEffect(() => {
+    if (!programIntakeId) return;
+    void ensureIntakeAndLoadCourses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [termFilter, academicTermId, classStatusHint]);
 
   useEffect(() => {
     const loadPrograms = async () => {
@@ -140,14 +180,14 @@ export default function TimetableBuilder() {
       try {
         const [venuesRes, firstLecturersPage] = await Promise.all([
           academicService.getVenues({ page: 1, limit: 50 }),
-          staffService.getStaff({ role: 'Lecturer', page: 1, limit: 50 }),
+          staffService.getLecturers({ page: 1, limit: 50 }),
         ]);
         const allLecturers = [...(firstLecturersPage?.data ?? [])];
         const totalLecturers = firstLecturersPage?.total ?? allLecturers.length;
         let lecturerPage = firstLecturersPage?.page ?? 1;
         while (allLecturers.length < totalLecturers) {
           lecturerPage += 1;
-          const next = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 50 });
+          const next = await staffService.getLecturers({ page: lecturerPage, limit: 50 });
           const arr = next?.data ?? [];
           if (arr.length === 0) break;
           allLecturers.push(...arr);
@@ -200,11 +240,35 @@ export default function TimetableBuilder() {
           ? `${selectedProgram.code} Y${year}S${semester} ${intakeType}`
           : `Y${year}S${semester} ${intakeType}`;
 
-      const classesByCourseId = scope?.classesByCourseId ?? {};
+      let classesByCourseId = scope?.classesByCourseId ?? {};
+      if (termFilter !== TERM_FILTER_ACTIVE) {
+        const classList = await fetchAllClassesForIntake(intakeId);
+        const fromClasses: Record<string, any> = {};
+        for (const cls of classList) {
+          const courseId = cls.courseId || cls.course?.id;
+          if (!courseId || fromClasses[courseId]) continue;
+          fromClasses[courseId] = {
+            classId: cls.id,
+            className: cls.name,
+            lecturerId: cls.lecturerId ?? null,
+            venueId: cls.venueId ?? null,
+            deliveryMode: cls.deliveryMode ?? 'InPerson',
+            meetingUrl: cls.meetingUrl ?? null,
+            dayOfWeek: cls.dayOfWeek ?? null,
+            startTime: cls.startTime ?? null,
+            endTime: cls.endTime ?? null,
+            capacity: cls.capacity ?? 50,
+            isSharedSchedule: Array.isArray(cls.cohortProgramIntakeIds) && cls.cohortProgramIntakeIds.length > 1,
+            cohortProgramIntakeIds: cls.cohortProgramIntakeIds ?? [],
+          };
+        }
+        classesByCourseId = fromClasses;
+      }
+
       const nextDrafts: Record<string, DraftRow> = {};
       for (const c of mapped) {
         const existing = classesByCourseId[c.id];
-        nextDrafts[c.id] = drafts[c.id] ?? {
+        const base: DraftRow = {
           courseId: c.id,
           className: existing?.className ?? groupName,
           lecturerId: existing?.lecturerId ?? '',
@@ -218,6 +282,10 @@ export default function TimetableBuilder() {
           existingClassId: existing?.classId,
           isSharedSchedule: existing?.isSharedSchedule ?? false,
         };
+        nextDrafts[c.id] =
+          termFilter === TERM_FILTER_ACTIVE && drafts[c.id] && !existing
+            ? drafts[c.id]
+            : base;
       }
       setDrafts(nextDrafts);
 
@@ -253,8 +321,23 @@ export default function TimetableBuilder() {
   const fetchAllClassesForIntake = async (intakeId: string) => {
     const all: any[] = [];
     let page = 1;
+    const termParams =
+      termFilter === TERM_FILTER_ACTIVE
+        ? {
+            classStatus: 'active' as const,
+            ...(activeTermId ? { academicTermId: activeTermId } : {}),
+          }
+        : {
+            classStatus: classStatusHint,
+            ...(academicTermId ? { academicTermId } : {}),
+          };
     while (true) {
-      const res = await academicService.getClasses({ programIntakeId: intakeId, page, limit: 50 } as any);
+      const res = await academicService.getClasses({
+        programIntakeId: intakeId,
+        page,
+        limit: 50,
+        ...termParams,
+      } as any);
       const arr = res?.data ?? [];
       all.push(...arr);
       const total = res?.total ?? all.length;
@@ -265,6 +348,10 @@ export default function TimetableBuilder() {
   };
 
   const handleDuplicateDayToTarget = async () => {
+    if (!canWriteSchedule) {
+      toast.error('Schedule writes are only allowed for the Active term.');
+      return;
+    }
     if (!programId) {
       toast.error('Select a program first');
       return;
@@ -339,6 +426,10 @@ export default function TimetableBuilder() {
   };
 
   const createOne = async (courseId: string) => {
+    if (!canWriteSchedule) {
+      toast.error('Schedule writes are only allowed for the Active term.');
+      return;
+    }
     const d = drafts[courseId];
     if (!d) return;
     if (d.isSharedSchedule && d.existingClassId) {
@@ -388,6 +479,10 @@ export default function TimetableBuilder() {
   };
 
   const createAll = async () => {
+    if (!canWriteSchedule) {
+      toast.error('Schedule writes are only allowed for the Active term.');
+      return;
+    }
     if (!programIntakeId) {
       toast.error('Select scope and load courses first');
       return;
@@ -408,6 +503,14 @@ export default function TimetableBuilder() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Timetable Builder</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {activeTermLabel
+            ? `Scheduling for Active term: ${activeTermLabel}. New classes are stamped to this term.`
+            : 'No Active academic term — create/activate one under Admin → Calendar before scheduling.'}
+          {termFilter !== TERM_FILTER_ACTIVE
+            ? ' Browsing a non-active term — create/schedule writes are disabled.'
+            : ''}
+        </p>
         <p className="text-gray-500">
           Create and manage timetables using school data, with automatic conflict checks.
         </p>
@@ -420,6 +523,13 @@ export default function TimetableBuilder() {
         </CardHeader>
         <CardContent className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
           <div className="sm:col-span-2 lg:col-span-2">
+            <AcademicTermFilter
+              value={termFilter}
+              onChange={onTermChange}
+              triggerClassName="w-full"
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
             <Label>Program</Label>
             <Select value={programId} onValueChange={setProgramId} disabled={programsLoading}>
               <SelectTrigger>
@@ -471,11 +581,11 @@ export default function TimetableBuilder() {
               {coursesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               <span className="ml-2">Load courses</span>
             </Button>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setIntakeUtilitiesOpen(true)} disabled={!programId || !canWriteSchedule}>
               <Copy className="h-4 w-4" />
               <span className="ml-2">Copy timetable</span>
             </Button>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={createAll} disabled={creatingAll || courses.length === 0 || refsLoading || !canWriteSchedule}>
               {creatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               <span className="ml-2">Save timetable</span>
             </Button>
@@ -670,7 +780,7 @@ export default function TimetableBuilder() {
                           {isShared ? (
                             <Badge variant="secondary">Shared</Badge>
                           ) : (
-                            <Button size="sm" className="bg-[#015F2B]" onClick={() => createOne(c.id)}>
+                            <Button size="sm" className="bg-[#015F2B]" onClick={() => createOne(c.id)} disabled={!canWriteSchedule}>
                               Save
                             </Button>
                           )}

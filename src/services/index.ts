@@ -19,3 +19,4 @@ export * from './substitutions.service';
 export * from './clinical.service';
 export * from './graduation-registration.service';
 export * from './graduation-module.service';
+export * from './student-info-form.service';

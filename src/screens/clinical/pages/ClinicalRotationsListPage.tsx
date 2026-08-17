@@ -42,7 +42,7 @@ export default function ClinicalRotationsListPage() {
   return (
     <ClinicalPageShell
       title="Clinical Rotations"
-      description="Student cohort placements by site, program, and intake."
+      description="Link a clinical site to a cohort. Rosters stay live-synced with cohort membership."
     >
       <RotationsSection
         rotations={rotations}

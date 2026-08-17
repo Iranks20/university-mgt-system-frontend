@@ -3,6 +3,7 @@ export const SYSTEM_ACCOUNT_ROLES = [
   'QAClinicals',
   'ClinicalCoordinator',
   'Staff',
+  'HR',
   'Management',
   'Admin',
   'Graduation',
@@ -24,6 +25,8 @@ export function formatRoleLabel(role: string): string {
       return 'Admin';
     case 'Staff':
       return 'Staff';
+    case 'HR':
+      return 'HR Officer';
     case 'Graduation':
       return 'Graduation Management';
     case 'Lecturer':

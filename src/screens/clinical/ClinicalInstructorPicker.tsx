@@ -89,7 +89,7 @@ export function ClinicalInstructorPicker({
       }}
       placeholder="Select registered instructor"
       searchPlaceholder="Search registered clinical instructors…"
-      emptyText={loading ? 'Searching…' : 'No registered instructor. Add one under Clinical → Instructors, or type a name below.'}
+      emptyText={loading ? 'Searching…' : 'No registered instructor. Add one under Clinicals → Instructors.'}
       initialDisplayCount={25}
       manualFiltering
       loading={loading}
@@ -102,13 +102,8 @@ export function ClinicalInstructorPicker({
 
 export function instructorPickToSessionPayload(
   pick: string,
-  labelByPick: Map<string, string>,
-  manualName: string
+  _labelByPick?: Map<string, string>
 ): { clinicalInstructorId?: string | null; staffId?: string | null; instructorName?: string | null } {
-  const manual = manualName.trim();
-  if (manual) {
-    return { clinicalInstructorId: null, staffId: null, instructorName: manual };
-  }
   if (!pick) {
     return { clinicalInstructorId: null, staffId: null, instructorName: null };
   }

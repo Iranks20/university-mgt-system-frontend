@@ -8,6 +8,7 @@ export type UserRole =
   | 'Lecturer'
   | 'Student'
   | 'Staff'
+  | 'HR'
   | 'Management'
   | 'Admin'
   | 'Graduation';
@@ -19,6 +20,7 @@ const VALID_ROLES: UserRole[] = [
   'Lecturer',
   'Student',
   'Staff',
+  'HR',
   'Management',
   'Admin',
   'Graduation',

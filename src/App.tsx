@@ -15,6 +15,7 @@ import ManagementOverview from './screens/ManagementOverview'
 import ManagementRiskRegister from './screens/ManagementRiskRegister'
 import ManagementEnrolmentHealth from './screens/ManagementEnrolmentHealth'
 import StudentClasses from './screens/StudentClasses'
+import StudentRegistration from './screens/StudentRegistration'
 import LecturerPerformance from './screens/LecturerPerformance'
 import LecturerCourseAttendance from './screens/LecturerCourseAttendance'
 import AdminSchools from './screens/AdminSchools'
@@ -42,11 +43,22 @@ import ClinicalSitesPage from './screens/clinical/pages/ClinicalSitesPage'
 import ClinicalSiteTeamPage from './screens/clinical/pages/ClinicalSiteTeamPage'
 import ClinicalInstructorsPage from './screens/clinical/pages/ClinicalInstructorsPage'
 import ClinicalRotationsListPage from './screens/clinical/pages/ClinicalRotationsListPage'
+import ClinicalCohortsPage from './screens/clinical/pages/ClinicalCohortsPage'
 import ClinicalSessionsPage from './screens/clinical/pages/ClinicalSessionsPage'
 import ClinicalAttendancePage from './screens/clinical/pages/ClinicalAttendancePage'
 import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
+import HrDashboardPage from './screens/hr/pages/HrDashboardPage'
+import HrEmployeesPage from './screens/hr/pages/HrEmployeesPage'
+import HrAttendancePage from './screens/hr/pages/HrAttendancePage'
+import HrOnboardingPage from './screens/hr/pages/HrOnboardingPage'
+import HrDocumentsPage from './screens/hr/pages/HrDocumentsPage'
+import HrAppraisalsPage from './screens/hr/pages/HrAppraisalsPage'
+import HrReportsPage from './screens/hr/pages/HrReportsPage'
+import StaffAppraisal from './screens/StaffAppraisal'
 import GraduationRegistration from './screens/GraduationRegistration'
+import StudentInfoCorrection from './screens/StudentInfoCorrection'
+import AdminStudentInfoForms from './screens/AdminStudentInfoForms'
 import GraduationDashboardPage from './screens/graduation/pages/GraduationDashboardPage'
 import GraduationEventPage from './screens/graduation/pages/GraduationEventPage'
 import GraduationCommitteesPage, { GraduationCommitteeSlugRedirect } from './screens/graduation/pages/GraduationCommitteesPage'
@@ -98,6 +110,7 @@ function AppRoutes() {
 				} 
 			/>
 			<Route path="/graduation-registration" element={<GraduationRegistration />} />
+			<Route path="/student-info-correction" element={<StudentInfoCorrection />} />
 			
 			{/* Protected Routes - All users */}
 			<Route 
@@ -123,6 +136,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-classes')}>
 						<StudentClasses />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/student-registration" 
+				element={
+					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-registration')}>
+						<StudentRegistration />
 					</ProtectedRoute>
 				} 
 			/>
@@ -262,11 +283,21 @@ function AppRoutes() {
 			<Route path="/clinical/sites" element={<ProtectedRoute {...routeGuardProps('/clinical/sites')}><ClinicalSitesPage /></ProtectedRoute>} />
 			<Route path="/clinical/site-team" element={<ProtectedRoute {...routeGuardProps('/clinical/site-team')}><ClinicalSiteTeamPage /></ProtectedRoute>} />
 			<Route path="/clinical/instructors" element={<ProtectedRoute {...routeGuardProps('/clinical/instructors')}><ClinicalInstructorsPage /></ProtectedRoute>} />
+			<Route path="/clinical/cohorts" element={<ProtectedRoute {...routeGuardProps('/clinical/cohorts')}><ClinicalCohortsPage /></ProtectedRoute>} />
 			<Route path="/clinical/rotations" element={<ProtectedRoute {...routeGuardProps('/clinical/rotations')}><ClinicalRotationsListPage /></ProtectedRoute>} />
 			<Route path="/clinical/sessions" element={<ProtectedRoute {...routeGuardProps('/clinical/sessions')}><ClinicalSessionsPage /></ProtectedRoute>} />
 			<Route path="/clinical/attendance" element={<ProtectedRoute {...routeGuardProps('/clinical/attendance')}><ClinicalAttendancePage /></ProtectedRoute>} />
 			<Route path="/clinical/reports" element={<ProtectedRoute {...routeGuardProps('/clinical/reports')}><ClinicalReportsPage /></ProtectedRoute>} />
 			<Route path="/clinical/policies" element={<ProtectedRoute {...routeGuardProps('/clinical/policies')}><ClinicalProgramPoliciesPage /></ProtectedRoute>} />
+
+			<Route path="/hr/dashboard" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/dashboard')}><HrDashboardPage /></ProtectedRoute>} />
+			<Route path="/hr/employees" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/employees')}><HrEmployeesPage /></ProtectedRoute>} />
+			<Route path="/hr/attendance" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/attendance')}><HrAttendancePage /></ProtectedRoute>} />
+			<Route path="/hr/onboarding" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/onboarding')}><HrOnboardingPage /></ProtectedRoute>} />
+			<Route path="/hr/documents" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/documents')}><HrDocumentsPage /></ProtectedRoute>} />
+			<Route path="/hr/appraisals" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/appraisals')}><HrAppraisalsPage /></ProtectedRoute>} />
+			<Route path="/hr/reports" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/reports')}><HrReportsPage /></ProtectedRoute>} />
+			<Route path="/staff-appraisal" element={<ProtectedRoute {...routeGuardProps('/staff-appraisal')}><StaffAppraisal /></ProtectedRoute>} />
 			
 			{/* Admin Routes */}
 			<Route 
@@ -274,6 +305,14 @@ function AppRoutes() {
 				element={
 					<ProtectedRoute {...routeGuardProps('/admin-students')}>
 						<AdminStudents />
+					</ProtectedRoute>
+				} 
+			/>
+			<Route 
+				path="/admin-student-info-forms" 
+				element={
+					<ProtectedRoute {...routeGuardProps('/admin-student-info-forms')}>
+						<AdminStudentInfoForms />
 					</ProtectedRoute>
 				} 
 			/>

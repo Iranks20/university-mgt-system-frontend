@@ -22,6 +22,7 @@ const SYSTEM_ROLE_CODES = new Set([
   'ClinicalCoordinator',
   'Lecturer',
   'Staff',
+  'HR',
   'Student',
 ]);
 

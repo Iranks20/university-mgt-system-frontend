@@ -23,8 +23,11 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { reportService } from '@/services/report.service';
 import { toast } from 'sonner';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function ManagementLecturerPerformance() {
+  const { termFilter, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('All');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
@@ -54,10 +57,13 @@ export default function ManagementLecturerPerformance() {
 
         const [lecturersResult, allLectureRecords] = await Promise.all([
           staffService.getLecturers(params),
-          qaService.getLectureRecords(),
+          qaService.getLectureRecords({
+            ...(termStartDate ? { startDate: termStartDate } : {}),
+            ...(termEndDate ? { endDate: termEndDate } : {}),
+          } as any),
         ]);
         const lecturers = Array.isArray(lecturersResult) ? lecturersResult : lecturersResult.data || [];
-        const records = Array.isArray(allLectureRecords) ? allLectureRecords : [];
+        const records = Array.isArray(allLectureRecords) ? allLectureRecords : (allLectureRecords as any)?.data || [];
 
         const recordsByLecturerId: Record<string, any[]> = {};
         const recordsByLecturerName: Record<string, any[]> = {};
@@ -77,7 +83,7 @@ export default function ManagementLecturerPerformance() {
         const performanceData = await Promise.all(
           lecturers.map(async (lecturer: any) => {
             const [perf, rating] = await Promise.all([
-              analyticsService.getLecturerPerformance(lecturer.id) as any,
+              analyticsService.getLecturerPerformance(lecturer.id, termStartDate, termEndDate) as any,
               staffService.getStaffStudentRating(lecturer.id).catch(() => null),
             ]);
             const attendanceRate = perf?.attendanceRate ?? 0;
@@ -152,7 +158,7 @@ export default function ManagementLecturerPerformance() {
       }
     };
     fetchData();
-  }, [departmentFilter, searchTerm]);
+  }, [departmentFilter, searchTerm, termFilter, termStartDate, termEndDate]);
 
   const filteredLecturers = lecturerPerformance.filter(lecturer => {
     const matchesSearch = 
@@ -329,6 +335,11 @@ export default function ManagementLecturerPerformance() {
         <CardContent className="p-4">
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
+              <AcademicTermFilter
+                value={termFilter}
+                onChange={onTermChange}
+                triggerClassName="w-full md:w-[240px]"
+              />
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 

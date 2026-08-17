@@ -90,4 +90,19 @@ export const enrollmentService = {
       return [];
     }
   },
+
+  getRegistrationCatalog: async () => {
+    const response = await api.get<unknown>('/enrollments/me/registration-catalog');
+    return (response as any)?.data ?? response;
+  },
+
+  selfEnroll: async (classId: string) => {
+    const response = await api.post('/enrollments/me/self-enroll', { classId });
+    return (response as any)?.data ?? response;
+  },
+
+  selfDrop: async (enrollmentId: string) => {
+    const response = await api.delete(`/enrollments/me/self-enroll/${enrollmentId}`);
+    return (response as any)?.data ?? response;
+  },
 };

@@ -11,6 +11,7 @@ export type UserRole =
   | 'Lecturer'
   | 'Student'
   | 'Staff'
+  | 'HR'
   | 'Management'
   | 'Admin'
   | 'Graduation';
@@ -81,6 +82,7 @@ export interface Department {
   code: string;
   levelId: string;
   head?: string;
+  headStaffId?: string | null;
   duration?: number;
 }
 
@@ -93,6 +95,7 @@ export interface Course {
   credits: number;
   level: number;
   semester: number;
+  enrollmentPolicy?: 'Auto' | 'Self' | 'StaffOnly';
 }
 
 export interface Class {
@@ -101,11 +104,13 @@ export interface Class {
   courseId: string;
   lecturerId: string;
   venueId: string;
-  dayOfWeek: number; // 0-6 (Sunday-Saturday)
-  startTime: string; // HH:mm format
+  dayOfWeek: number;
+  startTime: string;
   endTime: string;
   capacity: number;
   enrolledCount: number;
+  isActive?: boolean;
+  academicTermId?: string | null;
 }
 
 export interface Timetable {
@@ -127,9 +132,18 @@ export interface Staff {
   email: string;
   phone?: string;
   departmentId: string;
-  role: 'Lecturer' | 'Senior Lecturer' | 'Associate Professor' | 'Professor' | 'Administrator';
-  employmentType: 'Full-time' | 'Part-time' | 'Contract';
-  hireDate: Date;
+  schoolId?: string | null;
+  role: string;
+  employmentType: string;
+  status?: string;
+  hireDate: Date | string;
+  supervisorId?: string | null;
+  supervisorName?: string | null;
+  departmentName?: string | null;
+  departmentHeadStaffId?: string | null;
+  userId?: string | null;
+  userRole?: string;
+  tempPassword?: string;
 }
 
 export interface Lecturer extends Staff {

@@ -42,7 +42,7 @@ export async function fetchAllLecturers(): Promise<LecturerOption[]> {
   let page = 1;
   const limit = 100;
   while (page <= 50) {
-    const res = await staffService.getStaff({ role: 'Lecturer', page, limit });
+    const res = await staffService.getLecturers({ page, limit });
     const batch = res.data ?? [];
     for (const s of batch as Array<{ id: string; firstName?: string; lastName?: string; email?: string }>) {
       const name = `${s.firstName || ''} ${s.lastName || ''}`.trim() || s.email || s.id;

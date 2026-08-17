@@ -32,6 +32,8 @@ import type { School, Department, Level } from '@/types';
 import type { Course } from '@/types';
 import type { Student } from '@/types';
 import { toast } from 'sonner';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 interface EnrollmentClassOption {
   enrollmentId: string;
@@ -67,6 +69,11 @@ function resolveInitialTab(
 export default function StudentRecords() {
   const { role } = useRole();
   const [searchParams] = useSearchParams();
+  const {
+    termFilter,
+    termStartDate,
+    onTermChange,
+  } = useAcademicTermFilterState();
   const defaultTab = role === 'QA' ? 'coverage' : 'log';
   const [activeTab, setActiveTab] = useState<'log' | 'coverage' | 'daily-bulk'>(() =>
     resolveInitialTab(searchParams.get('tab'), defaultTab)
@@ -503,6 +510,16 @@ export default function StudentRecords() {
         </div>
       </div>
 
+      <AcademicTermFilter
+        value={termFilter}
+        triggerClassName="w-[260px]"
+        onChange={(sel) => {
+          onTermChange(sel);
+          if (sel.term?.startDate) setDateFrom(sel.term.startDate);
+          if (sel.term?.endDate) setDateTo(sel.term.endDate);
+        }}
+      />
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'log' | 'coverage' | 'daily-bulk')} className="space-y-4">
         <TabsList className="bg-gray-100 p-1">
           <TabsTrigger value="coverage">Marking coverage</TabsTrigger>
@@ -515,7 +532,7 @@ export default function StudentRecords() {
             schools={schools.map((s) => ({ id: s.id, name: s.name }))}
             programs={allPrograms}
             programToSchoolMap={programToSchoolMap}
-            initialDate={coverageInitialDate}
+            initialDate={termStartDate || coverageInitialDate}
             initialStatus={coverageInitialStatus}
             refreshToken={coverageRefreshToken}
             onMarkClass={(prefill) => {
