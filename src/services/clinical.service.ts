@@ -43,6 +43,7 @@ export const clinicalService = {
     search?: string;
     clinicalSiteId?: string;
     scope?: 'all' | 'university' | 'external' | 'teaching';
+    status?: 'active' | 'inactive' | 'all';
   }): Promise<Paged<any>> => {
     try {
       const res = await api.get<Paged<any> | any[]>('/clinical/instructors/directory', params as Record<string, unknown>);
@@ -85,7 +86,13 @@ export const clinicalService = {
     return api.post('/clinical/instructors/from-lecturer', payload);
   },
 
-  getInstructors: async (params?: { page?: number; limit?: number; search?: string; clinicalSiteId?: string }): Promise<Paged<any>> => {
+  getInstructors: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    clinicalSiteId?: string;
+    status?: 'active' | 'inactive' | 'all';
+  }): Promise<Paged<any>> => {
     try {
       const res = await api.get<Paged<any>>('/clinical/instructors', params as any);
       return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 50 };
@@ -112,7 +119,13 @@ export const clinicalService = {
     return api.delete(`/clinical/instructors/${id}`);
   },
 
-  getRotations: async (params?: { page?: number; limit?: number; search?: string; clinicalSiteId?: string }): Promise<Paged<any>> => {
+  getRotations: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    clinicalSiteId?: string;
+    status?: 'active' | 'inactive' | 'all';
+  }): Promise<Paged<any>> => {
     try {
       const res = await api.get<Paged<any>>('/clinical/rotations', params as any);
       return { data: res?.data ?? [], total: res?.total ?? 0, page: res?.page ?? 1, pageSize: res?.pageSize ?? 50 };
