@@ -187,8 +187,7 @@ export function SessionsSection({
                           size="sm"
                           variant="ghost"
                           onClick={() => setDeleteTarget(s)}
-                          disabled={s.status === 'Verified'}
-                          title={s.status === 'Verified' ? 'Verified sessions cannot be deleted' : 'Delete session'}
+                          title="Delete session"
                           aria-label="Delete session"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -318,6 +317,15 @@ export function SessionsSection({
                   <>
                     Delete the <span className="font-medium text-foreground">{deleteTarget.topic}</span> session on{' '}
                     {String(deleteTarget.date).slice(0, 10)}? Any attendance recorded for it will also be removed.
+                    {deleteTarget.status === 'Verified' ? (
+                      <>
+                        {' '}
+                        <span className="font-medium text-destructive">
+                          This session has already been verified — deleting it removes the verified record
+                          permanently.
+                        </span>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </DialogDescription>
