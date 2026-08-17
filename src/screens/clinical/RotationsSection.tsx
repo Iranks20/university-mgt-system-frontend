@@ -12,6 +12,8 @@ import { clinicalActiveBadge } from './clinical-ui';
 import { ClinicalTableCard } from './ClinicalTableCard';
 import { RotationRosterSection } from './RotationRosterSection';
 
+export type ClinicalRotationStatusFilter = 'active' | 'inactive' | 'all';
+
 type SiteOption = { id: string; name: string };
 type ProgramOption = { id: string; name: string; code?: string };
 type CohortOption = {
@@ -48,6 +50,8 @@ type RotationsSectionProps = {
   programs: ProgramOption[];
   canManage: boolean;
   loading?: boolean;
+  statusFilter: ClinicalRotationStatusFilter;
+  onStatusFilterChange: (value: ClinicalRotationStatusFilter) => void;
   onRefresh: () => Promise<void>;
 };
 
@@ -66,7 +70,16 @@ function buildSuggestedName(siteName: string | undefined, cohortName: string) {
   return `${cohortName} — ${siteName}`;
 }
 
-export function RotationsSection({ rotations, sites, programs, canManage, loading, onRefresh }: RotationsSectionProps) {
+export function RotationsSection({
+  rotations,
+  sites,
+  programs,
+  canManage,
+  loading,
+  statusFilter,
+  onStatusFilterChange,
+  onRefresh,
+}: RotationsSectionProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RotationRow | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -168,13 +181,18 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
     setDeleting(true);
     try {
       const result = await clinicalService.deleteRotation(deleteTarget.id);
-      toast.success(
-        result.outcome === 'deactivated'
-          ? 'Rotation has a roster or sessions, so it was deactivated instead of deleted'
-          : 'Rotation deleted'
-      );
       setDeleteTarget(null);
-      await onRefresh();
+      if (result.outcome === 'deactivated') {
+        toast.success('Rotation has a roster or sessions, so it was deactivated instead of deleted');
+        if (statusFilter === 'active') {
+          onStatusFilterChange('inactive');
+        } else {
+          await onRefresh();
+        }
+      } else {
+        toast.success('Rotation deleted');
+        await onRefresh();
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to delete rotation');
     } finally {
@@ -184,6 +202,13 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
 
   const cohortLabel = (r: RotationRow) => r.clinicalCohort?.name || r.cohort || '—';
 
+  const emptyMessage =
+    statusFilter === 'inactive'
+      ? 'No inactive rotations.'
+      : statusFilter === 'all'
+        ? 'No rotations defined. Create a cohort first, then add a rotation linked to it.'
+        : 'No active rotations. Create a cohort first, then add a rotation linked to it.';
+
   return (
     <>
       <ClinicalTableCard
@@ -191,12 +216,27 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
         total={rotations.length}
         loading={loading}
         action={
-          canManage ? (
-            <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add rotation
-            </Button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => onStatusFilterChange(v as ClinicalRotationStatusFilter)}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active only</SelectItem>
+                <SelectItem value="inactive">Inactive only</SelectItem>
+                <SelectItem value="all">All rotations</SelectItem>
+              </SelectContent>
+            </Select>
+            {canManage ? (
+              <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={openAdd}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add rotation
+              </Button>
+            ) : null}
+          </div>
         }
       >
         <Table>
@@ -215,7 +255,7 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
             {rotations.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={canManage ? 7 : 6} className="py-10 text-center text-muted-foreground">
-                  No rotations defined. Create a cohort first, then add a rotation linked to it.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (

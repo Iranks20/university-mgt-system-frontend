@@ -12,6 +12,8 @@ import { clinicalService } from '@/services/clinical.service';
 import { clinicalActiveBadge } from './clinical-ui';
 import { ClinicalTableCard } from './ClinicalTableCard';
 
+export type ClinicalCohortStatusFilter = 'active' | 'inactive' | 'all';
+
 type ProgramOption = { id: string; name: string; code?: string };
 type CohortRow = {
   id: string;
@@ -31,6 +33,8 @@ type CohortsSectionProps = {
   programs: ProgramOption[];
   canManage: boolean;
   loading?: boolean;
+  statusFilter: ClinicalCohortStatusFilter;
+  onStatusFilterChange: (value: ClinicalCohortStatusFilter) => void;
   onRefresh: () => Promise<void>;
 };
 
@@ -73,7 +77,15 @@ function exportStudentsCsv(cohortName: string, students: any[]) {
   URL.revokeObjectURL(url);
 }
 
-export function CohortsSection({ cohorts, programs, canManage, loading, onRefresh }: CohortsSectionProps) {
+export function CohortsSection({
+  cohorts,
+  programs,
+  canManage,
+  loading,
+  statusFilter,
+  onStatusFilterChange,
+  onRefresh,
+}: CohortsSectionProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CohortRow | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -179,11 +191,17 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
         if (result.studentCount) parts.push(`${result.studentCount} student${result.studentCount === 1 ? '' : 's'}`);
         if (result.rotationCount) parts.push(`${result.rotationCount} rotation${result.rotationCount === 1 ? '' : 's'}`);
         toast.success(`Cohort deactivated (${parts.join(', ') || 'still in use'}).`);
+        setDeleteTarget(null);
+        if (statusFilter === 'active') {
+          onStatusFilterChange('inactive');
+        } else {
+          await onRefresh();
+        }
       } else {
         toast.success('Cohort removed');
+        setDeleteTarget(null);
+        await onRefresh();
       }
-      setDeleteTarget(null);
-      await onRefresh();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to remove cohort');
     } finally {
@@ -320,6 +338,13 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
     }
   };
 
+  const emptyMessage =
+    statusFilter === 'inactive'
+      ? 'No inactive cohorts.'
+      : statusFilter === 'all'
+        ? 'No cohorts yet. Create one, enroll students by year/semester, then link it on a rotation.'
+        : 'No active cohorts. Create one, enroll students by year/semester, then link it on a rotation.';
+
   return (
     <>
       <ClinicalTableCard
@@ -327,12 +352,27 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
         total={cohorts.length}
         loading={loading}
         action={
-          canManage ? (
-            <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add cohort
-            </Button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => onStatusFilterChange(v as ClinicalCohortStatusFilter)}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active only</SelectItem>
+                <SelectItem value="inactive">Inactive only</SelectItem>
+                <SelectItem value="all">All cohorts</SelectItem>
+              </SelectContent>
+            </Select>
+            {canManage ? (
+              <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={openAdd}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add cohort
+              </Button>
+            ) : null}
+          </div>
         }
       >
         <Table>
@@ -351,7 +391,7 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
             {cohorts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={canManage ? 7 : 6} className="py-10 text-center text-muted-foreground">
-                  No cohorts yet. Create one, enroll students by year/semester, then link it on a rotation.
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (
