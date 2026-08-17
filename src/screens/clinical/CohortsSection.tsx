@@ -78,6 +78,8 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
   const [editing, setEditing] = useState<CohortRow | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CohortRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [membersOpen, setMembersOpen] = useState(false);
   const [activeCohort, setActiveCohort] = useState<CohortRow | null>(null);
@@ -164,6 +166,28 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
       toast.error(err?.message || 'Failed to save cohort');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const result = await clinicalService.deleteCohort(deleteTarget.id);
+      if (result.outcome === 'deactivated') {
+        const parts: string[] = [];
+        if (result.studentCount) parts.push(`${result.studentCount} student${result.studentCount === 1 ? '' : 's'}`);
+        if (result.rotationCount) parts.push(`${result.rotationCount} rotation${result.rotationCount === 1 ? '' : 's'}`);
+        toast.success(`Cohort deactivated (${parts.join(', ') || 'still in use'}).`);
+      } else {
+        toast.success('Cohort removed');
+      }
+      setDeleteTarget(null);
+      await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove cohort');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -351,6 +375,14 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
                       <Button variant="ghost" size="sm" onClick={() => openEdit(c)}>
                         <Edit className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteTarget(c)}
+                        aria-label="Remove cohort"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   )}
                 </TableRow>
@@ -466,6 +498,32 @@ export function CohortsSection({ cohorts, programs, canManage, loading, onRefres
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canManage && (
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <DialogContent className="w-[96vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Remove cohort?</DialogTitle>
+              <DialogDescription>
+                {deleteTarget ? (
+                  <>
+                    Remove <span className="font-medium text-foreground">{deleteTarget.name}</span>? If it still has
+                    enrolled students or linked rotations, it will be marked inactive instead of removed.
+                  </>
+                ) : null}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? 'Removing…' : 'Remove cohort'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
