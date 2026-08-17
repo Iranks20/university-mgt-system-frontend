@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Edit, Users } from 'lucide-react';
+import { Plus, Edit, Users, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +75,8 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
   const [rosterRotation, setRosterRotation] = useState<RotationRow | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
   const [cohorts, setCohorts] = useState<CohortOption[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<RotationRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const selectedSite = useMemo(() => sites.find((s) => s.id === form.clinicalSiteId), [sites, form.clinicalSiteId]);
   const selectedCohort = useMemo(
@@ -161,6 +163,25 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const result = await clinicalService.deleteRotation(deleteTarget.id);
+      toast.success(
+        result.outcome === 'deactivated'
+          ? 'Rotation has a roster or sessions, so it was deactivated instead of deleted'
+          : 'Rotation deleted'
+      );
+      setDeleteTarget(null);
+      await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete rotation');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const cohortLabel = (r: RotationRow) => r.clinicalCohort?.name || r.cohort || '—';
 
   return (
@@ -224,6 +245,15 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>
                         <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteTarget(r)}
+                        title="Delete rotation"
+                        aria-label="Delete rotation"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>
                   )}
@@ -359,6 +389,32 @@ export function RotationsSection({ rotations, sites, programs, canManage, loadin
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canManage && (
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <DialogContent className="w-[96vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete rotation?</DialogTitle>
+              <DialogDescription>
+                {deleteTarget ? (
+                  <>
+                    Delete <span className="font-medium text-foreground">{deleteTarget.name}</span>? If it still has
+                    roster students or recorded sessions, it will be marked inactive instead of removed.
+                  </>
+                ) : null}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete rotation'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
