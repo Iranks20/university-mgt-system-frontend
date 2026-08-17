@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,8 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterHint, setRosterHint] = useState('');
   const [saving, setSaving] = useState(false);
+  const [markedStudentIds, setMarkedStudentIds] = useState<Set<string>>(new Set());
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
 
   const selectedSession = useMemo(
     () => sessions.find((s) => s.id === attendanceSessionId) || null,
@@ -55,6 +57,7 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
       setAttendanceRows([]);
       setStudentLabels({});
       setRosterHint('');
+      setMarkedStudentIds(new Set());
       return;
     }
 
@@ -65,6 +68,7 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
       try {
         if (!selectedSession.clinicalRotationId) {
           setAttendanceRows([]);
+          setMarkedStudentIds(new Set());
           setRosterHint('This session has no rotation. Link a rotation when recording the session, then add students to its roster.');
           return;
         }
@@ -73,6 +77,7 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
         if (!roster.length) {
           setAttendanceRows([]);
           setStudentLabels({});
+          setMarkedStudentIds(new Set());
           setRosterHint('No students on this rotation roster. Add students under Clinical Rotations → Manage roster.');
           return;
         }
@@ -91,6 +96,7 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
         });
         setStudentLabels(labels);
         setAttendanceRows(rows);
+        setMarkedStudentIds(new Set(existing.keys()));
       } catch (e: any) {
         if (!cancelled) {
           toast.error(e?.message || 'Failed to load rotation roster');
@@ -129,6 +135,28 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
       toast.error(err?.message || 'Failed to save attendance');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAttendance = async (studentId: string) => {
+    if (!attendanceSessionId) return;
+    setDeletingStudentId(studentId);
+    try {
+      await clinicalService.deleteAttendance(attendanceSessionId, studentId);
+      toast.success('Attendance record removed');
+      setMarkedStudentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(studentId);
+        return next;
+      });
+      setAttendanceRows((prev) =>
+        prev.map((row) => (row.studentId === studentId ? { ...row, status: 'Present', remarks: '' } : row))
+      );
+      await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove attendance record');
+    } finally {
+      setDeletingStudentId(null);
     }
   };
 
@@ -214,6 +242,7 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
                       <TableHead>Student</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Remarks</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -245,6 +274,22 @@ export function AttendanceSection({ sessions, loading, onRefresh }: AttendanceSe
                               setAttendanceRows((prev) => prev.map((p, i) => (i === idx ? { ...p, remarks: e.target.value } : p)))
                             }
                           />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {markedStudentIds.has(row.studentId) ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeleteAttendance(row.studentId)}
+                              disabled={deletingStudentId === row.studentId}
+                              title="Remove attendance record"
+                              aria-label="Remove attendance record"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Not marked</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

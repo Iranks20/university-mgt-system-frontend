@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Edit, UserPlus, Eye } from 'lucide-react';
+import { Plus, Edit, UserPlus, Eye, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,6 +98,8 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
   >([]);
   const [linkLecturersLoading, setLinkLecturersLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<InstructorDirectoryRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -225,6 +227,27 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget?.clinicalInstructorId) return;
+    setDeleting(true);
+    try {
+      const result = await clinicalService.deleteInstructor(deleteTarget.clinicalInstructorId);
+      if (result.outcome === 'deactivated') {
+        toast.success(
+          `Instructor deactivated (${result.sessionCount} recorded session${result.sessionCount === 1 ? '' : 's'}).`
+        );
+      } else {
+        toast.success('Instructor removed');
+      }
+      setDeleteTarget(null);
+      await load();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove instructor');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <ClinicalTableCard
@@ -327,9 +350,19 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
                       <Eye className="h-4 w-4" />
                     </Button>
                     {canManage && (
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteTarget(row)}
+                          aria-label="Remove instructor"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>
@@ -570,6 +603,31 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
                   </Button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+            <DialogContent className="w-[96vw] max-w-md">
+              <DialogHeader>
+                <DialogTitle>Remove clinical instructor?</DialogTitle>
+                <DialogDescription>
+                  {deleteTarget ? (
+                    <>
+                      Remove <span className="font-medium text-foreground">{deleteTarget.fullName}</span> from the
+                      clinical registry? If they have recorded sessions, they will be marked inactive instead of
+                      removed.
+                    </>
+                  ) : null}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                  {deleting ? 'Removing…' : 'Remove instructor'}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </>

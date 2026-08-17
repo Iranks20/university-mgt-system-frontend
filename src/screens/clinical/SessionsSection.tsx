@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Plus, CheckCircle } from 'lucide-react';
+import { Plus, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +57,8 @@ export function SessionsSection({
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SessionRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const instructorLabelsRef = useRef(new Map<string, string>());
 
   const openAdd = () => {
@@ -109,6 +111,21 @@ export function SessionsSection({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await clinicalService.deleteSession(deleteTarget.id);
+      toast.success('Clinical session deleted');
+      setDeleteTarget(null);
+      await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete session');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const title = canVerify && !canRecord ? 'Sessions pending verification' : 'All sessions';
 
   return (
@@ -134,13 +151,13 @@ export function SessionsSection({
               <TableHead>Site</TableHead>
               <TableHead>Instructor</TableHead>
               <TableHead>Status</TableHead>
-              {canVerify && <TableHead className="text-right">Action</TableHead>}
+              {(canVerify || canRecord) && <TableHead className="text-right">Action</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canVerify ? 6 : 5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={canVerify || canRecord ? 6 : 5} className="py-10 text-center text-muted-foreground">
                   No sessions recorded.
                 </TableCell>
               </TableRow>
@@ -152,17 +169,31 @@ export function SessionsSection({
                   <TableCell>{s.clinicalSite?.name || '—'}</TableCell>
                   <TableCell>{s.instructorNameSnapshot || s.clinicalInstructor?.fullName || '—'}</TableCell>
                   <TableCell>{clinicalSessionStatusBadge(s.status)}</TableCell>
-                  {canVerify && (
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => verifySession(s.id)}
-                        disabled={s.status === 'Verified'}
-                      >
-                        <CheckCircle className="mr-1 h-4 w-4" />
-                        Verify
-                      </Button>
+                  {(canVerify || canRecord) && (
+                    <TableCell className="text-right space-x-1">
+                      {canVerify && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => verifySession(s.id)}
+                          disabled={s.status === 'Verified'}
+                        >
+                          <CheckCircle className="mr-1 h-4 w-4" />
+                          Verify
+                        </Button>
+                      )}
+                      {canRecord && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(s)}
+                          disabled={s.status === 'Verified'}
+                          title={s.status === 'Verified' ? 'Verified sessions cannot be deleted' : 'Delete session'}
+                          aria-label="Delete session"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
@@ -273,6 +304,32 @@ export function SessionsSection({
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canRecord && (
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <DialogContent className="w-[96vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete clinical session?</DialogTitle>
+              <DialogDescription>
+                {deleteTarget ? (
+                  <>
+                    Delete the <span className="font-medium text-foreground">{deleteTarget.topic}</span> session on{' '}
+                    {String(deleteTarget.date).slice(0, 10)}? Any attendance recorded for it will also be removed.
+                  </>
+                ) : null}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete session'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
