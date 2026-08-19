@@ -388,6 +388,32 @@ export const academicService = {
     }
   },
 
+  addCourseToNode: async (payload: {
+    code: string;
+    name: string;
+    departmentId: string;
+    programId: string;
+    year: number;
+    semester: number;
+    credits: number;
+    enrollmentPolicy?: 'Auto' | 'Self' | 'StaffOnly';
+  }): Promise<Course & { linked: boolean }> => {
+    try {
+      const res = await api.post<{ data: Course & { linked: boolean } }>('/academic/courses/add-to-node', payload);
+      return (res as any)?.data ?? res;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  unlinkCourseFromProgram: async (courseId: string, programId: string): Promise<void> => {
+    try {
+      await api.delete(`/academic/courses/${courseId}/unlink-program/${programId}`);
+    } catch (error) {
+      throw error;
+    }
+  },
+
   getClasses: async (params?: {
     courseId?: string;
     schoolId?: string;

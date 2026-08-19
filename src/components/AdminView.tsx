@@ -4408,16 +4408,16 @@ function SchoolsTab() {
     if (selectedNode.type !== 'yearSemester') return;
     setAddCourseSaving(true);
     try {
-      await academicService.createCourse({
+      const result = await academicService.addCourseToNode({
         code: addCourseForm.code.trim(),
         name: addCourseForm.name.trim(),
         departmentId: selectedNode.departmentId,
         programId: selectedNode.programId,
-        level: selectedNode.level,
+        year: selectedNode.level,
         semester: selectedNode.semester,
         credits: addCourseForm.credits,
       });
-      toast.success('Course created');
+      toast.success(result.linked ? 'Existing course linked to this program' : 'Course created');
       setAddCourseOpen(false);
       setAddCourseForm({ code: '', name: '', credits: 3 });
       await refreshCoursesInNode();
@@ -4926,13 +4926,22 @@ function SchoolsTab() {
                                                                                                   size="sm"
                                                                                                   className="h-7 w-7 p-0 text-red-600"
                                                                                                   onClick={async () => {
-                                                                                                    if (!confirm(`Delete course "${c.name}" (${c.code})?`)) return;
+                                                                                                    const isLinked = selectedNode?.type === 'yearSemester';
+                                                                                                    const msg = isLinked
+                                                                                                      ? `Remove course "${c.name}" (${c.code}) from this program? The course will remain in the catalog.`
+                                                                                                      : `Delete course "${c.name}" (${c.code})?`;
+                                                                                                    if (!confirm(msg)) return;
                                                                                                     try {
-                                                                                                      await academicService.deleteCourse(c.id);
-                                                                                                      toast.success('Course deleted');
+                                                                                                      if (isLinked && selectedNode) {
+                                                                                                        await academicService.unlinkCourseFromProgram(c.id, selectedNode.programId);
+                                                                                                        toast.success('Course removed from program');
+                                                                                                      } else {
+                                                                                                        await academicService.deleteCourse(c.id);
+                                                                                                        toast.success('Course deleted');
+                                                                                                      }
                                                                                                       await refreshCoursesInNode();
                                                                                                     } catch (err: any) {
-                                                                                                      toast.error(err?.message || 'Failed to delete course');
+                                                                                                      toast.error(err?.message || 'Failed to remove course');
                                                                                                     }
                                                                                                   }}
                                                                                                 >
