@@ -6684,9 +6684,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<TimetableClass | null>(null);
   const [editForm, setEditForm] = useState({ dayOfWeek: 1, lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletingClass, setDeletingClass] = useState<TimetableClass | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [deactivatingClass, setDeactivatingClass] = useState<TimetableClass | null>(null);
   const [deactivating, setDeactivating] = useState(false);
@@ -6936,37 +6933,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     }
   };
 
-  const handleDelete = (cls: TimetableClass) => {
-    setDeletingClass(cls);
-    setDeleteOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deletingClass) return;
-    setDeleting(true);
-    try {
-      await timetableService.deleteClass(deletingClass.id);
-      toast.success('Class deleted successfully');
-      setDeleteOpen(false);
-      setDeletingClass(null);
-      await loadTimetable();
-      window.dispatchEvent(new CustomEvent('class-updated'));
-    } catch (error: any) {
-      const code = error?.response?.data?.code;
-      const msg = error?.response?.data?.message || error?.message || 'Unknown error';
-      if (code === 'CLASS_HAS_ENROLLMENTS') {
-        setDeleteOpen(false);
-        setDeactivatingClass(deletingClass);
-        setDeactivateOpen(true);
-        toast.error(msg);
-      } else {
-        toast.error(`Failed to delete: ${msg}`);
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const openDeactivateModal = (cls: TimetableClass) => {
     setDeactivatingClass(cls);
     setDeactivateOpen(true);
@@ -6980,8 +6946,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       toast.success('Class deactivated');
       setDeactivateOpen(false);
       setDeactivatingClass(null);
-      setDeleteOpen(false);
-      setDeletingClass(null);
       await loadTimetable();
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
@@ -7189,9 +7153,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                             <EyeOff className="h-4 w-4 text-amber-700" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(cls)} className="text-red-600 hover:text-red-700" title="Delete permanently (no active enrollments)">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
                       </div>
                       </TableCell>
                     </TableRow>
@@ -7361,26 +7322,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
         </DialogContent>
       </Dialog>
       )}
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="w-[95vw] max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete Class</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{deletingClass?.name}"? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
         <DialogContent className="w-[95vw] max-w-md">
