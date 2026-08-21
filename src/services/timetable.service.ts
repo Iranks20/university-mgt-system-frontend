@@ -192,8 +192,13 @@ export const timetableService = {
     window.URL.revokeObjectURL(downloadUrl);
   },
 
-  deleteClass: async (id: string): Promise<{ success: boolean; message: string }> => {
-    return api.delete<{ success: boolean; message: string }>(`/timetable/class/${id}`);
+  deleteClass: async (
+    id: string,
+    options?: { force?: boolean }
+  ): Promise<{ success: boolean; message: string; enrollmentsDeleted?: number; timetableSlotsDeleted?: number }> => {
+    return api.delete<{ success: boolean; message: string; enrollmentsDeleted?: number; timetableSlotsDeleted?: number }>(
+      `/timetable/class/${id}${options?.force ? '?force=true' : ''}`
+    );
   },
 
   deactivateClass: async (id: string): Promise<TimetableClass> => {

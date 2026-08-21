@@ -143,7 +143,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
   );
   const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicy>('auto');
   const [skipPromote, setSkipPromote] = useState(false);
-  const [skipClassLists, setSkipClassLists] = useState(false);
+  const [skipClassLists, setSkipClassLists] = useState(true);
   const [skipRegister, setSkipRegister] = useState(false);
   const [form, setForm] = useState(suggestNextTerm(null));
 

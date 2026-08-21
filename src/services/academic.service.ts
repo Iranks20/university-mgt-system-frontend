@@ -836,6 +836,36 @@ export const academicService = {
     return (response as any)?.data ?? response;
   },
 
+  getResetOfferingsPreview: async (
+    id: string
+  ): Promise<{
+    term: AcademicTerm;
+    classCount: number;
+    activeEnrollmentCount: number;
+    totalEnrollmentCount: number;
+    timetableSlotCount: number;
+    requiresForce: boolean;
+  }> => {
+    const response = await api.get<any>(`/academic/terms/${id}/reset-offerings/preview`);
+    return (response as any)?.data ?? response;
+  },
+
+  resetTermOfferings: async (
+    id: string,
+    payload: { force: boolean; confirmName: string }
+  ): Promise<{
+    termId: string;
+    termName: string;
+    classesDeleted: number;
+    enrollmentsDeleted: number;
+    timetableSlotsDeleted: number;
+    force: boolean;
+    classNames: string[];
+  }> => {
+    const response = await api.post<any>(`/academic/terms/${id}/reset-offerings`, payload);
+    return (response as any)?.data ?? response;
+  },
+
   previewPromoteStudents: async (payload?: {
     holdbackStudentIds?: string[];
     holdbackGroups?: HoldbackGroupPayload[];
