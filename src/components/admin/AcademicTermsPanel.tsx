@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, CheckCircle2, Lock, Pencil, CircleHelp } from 'lucide-react';
+import { Plus, CheckCircle2, Lock, Pencil, CircleHelp, Eraser, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService, type AcademicTerm } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
@@ -68,6 +68,19 @@ export function AcademicTermsPanel() {
     endDate: '',
     reopenAsDraft: false,
   });
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTermTarget, setResetTermTarget] = useState<AcademicTerm | null>(null);
+  const [resetPreview, setResetPreview] = useState<{
+    classCount: number;
+    activeEnrollmentCount: number;
+    totalEnrollmentCount: number;
+    timetableSlotCount: number;
+    requiresForce: boolean;
+  } | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetForce, setResetForce] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -237,6 +250,51 @@ export function AcademicTermsPanel() {
     }
   };
 
+  const openReset = async (term: AcademicTerm) => {
+    setResetTermTarget(term);
+    setResetPreview(null);
+    setResetForce(false);
+    setResetConfirmText('');
+    setResetOpen(true);
+    setResetLoading(true);
+    try {
+      const preview = await academicService.getResetOfferingsPreview(term.id);
+      setResetPreview(preview);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not load reset preview'));
+      setResetOpen(false);
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetOfferings = async () => {
+    if (!resetTermTarget || !resetPreview) return;
+    if (resetConfirmText.trim() !== resetTermTarget.name) {
+      toast.error('Type the exact term name to confirm');
+      return;
+    }
+    setResetBusy(true);
+    try {
+      const result = await academicService.resetTermOfferings(resetTermTarget.id, {
+        force: resetForce,
+        confirmName: resetConfirmText.trim(),
+      });
+      toast.success(
+        `Reset "${result.termName}": ${result.classesDeleted} class(es), ` +
+          `${result.enrollmentsDeleted} enrollment(s), ${result.timetableSlotsDeleted} timetable slot(s) removed`
+      );
+      setResetOpen(false);
+      setResetTermTarget(null);
+      setResetPreview(null);
+      await load();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not reset term offerings'));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -331,6 +389,9 @@ export function AcademicTermsPanel() {
                         Attach legacy
                       </Button>
                     ) : null}
+                    <Button variant="destructive" size="sm" onClick={() => openReset(term)}>
+                      <Eraser className="h-4 w-4 mr-1" /> Reset offerings
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -555,6 +616,102 @@ export function AcademicTermsPanel() {
               onClick={handleUpdate}
             >
               {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resetOpen}
+        onOpenChange={(next) => {
+          setResetOpen(next);
+          if (!next) {
+            setResetTermTarget(null);
+            setResetPreview(null);
+            setResetForce(false);
+            setResetConfirmText('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="h-5 w-5" /> Reset term offerings
+            </DialogTitle>
+          </DialogHeader>
+          {resetTermTarget ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Permanently deletes every class offering — and its weekly schedule — linked to{' '}
+                <strong>{resetTermTarget.name}</strong>, so you can rebuild it from scratch. This
+                cannot be undone.
+              </p>
+              {resetLoading ? (
+                <p className="text-sm text-muted-foreground">Loading preview…</p>
+              ) : resetPreview ? (
+                <div className="rounded-md border p-3 text-sm space-y-1 bg-muted/40">
+                  <div>
+                    Classes to delete: <strong>{resetPreview.classCount}</strong>
+                  </div>
+                  <div>
+                    Timetable slots to delete: <strong>{resetPreview.timetableSlotCount}</strong>
+                  </div>
+                  <div>
+                    Enrollments to delete: <strong>{resetPreview.totalEnrollmentCount}</strong>
+                    {resetPreview.activeEnrollmentCount > 0 ? (
+                      <span className="text-red-600">
+                        {' '}
+                        ({resetPreview.activeEnrollmentCount} active)
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              {resetPreview && resetPreview.activeEnrollmentCount > 0 ? (
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={resetForce}
+                    onChange={(e) => setResetForce(e.target.checked)}
+                  />
+                  <span>
+                    I understand this term has {resetPreview.activeEnrollmentCount} active
+                    enrollment(s) and want to delete those classes — and their enrollments —
+                    anyway.
+                  </span>
+                </label>
+              ) : null}
+              <div>
+                <Label htmlFor="reset-confirm-name">
+                  Type <strong>{resetTermTarget.name}</strong> to confirm
+                </Label>
+                <Input
+                  id="reset-confirm-name"
+                  className="mt-1"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                resetBusy ||
+                resetLoading ||
+                !resetPreview ||
+                !resetTermTarget ||
+                resetConfirmText.trim() !== resetTermTarget?.name ||
+                ((resetPreview?.activeEnrollmentCount ?? 0) > 0 && !resetForce)
+              }
+              onClick={handleResetOfferings}
+            >
+              {resetBusy ? 'Resetting…' : 'Reset offerings'}
             </Button>
           </DialogFooter>
         </DialogContent>
