@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { formatProgramIntakeOptionLabel, useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 import {
   buildLecturerComboboxOptions,
@@ -56,7 +57,7 @@ type StudentRow = {
   email: string;
   studentId: string;
   dept: string;
-  year: string;
+  year: number;
   status: string;
   holdbackReason?: string | null;
   programId?: string;
@@ -85,6 +86,22 @@ type VenueRow = { id: string; name: string; code: string; type: string; capacity
 // -----------------------------------------------------------------------------
 // SUB-COMPONENT: Student Management Tab (with Import, Add, Enroll in classes)
 // -----------------------------------------------------------------------------
+type StudentListFilters = {
+  programId: string;
+  year: string;
+  semester: string;
+  intakeType: string;
+  status: string;
+};
+
+const DEFAULT_STUDENT_FILTERS: StudentListFilters = {
+  programId: '__all__',
+  year: '__all__',
+  semester: '__all__',
+  intakeType: '__all__',
+  status: '__all__',
+};
+
 function StudentsTab({
   students,
   setStudents,
@@ -116,13 +133,7 @@ function StudentsTab({
   ) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<{
-    programId: string;
-    year: string;
-    semester: string;
-    intakeType: string;
-    status: string;
-  }>({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
+  const [filters, setFilters] = useState<StudentListFilters>({ ...DEFAULT_STUDENT_FILTERS });
   const [filterPrograms, setFilterPrograms] = useState<any[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -255,6 +266,19 @@ function StudentsTab({
   const runQuery = (pageNum: number) => {
     loadStudents(pageNum, buildQueryParams());
   };
+
+  const resetStudentFilters = () => {
+    setSearchTerm('');
+    setFilters({ ...DEFAULT_STUDENT_FILTERS });
+  };
+
+  const hasStudentFiltersApplied =
+    searchTerm.trim() !== '' ||
+    filters.programId !== DEFAULT_STUDENT_FILTERS.programId ||
+    filters.year !== DEFAULT_STUDENT_FILTERS.year ||
+    filters.semester !== DEFAULT_STUDENT_FILTERS.semester ||
+    filters.intakeType !== DEFAULT_STUDENT_FILTERS.intakeType ||
+    filters.status !== DEFAULT_STUDENT_FILTERS.status;
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -539,14 +563,8 @@ function StudentsTab({
                 >
                   <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
-                    runQuery(1);
-                  }}
-                >
-                  <Filter className="mr-2 h-4 w-4" /> Clear filters
+                <DropdownMenuItem onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied}>
+                  <Filter className="mr-2 h-4 w-4" /> Reset filters
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setImportOpen(true)}>
                   <Upload className="mr-2 h-4 w-4" /> Import students
@@ -631,6 +649,8 @@ function StudentsTab({
               </SelectContent>
             </Select>
           </div>
+
+          <ResetFiltersButton onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied} />
         </div>
       </div>
 
@@ -709,16 +729,13 @@ function StudentsTab({
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
+            <ResetFiltersButton
               onClick={() => {
-                setSearchTerm('');
-                setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
-                runQuery(1);
+                resetStudentFilters();
+                setMobileFiltersOpen(false);
               }}
-            >
-              Clear
-            </Button>
+              disabled={!hasStudentFiltersApplied}
+            />
             <Button className="bg-[#015F2B]" onClick={() => setMobileFiltersOpen(false)}>
               Done
             </Button>
@@ -734,6 +751,7 @@ function StudentsTab({
               <TableHead>ID</TableHead>
               <TableHead>Program</TableHead>
               <TableHead>Year</TableHead>
+              <TableHead>Semester</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -755,6 +773,7 @@ function StudentsTab({
                 <TableCell>{student.studentId}</TableCell>
                 <TableCell>{student.dept}</TableCell>
                 <TableCell>{student.year}</TableCell>
+                <TableCell>{student.semester ?? '—'}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge
@@ -793,7 +812,7 @@ function StudentsTab({
                           schoolId: dept?.schoolId ?? '',
                           departmentId: studentData?.departmentId ?? dept?.id ?? '',
                           programId: studentData?.programId ?? '',
-                          year: student.year,
+                          year: `Year ${student.year}`,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
                           clearHoldback: false,
@@ -5624,6 +5643,21 @@ function ClassesTab({
     navigate(`/timetable-builder?${qs.toString()}`);
   };
 
+  const resetClassListFilters = () => {
+    setSearchTerm('');
+    setTermFilter(TERM_FILTER_ACTIVE);
+    setTermQueryId(undefined);
+    setTermClassStatus('active');
+    setLecturerFilter('all');
+    setAssignmentFilter('all');
+  };
+
+  const hasClassListFiltersApplied =
+    searchTerm.trim() !== '' ||
+    termFilter !== TERM_FILTER_ACTIVE ||
+    lecturerFilter !== 'all' ||
+    assignmentFilter !== 'all';
+
   const refreshClassData = async () => {
     try {
       const allCourses: any[] = [];
@@ -6113,6 +6147,7 @@ function ClassesTab({
             <SelectItem value="unassigned">Without lecturer</SelectItem>
           </SelectContent>
         </Select>
+        <ResetFiltersButton onClick={resetClassListFilters} disabled={!hasClassListFiltersApplied} />
         <Button
           variant="outline"
           onClick={openTimetableBuilderForScope}
@@ -6673,6 +6708,18 @@ const DAY_OPTIONS = [
 ];
 
 function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
+  const DEFAULT_TIMETABLE_FILTERS = {
+    programId: '',
+    program: '',
+    year: '',
+    semester: '',
+    intakeType: 'Day',
+    day: '',
+    courseCode: '',
+    classStatus: 'active' as 'active' | 'inactive' | 'all',
+    academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
+    academicTermId: undefined as string | undefined,
+  };
   const [classes, setClasses] = useState<TimetableClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
@@ -6689,18 +6736,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [deactivating, setDeactivating] = useState(false);
   const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
-  const [filters, setFilters] = useState({
-    programId: '',
-    program: '',
-    year: '',
-    semester: '',
-    intakeType: 'Day',
-    day: '',
-    courseCode: '',
-    classStatus: 'active' as 'active' | 'inactive' | 'all',
-    academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
-    academicTermId: undefined as string | undefined,
-  });
+  const [filters, setFilters] = useState({ ...DEFAULT_TIMETABLE_FILTERS });
   const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -6968,6 +7004,22 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
 
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+  const resetTimetableFilters = () => {
+    setFilters({ ...DEFAULT_TIMETABLE_FILTERS });
+    setPage(1);
+  };
+
+  const hasTimetableFiltersApplied =
+    (filters.programId !== '' && filters.programId !== '__all__') ||
+    filters.program !== '' ||
+    filters.year !== '' ||
+    filters.semester !== '' ||
+    filters.intakeType !== DEFAULT_TIMETABLE_FILTERS.intakeType ||
+    filters.day !== '' ||
+    filters.courseCode.trim() !== '' ||
+    filters.classStatus !== DEFAULT_TIMETABLE_FILTERS.classStatus ||
+    filters.academicTermFilter !== DEFAULT_TIMETABLE_FILTERS.academicTermFilter;
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between gap-4 flex-wrap">
@@ -7064,6 +7116,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             onChange={(e) => setFilters({ ...filters, courseCode: e.target.value })}
             className="w-[150px]"
               />
+          <ResetFiltersButton onClick={resetTimetableFilters} disabled={!hasTimetableFiltersApplied} />
             </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExportExcel}>
@@ -7892,6 +7945,7 @@ function AcademicCalendarTab() {
           <TabsTrigger value="rollover">Rollover</TabsTrigger>
           <TabsTrigger value="offerings">Offerings</TabsTrigger>
           <TabsTrigger value="promote">Promote</TabsTrigger>
+          <TabsTrigger value="repair">Repair cohort</TabsTrigger>
           <TabsTrigger value="register">Register</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
         </TabsList>
@@ -7914,6 +7968,10 @@ function AcademicCalendarTab() {
 
         <TabsContent value="promote" className="mt-4">
           <AcademicRolloverPanel sections={['promote']} />
+        </TabsContent>
+
+        <TabsContent value="repair" className="mt-4">
+          <AcademicRolloverPanel sections={['repair']} />
         </TabsContent>
 
         <TabsContent value="register" className="mt-4">
@@ -8142,7 +8200,7 @@ export default function AdminView({
         email: s.email,
         studentId: s.studentNumber,
         dept: s.program || '',
-        year: `Year ${s.year || 1}`,
+        year: s.year ?? 1,
         status: s.status || 'Active',
         holdbackReason: s.holdbackReason ?? null,
         programId: s.programId,

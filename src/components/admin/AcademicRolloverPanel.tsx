@@ -6,6 +6,7 @@ import {
   type GenerateClassListsResult,
   type HoldbackGroupPayload,
   type PromoteStudentsResult,
+  type ReassignCohortStandingResult,
   type RegisterStudentsResult,
 } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
@@ -15,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -23,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-type RolloverSection = 'offerings' | 'promote' | 'register';
+type RolloverSection = 'offerings' | 'promote' | 'register' | 'repair';
 
 function parseHoldbackIds(raw: string): string[] {
   return [
@@ -137,6 +139,93 @@ function RegisterSummary({ result }: { result: RegisterStudentsResult }) {
   );
 }
 
+function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult }) {
+  const programLabel = result.program.code || result.program.name;
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+      <p>
+        Program: <strong>{programLabel}</strong>
+      </p>
+      <p>
+        {result.mode === 'reactivate' ? (
+          <>
+            Reactivate at <strong>Y{result.source.year} S{result.source.semester}</strong> (same
+            cohort — status only)
+          </>
+        ) : (
+          <>
+            Move cohort:{' '}
+            <strong>
+              Y{result.source.year} S{result.source.semester}
+            </strong>{' '}
+            →{' '}
+            <strong>
+              Y{result.target.year} S{result.target.semester}
+            </strong>
+          </>
+        )}
+      </p>
+      <p>
+        Active in source cohort: <strong>{result.activeInSourceCohort}</strong>
+        {' · '}
+        Completed in source cohort: <strong>{result.completedInSourceCohort}</strong>
+      </p>
+      <p>
+        Included (total): <strong>{result.totalInSourceCohort}</strong>
+        {!result.includeCompleted && result.completedInSourceCohort > 0 ? (
+          <span className="text-amber-800"> — enable Include Completed to restore them</span>
+        ) : null}
+      </p>
+      <p>
+        {result.dryRun
+          ? result.mode === 'reactivate'
+            ? 'Would reactivate'
+            : 'Would reassign'
+          : result.mode === 'reactivate'
+            ? 'Reactivated'
+            : 'Reassigned'}
+        :{' '}
+        <strong>{result.dryRun ? result.toReassign : result.reassigned}</strong>
+        {!result.dryRun && result.reactivated > 0 ? (
+          <span className="text-muted-foreground"> · reactivated from Completed: {result.reactivated}</span>
+        ) : null}
+      </p>
+      {!result.dryRun && result.reEnroll ? (
+        <p>
+          Enrolled: {result.enrolled} · dropped from wrong classes: {result.dropped}
+        </p>
+      ) : null}
+      {result.errors.length > 0 ? (
+        <p className="text-destructive">Errors: {result.errors.slice(0, 5).join('; ')}</p>
+      ) : null}
+      {result.totalInSourceCohort === 0 && result.completedCohortsInProgram.length > 0 ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50/80 p-2 text-amber-950">
+          <p className="font-medium">Completed students in this program (by standing):</p>
+          <ul className="mt-1 list-disc pl-4">
+            {result.completedCohortsInProgram.map((row) => (
+              <li key={`${row.year}-${row.semester}`}>
+                Y{row.year} S{row.semester}: {row.count} student(s)
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs">
+            Use one of these as the source cohort if they were wrongly marked Completed.
+          </p>
+        </div>
+      ) : null}
+      {result.samples.length > 0 ? (
+        <ul className="mt-2 text-muted-foreground list-disc pl-4 max-h-40 overflow-auto">
+          {result.samples.map((s) => (
+            <li key={s.id}>
+              {s.studentNumber} ({s.priorStatus}): {s.from} → {s.to}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export function AcademicRolloverPanel({
   sections = ['offerings', 'promote', 'register'],
 }: {
@@ -145,6 +234,7 @@ export function AcademicRolloverPanel({
   const showOfferings = sections.includes('offerings');
   const showPromote = sections.includes('promote');
   const showRegister = sections.includes('register');
+  const showRepair = sections.includes('repair');
   const multi = sections.length > 1;
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
   const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
@@ -168,6 +258,14 @@ export function AcademicRolloverPanel({
   const [regPolicy, setRegPolicy] = useState<'auto' | 'hybrid' | 'self'>('auto');
   const [regPreview, setRegPreview] = useState<RegisterStudentsResult | null>(null);
   const [regBusy, setRegBusy] = useState(false);
+  const [repairProgramId, setRepairProgramId] = useState('');
+  const [repairSourceYear, setRepairSourceYear] = useState('3');
+  const [repairSourceSemester, setRepairSourceSemester] = useState('1');
+  const [repairTargetYear, setRepairTargetYear] = useState('1');
+  const [repairTargetSemester, setRepairTargetSemester] = useState('2');
+  const [repairPreview, setRepairPreview] = useState<ReassignCohortStandingResult | null>(null);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [repairIncludeCompleted, setRepairIncludeCompleted] = useState(true);
 
   useEffect(() => {
     academicService
@@ -365,6 +463,69 @@ export function AcademicRolloverPanel({
       toast.error(getApiErrorMessage(error, 'Could not register students'));
     } finally {
       setRegBusy(false);
+    }
+  };
+
+  const repairPayload = () => ({
+    programId: repairProgramId,
+    sourceYear: Number(repairSourceYear),
+    sourceSemester: Number(repairSourceSemester),
+    targetYear: Number(repairTargetYear),
+    targetSemester: Number(repairTargetSemester),
+    reEnroll: true,
+    includeCompleted: repairIncludeCompleted,
+  });
+
+  const runRepairPreview = async () => {
+    if (!repairProgramId) {
+      toast.error('Select a program');
+      return;
+    }
+    setRepairBusy(true);
+    try {
+      const data = await academicService.previewReassignCohortStanding(repairPayload());
+      setRepairPreview(data);
+      toast.success('Repair preview ready');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not preview cohort repair'));
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
+  const runRepair = async () => {
+    if (!repairPreview) {
+      toast.error('Run preview first');
+      return;
+    }
+    const prog = programs.find((p) => p.id === repairProgramId);
+    const label = prog?.code || prog?.name || 'program';
+    const sameCohort =
+      repairSourceYear === repairTargetYear && repairSourceSemester === repairTargetSemester;
+    const ok = window.confirm(
+      sameCohort
+        ? `Reactivate ${repairPreview.toReassign} Completed student(s) in ${label} at Y${repairSourceYear} S${repairSourceSemester}?\n\n` +
+            `Standing stays the same. Status becomes Active and students are re-enrolled on Active-term classes.\n\n` +
+            `Back up the database first if you have not already.`
+        : `Move ${repairPreview.toReassign} student(s) in ${label} from Y${repairSourceYear} S${repairSourceSemester} to Y${repairTargetYear} S${repairTargetSemester}?\n\n` +
+            `This sets standing directly (not promote). Wrong class enrollments will be dropped and students re-enrolled on Active-term classes for the target cohort.\n\n` +
+            `Back up the database first if you have not already.`
+    );
+    if (!ok) return;
+
+    setRepairBusy(true);
+    try {
+      const data = await academicService.reassignCohortStanding(repairPayload());
+      setRepairPreview(data);
+      toast.success(
+        data.mode === 'reactivate'
+          ? `Reactivated ${data.reactivated} student(s)`
+          : `Reassigned ${data.reassigned} student(s)`
+      );
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not reassign cohort'));
+    } finally {
+      setRepairBusy(false);
     }
   };
 
@@ -669,6 +830,173 @@ export function AcademicRolloverPanel({
               onClick={runRegister}
             >
               {regBusy ? 'Working…' : 'Register'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      ) : null}
+
+      {showRepair ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>Repair cohort standing</CardTitle>
+          <CardDescription>
+            Move an entire program cohort to a specific year/semester — use after accidental
+            over-promotion. This is not Promote (which only advances one step).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!hasActive ? (
+            <p className="text-sm text-amber-700">
+              Activate an academic term before re-enrolling students onto classes.
+            </p>
+          ) : null}
+          <div>
+            <LabelWithInfo info="Required. Only Active students on this program with the source year and semester are moved.">
+              Program
+            </LabelWithInfo>
+            <Select
+              value={repairProgramId || undefined}
+              onValueChange={(v) => {
+                setRepairProgramId(v);
+                setRepairPreview(null);
+              }}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select program" />
+              </SelectTrigger>
+              <SelectContent>
+                {programs.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.code ? `${p.name} (${p.code})` : p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="rounded-md border p-3 space-y-2">
+            <p className="text-sm font-medium">Source cohort (current wrong standing)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Year</Label>
+                <Select
+                  value={repairSourceYear}
+                  onValueChange={(v) => {
+                    setRepairSourceYear(v);
+                    setRepairPreview(null);
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        Year {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Semester</Label>
+                <Select
+                  value={repairSourceSemester}
+                  onValueChange={(v) => {
+                    setRepairSourceSemester(v);
+                    setRepairPreview(null);
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Semester 1</SelectItem>
+                    <SelectItem value="2">Semester 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-md border border-[#015F2B]/30 bg-[#015F2B]/5 p-3 space-y-2">
+            <p className="text-sm font-medium">Target standing (correct cohort)</p>
+            <p className="text-xs text-muted-foreground">
+              Set the same year/semester as source to reactivate Completed students only (e.g. keep
+              Y5 S2 but change status from Completed to Active).
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Year</Label>
+                <Select
+                  value={repairTargetYear}
+                  onValueChange={(v) => {
+                    setRepairTargetYear(v);
+                    setRepairPreview(null);
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        Year {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Semester</Label>
+                <Select
+                  value={repairTargetSemester}
+                  onValueChange={(v) => {
+                    setRepairTargetSemester(v);
+                    setRepairPreview(null);
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Semester 1</SelectItem>
+                    <SelectItem value="2">Semester 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 rounded-md border p-3">
+            <Checkbox
+              id="repair-include-completed"
+              checked={repairIncludeCompleted}
+              onCheckedChange={(checked) => {
+                setRepairIncludeCompleted(checked === true);
+                setRepairPreview(null);
+              }}
+            />
+            <LabelWithInfo
+              htmlFor="repair-include-completed"
+              info="Promote marks final-year Sem 2 students as Completed. Over-promotion can do this too early. Keep this on to restore those students to Active and move them to the target cohort."
+            >
+              Include Completed students (reactivate)
+            </LabelWithInfo>
+          </div>
+          {repairPreview ? <RepairCohortSummary result={repairPreview} /> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={repairBusy || !repairProgramId}
+              onClick={runRepairPreview}
+            >
+              Preview
+            </Button>
+            <Button
+              className="bg-[#015F2B] hover:bg-[#014a22]"
+              disabled={repairBusy || !hasActive || !repairPreview || repairPreview.toReassign === 0}
+              onClick={runRepair}
+            >
+              {repairBusy ? 'Working…' : repairPreview?.mode === 'reactivate' ? 'Reactivate' : 'Apply repair'}
             </Button>
           </div>
         </CardContent>

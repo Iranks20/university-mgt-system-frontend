@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Download, Loader2, QrCode, Search, X } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { QRCodeCanvas } from 'qrcode.react';
 import { saveAs } from 'file-saver';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,20 @@ export default function AdminStudentInfoForms() {
   const [acting, setActing] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const resetFilters = () => {
+    setSearch('');
+    setSourceType('__all__');
+    setStatus('Pending');
+    setSponsorType('__all__');
+    setPage(1);
+  };
+
+  const hasFiltersApplied =
+    search.trim() !== '' ||
+    sourceType !== '__all__' ||
+    status !== 'Pending' ||
+    sponsorType !== '__all__';
 
   const publicFormUrl = useMemo(
     () => `${window.location.origin}/student-info-correction`,
@@ -218,6 +233,7 @@ export default function AdminStudentInfoForms() {
               <SelectItem value="Private">Private</SelectItem>
             </SelectContent>
           </Select>
+          <ResetFiltersButton onClick={resetFilters} disabled={!hasFiltersApplied} />
         </CardContent>
       </Card>
 
