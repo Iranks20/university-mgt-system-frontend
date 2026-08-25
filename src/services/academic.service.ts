@@ -480,7 +480,7 @@ export const academicService = {
     courses: Array<{ id: string; code: string; name: string; source: 'program' | 'combined' }>;
     classesByCourseId: Record<
       string,
-      {
+      Array<{
         classId: string;
         className: string;
         lecturerId: string | null;
@@ -493,7 +493,7 @@ export const academicService = {
         capacity: number;
         isSharedSchedule: boolean;
         cohortProgramIntakeIds: string[];
-      }
+      }>
     >;
   }> => {
     const res = await api.get<{ data: any }>(
