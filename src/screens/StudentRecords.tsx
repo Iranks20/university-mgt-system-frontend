@@ -6,6 +6,7 @@ import {
   Trash2, Edit, ChevronLeft, ChevronRight, Plus, GraduationCap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -419,6 +420,17 @@ export default function StudentRecords() {
     setDateTo('');
   };
 
+  const hasLogFiltersApplied =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'All' ||
+    selectedSchool !== ALL_VALUE ||
+    selectedProgramId !== ALL_VALUE ||
+    selectedCourseId !== ALL_VALUE ||
+    selectedYear !== ALL_VALUE ||
+    selectedSemester !== ALL_VALUE ||
+    dateFrom !== '' ||
+    dateTo !== '';
+
   const handleExportExcel = async () => {
     setExporting(true);
     try {
@@ -703,7 +715,7 @@ export default function StudentRecords() {
               <Button variant="outline" onClick={loadAttendanceRecords} className="gap-2">
                 <Filter className="h-4 w-4" /> Apply
               </Button>
-              <Button variant="ghost" onClick={clearFilters}>Clear</Button>
+              <ResetFiltersButton onClick={clearFilters} disabled={!hasLogFiltersApplied} />
             </div>
           </div>
 

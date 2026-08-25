@@ -4,6 +4,7 @@ import { staffService } from '@/services/staff.service';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
@@ -224,9 +225,7 @@ export default function ManagementStaffPerformance() {
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={clearFilters} className="gap-2">
-                  <Filter className="h-4 w-4" /> Clear Filters
-                </Button>
+                <ResetFiltersButton onClick={clearFilters} />
               </div>
             </div>
           </CardContent>

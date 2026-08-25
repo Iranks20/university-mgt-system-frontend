@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Shield, Search, Filter, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -22,6 +23,20 @@ export default function AdminAuditLog() {
   const [entityFilter, setEntityFilter] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+
+  const resetFilters = () => {
+    setActionFilter('');
+    setEntityFilter('');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+  };
+
+  const hasFiltersApplied =
+    actionFilter !== '' ||
+    entityFilter.trim() !== '' ||
+    startDate !== '' ||
+    endDate !== '';
 
   const loadLog = async () => {
     setLoading(true);
@@ -112,11 +127,12 @@ export default function AdminAuditLog() {
               className="w-[160px]"
             />
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button variant="secondary" onClick={loadLog}>
               <Filter className="h-4 w-4 mr-2" />
               Apply
             </Button>
+            <ResetFiltersButton onClick={resetFilters} disabled={!hasFiltersApplied} />
           </div>
         </CardContent>
       </Card>

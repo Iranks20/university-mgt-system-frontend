@@ -85,6 +85,34 @@ export type RegisterStudentsResult = {
   errors: string[];
 };
 
+export type ReassignCohortStandingResult = {
+  dryRun: boolean;
+  mode: 'reactivate' | 'reassign';
+  program: { id: string; name: string; code: string | null };
+  source: { year: number; semester: number };
+  target: { year: number; semester: number };
+  reEnroll: boolean;
+  includeCompleted: boolean;
+  activeInSourceCohort: number;
+  completedInSourceCohort: number;
+  totalInSourceCohort: number;
+  toReassign: number;
+  reassigned: number;
+  reactivated: number;
+  enrolled: number;
+  dropped: number;
+  skipped: number;
+  errors: string[];
+  completedCohortsInProgram: Array<{ year: number; semester: number; count: number }>;
+  samples: Array<{
+    id: string;
+    studentNumber: string;
+    from: string;
+    to: string;
+    priorStatus: string;
+  }>;
+};
+
 type ClassUpsertPayload = {
   name: string;
   courseId: string;
@@ -891,6 +919,36 @@ export const academicService = {
       '/academic/terms/promote',
       payload ?? {}
     );
+    return (response as any)?.data ?? response;
+  },
+
+  previewReassignCohortStanding: async (payload: {
+    programId: string;
+    sourceYear: number;
+    sourceSemester: number;
+    targetYear: number;
+    targetSemester: number;
+    reEnroll?: boolean;
+    includeCompleted?: boolean;
+  }): Promise<ReassignCohortStandingResult> => {
+    const response = await api.post<
+      { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
+    >('/academic/terms/cohort-standing/preview', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  reassignCohortStanding: async (payload: {
+    programId: string;
+    sourceYear: number;
+    sourceSemester: number;
+    targetYear: number;
+    targetSemester: number;
+    reEnroll?: boolean;
+    includeCompleted?: boolean;
+  }): Promise<ReassignCohortStandingResult> => {
+    const response = await api.post<
+      { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
+    >('/academic/terms/cohort-standing/reassign', payload);
     return (response as any)?.data ?? response;
   },
 

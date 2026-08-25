@@ -9,6 +9,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,25 @@ export default function AdminGraduationRegistrations({ embedded = false }: { emb
   const [deleting, setDeleting] = useState(false);
 
   const pageSize = 20;
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setCohort(ALL);
+    setSchool(ALL);
+    setProgram(ALL);
+    setRsvp(ALL);
+    setClearance(ALL);
+    setPage(1);
+  };
+
+  const hasFiltersApplied =
+    search.trim() !== '' ||
+    cohort !== ALL ||
+    school !== ALL ||
+    program !== ALL ||
+    rsvp !== ALL ||
+    clearance !== ALL;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -257,6 +277,7 @@ export default function AdminGraduationRegistrations({ embedded = false }: { emb
                 <SelectItem value="FullyCleared">Fully cleared</SelectItem>
               </SelectContent>
             </Select>
+            <ResetFiltersButton onClick={resetFilters} disabled={!hasFiltersApplied} />
           </div>
 
           <div className="rounded-md border bg-white">
