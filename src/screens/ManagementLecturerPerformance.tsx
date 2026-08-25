@@ -13,6 +13,7 @@ import {
   UserCheck, BookOpen, Clock, Award, Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -399,9 +400,7 @@ export default function ManagementLecturerPerformance() {
                   <SelectItem value="Poor">Poor (Below 70%)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={clearFilters} className="gap-2">
-                <Filter className="h-4 w-4" /> Clear Filters
-              </Button>
+              <ResetFiltersButton onClick={clearFilters} />
             </div>
           </div>
         </CardContent>

@@ -27,6 +27,15 @@ import {
   TERM_FILTER_ACTIVE,
   type AcademicTermFilterValue,
 } from '@/components/AcademicTermFilter';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
+
+const DEFAULT_QA_FILTERS = {
+  day: 'all',
+  search: '',
+  classStatus: 'active' as 'active' | 'inactive' | 'all',
+  academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
+  academicTermId: undefined as string | undefined,
+};
 
 const PRESENCE_GRACE_MINUTES = 15;
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -101,13 +110,7 @@ export default function Timetable() {
   const [activeCheckIns, setActiveCheckIns] = useState<Record<string, { checkIn: string; checkOut?: string }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
-  const [qaFilters, setQaFilters] = useState({
-    day: 'all',
-    search: '',
-    classStatus: 'active' as 'active' | 'inactive' | 'all',
-    academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
-    academicTermId: undefined as string | undefined,
-  });
+  const [qaFilters, setQaFilters] = useState({ ...DEFAULT_QA_FILTERS });
   const [qaRawClasses, setQaRawClasses] = useState<Record<string, TimetableClass>>({});
   const [qaEditOpen, setQaEditOpen] = useState(false);
   const [qaEditingClass, setQaEditingClass] = useState<TimetableClass | null>(null);
@@ -540,6 +543,17 @@ export default function Timetable() {
     navigate('/presence');
   };
 
+  const resetQaFilters = () => {
+    setQaFilters({ ...DEFAULT_QA_FILTERS });
+    setQaPage(1);
+  };
+
+  const hasQaFiltersApplied =
+    qaFilters.day !== DEFAULT_QA_FILTERS.day ||
+    qaFilters.search.trim() !== '' ||
+    qaFilters.classStatus !== DEFAULT_QA_FILTERS.classStatus ||
+    qaFilters.academicTermFilter !== DEFAULT_QA_FILTERS.academicTermFilter;
+
   const filteredTimetable = viewMode === 'list'
     ? timetableData.filter(t => t.day === selectedDay)
     : timetableData;
@@ -660,6 +674,7 @@ export default function Timetable() {
                     className="w-full"
                   />
                 </div>
+                <ResetFiltersButton onClick={resetQaFilters} disabled={!hasQaFiltersApplied} />
               </div>
             </div>
           </CardHeader>

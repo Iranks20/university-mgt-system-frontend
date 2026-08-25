@@ -51,7 +51,8 @@ import {
   normalizeDeliveryMode,
   type DeliveryMode,
 } from '@/lib/delivery-mode';
-import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { AcademicTermFilter, TERM_FILTER_ACTIVE } from '@/components/AcademicTermFilter';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 const COMMENT_FILTER_LABELS = LECTURE_COMMENT_LABELS;
@@ -561,7 +562,25 @@ export default function LectureRecords() {
     setAttendanceStatusFilter('All');
     setDateFrom('');
     setDateTo('');
+    onTermChange({
+      value: TERM_FILTER_ACTIVE,
+      academicTermId: undefined,
+      classStatusHint: 'active',
+      term: null,
+    });
   };
+
+  const hasFiltersApplied =
+    searchTerm.trim() !== '' ||
+    commentFilter !== 'All' ||
+    lecturerFilter !== 'All' ||
+    schoolFilter !== 'All' ||
+    classFilter !== 'All' ||
+    statusFilter !== 'All' ||
+    attendanceStatusFilter !== 'All' ||
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    termFilter !== TERM_FILTER_ACTIVE;
 
   const handleSeedFromTimetable = async () => {
     const d = timetableSeedDate.trim();
@@ -1225,9 +1244,7 @@ export default function LectureRecords() {
                 onChange={(e) => setDateTo(e.target.value)}
                 className="w-[150px]"
               />
-              <Button variant="outline" onClick={clearFilters} className="gap-2">
-                <Filter className="h-4 w-4" /> Clear Filters
-              </Button>
+              <ResetFiltersButton onClick={clearFilters} disabled={!hasFiltersApplied} />
             </div>
           </div>
 

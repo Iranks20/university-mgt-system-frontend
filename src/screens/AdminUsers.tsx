@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, KeyRound, Loader2, Search, ChevronLeft, ChevronRight, Shield } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { toast } from 'sonner';
 import { adminService } from '@/services/admin.service';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,14 @@ export default function AdminUsers() {
   const [selectedCustomRoleIds, setSelectedCustomRoleIds] = useState<Set<string>>(new Set());
   const [roleSearch, setRoleSearch] = useState('');
   const systemAccountRoles = useMemo(() => [...SYSTEM_ACCOUNT_ROLES], []);
+
+  const resetFilters = () => {
+    setSearch('');
+    setRoleFilter('all');
+    setPage(1);
+  };
+
+  const hasFiltersApplied = search.trim() !== '' || roleFilter !== 'all';
 
   const loadUsers = async (pageNum: number = page) => {
     setLoading(true);
@@ -242,7 +251,7 @@ export default function AdminUsers() {
             </div>
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Role" />
+                 <SelectValue placeholder="Role" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
@@ -251,6 +260,7 @@ export default function AdminUsers() {
                 ))}
               </SelectContent>
             </Select>
+            <ResetFiltersButton onClick={resetFilters} disabled={!hasFiltersApplied} />
           </div>
         </CardHeader>
         <CardContent>
