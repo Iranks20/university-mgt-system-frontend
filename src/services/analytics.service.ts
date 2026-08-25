@@ -1,12 +1,18 @@
 import api from '@/lib/api';
 
 export const analyticsService = {
-  getLecturerPerformance: async (lecturerId?: string, startDate?: string, endDate?: string) => {
+  getLecturerPerformance: async (
+    lecturerId?: string,
+    startDate?: string,
+    endDate?: string,
+    academicTermId?: string
+  ) => {
     try {
       const params: Record<string, string> = {};
       if (lecturerId) params.lecturerId = lecturerId;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
+      if (academicTermId) params.academicTermId = academicTermId;
       return await api.get('/analytics/lecturer-performance', params);
     } catch (error) {
       console.error('Error fetching lecturer performance:', error);
@@ -14,12 +20,18 @@ export const analyticsService = {
     }
   },
 
-  getStudentPerformance: async (studentId?: string, startDate?: string, endDate?: string) => {
+  getStudentPerformance: async (
+    studentId?: string,
+    startDate?: string,
+    endDate?: string,
+    academicTermId?: string
+  ) => {
     try {
       const params: Record<string, string> = {};
       if (studentId) params.studentId = studentId;
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
+      if (academicTermId) params.academicTermId = academicTermId;
       return await api.get('/analytics/student-performance', params);
     } catch (error) {
       console.error('Error fetching student performance:', error);

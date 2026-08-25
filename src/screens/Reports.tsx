@@ -40,6 +40,7 @@ import {
   TERM_FILTER_ACTIVE,
   type AcademicTermFilterValue,
 } from '@/components/AcademicTermFilter';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const REPORT_TABLE_PAGE_SIZE = 20;
@@ -489,6 +490,7 @@ export default function Reports() {
     if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
     if (attendDateFrom) params.startDate = attendDateFrom;
     if (attendDateTo) params.endDate = attendDateTo;
+    Object.assign(params, termScopeQueryParam(attendTermId));
     return params;
   }, [
     attendSelectedSchool,
@@ -500,6 +502,7 @@ export default function Reports() {
     attendSelectedSemester,
     attendDateFrom,
     attendDateTo,
+    attendTermId,
   ]);
 
   const canLoadClassAttendReport =

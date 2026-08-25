@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
   MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff
+  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,8 @@ import { getApiErrorMessage } from '@/lib/api';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
 import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   AcademicTermFilter,
   TERM_FILTER_ACTIVE,
@@ -644,7 +646,7 @@ function StudentsTab({
                 <SelectItem value="__held_back__">Held back</SelectItem>
                 <SelectItem value="Inactive">Inactive</SelectItem>
                 <SelectItem value="Suspended">Suspended</SelectItem>
-                <SelectItem value="Graduated">Graduated</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
@@ -722,7 +724,7 @@ function StudentsTab({
                   <SelectItem value="__held_back__">Held back</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
                   <SelectItem value="Suspended">Suspended</SelectItem>
-                  <SelectItem value="Graduated">Graduated</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
@@ -7864,6 +7866,14 @@ function UsersTab() {
 function AcademicCalendarTab() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState<{
+    hasActiveTerm: boolean;
+    activeTerm: { id: string; name: string } | null;
+    unscopedActiveClassCount: number;
+    activeClassCount: number;
+    activeStudentCount: number;
+  } | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
@@ -7871,6 +7881,10 @@ function AcademicCalendarTab() {
 
   useEffect(() => {
     loadEvents();
+    academicService
+      .getRolloverReadiness()
+      .then(setReadiness)
+      .catch(() => setReadiness(null));
   }, []);
 
   const loadEvents = async () => {
@@ -7939,14 +7953,52 @@ function AcademicCalendarTab() {
 
   return (
     <div className="space-y-4">
+      {!readiness?.hasActiveTerm ? (
+        <Alert variant="destructive" className="border-amber-300 bg-amber-50 text-amber-950 [&>svg]:text-amber-700">
+          <AlertCircle />
+          <AlertTitle>No Active academic term</AlertTitle>
+          <AlertDescription className="text-amber-900">
+            Timetable Builder, promote, and register are blocked until a term is active. Open the{' '}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => {
+                const el = document.querySelector('[data-value="terms"]') as HTMLElement | null;
+                el?.click();
+              }}
+            >
+              Terms
+            </button>{' '}
+            tab to create or activate one.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {readiness && readiness.unscopedActiveClassCount > 0 ? (
+        <Alert className="border-amber-300 bg-amber-50/80 text-amber-950">
+          <AlertCircle className="text-amber-700" />
+          <AlertTitle>Unscoped active classes</AlertTitle>
+          <AlertDescription>
+            {readiness.unscopedActiveClassCount} active class(es) are not tied to a term. Attach them
+            from the{' '}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => {
+                const el = document.querySelector('[data-value="terms"]') as HTMLElement | null;
+                el?.click();
+              }}
+            >
+              Terms
+            </button>{' '}
+            tab (Attach legacy) before closing the semester.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <Tabs defaultValue="terms" className="w-full">
         <TabsList className="bg-gray-100 h-auto w-full max-w-full flex flex-wrap items-center justify-start gap-1 p-1 [&_[data-slot=tabs-trigger]]:h-8 [&_[data-slot=tabs-trigger]]:shrink-0 [&_[data-slot=tabs-trigger]]:flex-none">
-          <TabsTrigger value="terms">Terms</TabsTrigger>
-          <TabsTrigger value="rollover">Rollover</TabsTrigger>
-          <TabsTrigger value="offerings">Offerings</TabsTrigger>
-          <TabsTrigger value="promote">Promote</TabsTrigger>
-          <TabsTrigger value="repair">Repair cohort</TabsTrigger>
-          <TabsTrigger value="register">Register</TabsTrigger>
+          <TabsTrigger value="terms" data-value="terms">Terms</TabsTrigger>
+          <TabsTrigger value="rollover">Semester rollover</TabsTrigger>
           <TabsTrigger value="events">Events</TabsTrigger>
         </TabsList>
 
@@ -7954,28 +8006,28 @@ function AcademicCalendarTab() {
           <AcademicTermsPanel />
         </TabsContent>
 
-        <TabsContent value="rollover" className="mt-4">
+        <TabsContent value="rollover" className="mt-4 space-y-4">
           <AcademicRolloverWizard
             onCompleted={() => {
               window.dispatchEvent(new Event('academic-terms-updated'));
+              academicService.getRolloverReadiness().then(setReadiness).catch(() => setReadiness(null));
             }}
           />
-        </TabsContent>
-
-        <TabsContent value="offerings" className="mt-4">
-          <AcademicRolloverPanel sections={['offerings']} />
-        </TabsContent>
-
-        <TabsContent value="promote" className="mt-4">
-          <AcademicRolloverPanel sections={['promote']} />
-        </TabsContent>
-
-        <TabsContent value="repair" className="mt-4">
-          <AcademicRolloverPanel sections={['repair']} />
-        </TabsContent>
-
-        <TabsContent value="register" className="mt-4">
-          <AcademicRolloverPanel sections={['register']} />
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full justify-between">
+                Manual / repair steps (advanced)
+                <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Use the wizard above for normal semester transitions. These panels are for repair,
+                partial runs, or cohort standing fixes only.
+              </p>
+              <AcademicRolloverPanel sections={['offerings', 'promote', 'repair', 'register']} />
+            </CollapsibleContent>
+          </Collapsible>
         </TabsContent>
 
         <TabsContent value="events" className="mt-4 space-y-4">
