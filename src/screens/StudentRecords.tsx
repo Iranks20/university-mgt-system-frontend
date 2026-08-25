@@ -35,6 +35,8 @@ import type { Student } from '@/types';
 import { toast } from 'sonner';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { AcademicTermArchivedBanner } from '@/components/AcademicTermArchivedBanner';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 interface EnrollmentClassOption {
   enrollmentId: string;
@@ -72,8 +74,10 @@ export default function StudentRecords() {
   const [searchParams] = useSearchParams();
   const {
     termFilter,
+    academicTermId,
     termStartDate,
     onTermChange,
+    applyTermDatesTo,
   } = useAcademicTermFilterState();
   const defaultTab = role === 'QA' ? 'coverage' : 'log';
   const [activeTab, setActiveTab] = useState<'log' | 'coverage' | 'daily-bulk'>(() =>
@@ -222,8 +226,9 @@ export default function StudentRecords() {
     if (dateTo) params.endDate = dateTo;
     if (statusFilter !== 'All') params.status = statusFilter;
     if (searchTerm.trim()) params.search = searchTerm.trim();
+    Object.assign(params, termScopeQueryParam(academicTermId));
     return params;
-  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm]);
+  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm, academicTermId]);
 
   const buildFilterParams = useCallback((opts?: { limit?: number; page?: number }) => {
     return {

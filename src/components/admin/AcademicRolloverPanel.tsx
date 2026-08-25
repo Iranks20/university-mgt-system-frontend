@@ -4,7 +4,6 @@ import {
   academicService,
   type AcademicTerm,
   type GenerateClassListsResult,
-  type HoldbackGroupPayload,
   type PromoteStudentsResult,
   type ReassignCohortStandingResult,
   type RegisterStudentsResult,
@@ -24,19 +23,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AcademicRolloverPromoteForm } from '@/components/admin/AcademicRolloverPromoteForm';
+import {
+  DEFAULT_CLASS_LIST_MODE,
+  DEFAULT_PANEL_REGISTRATION_POLICY,
+  SELECT_UNSET,
+  fromOptionalSelectValue,
+  hasOptionalSelectValue,
+  toOptionalSelectValue,
+} from '@/lib/academic-rollover-defaults';
+import { useAcademicRolloverPromoteState, PROMOTE_ALL } from '@/lib/academic-rollover-promote';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 
 type RolloverSection = 'offerings' | 'promote' | 'register' | 'repair';
-
-function parseHoldbackIds(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(/[\s,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-    ),
-  ];
-}
 
 function PromoteSummary({ result }: { result: PromoteStudentsResult }) {
   const scopeParts = [
@@ -67,6 +66,11 @@ function PromoteSummary({ result }: { result: PromoteStudentsResult }) {
         ) : null}
       </p>
       <p>Completed (end of program): {result.completedCandidates}</p>
+      {result.skippedAlreadyPromoted > 0 ? (
+        <p className="text-amber-800">
+          Already promoted this term: <strong>{result.skippedAlreadyPromoted}</strong>
+        </p>
+      ) : null}
       {result.skippedNoProgram > 0 ? <p>Skipped (no program): {result.skippedNoProgram}</p> : null}
       {result.samples.holdback.length > 0 ? (
         <ul className="mt-2 text-amber-900/80 list-disc pl-4 max-h-28 overflow-auto">
@@ -238,31 +242,21 @@ export function AcademicRolloverPanel({
   const multi = sections.length > 1;
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
   const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
-  const [promoteProgramId, setPromoteProgramId] = useState<string>('__all__');
-  const [promoteYear, setPromoteYear] = useState<string>('__all__');
-  const [promoteSemester, setPromoteSemester] = useState<string>('__all__');
-  const [holdbackRaw, setHoldbackRaw] = useState('');
-  const [holdbackGroups, setHoldbackGroups] = useState<HoldbackGroupPayload[]>([]);
-  const [groupProgramId, setGroupProgramId] = useState<string>('');
-  const [groupYear, setGroupYear] = useState<string>('2');
-  const [groupSemester, setGroupSemester] = useState<string>('1');
-  const [groupReason, setGroupReason] = useState('');
+  const promote = useAcademicRolloverPromoteState();
   const [promotePreview, setPromotePreview] = useState<PromoteStudentsResult | null>(null);
   const [promoteBusy, setPromoteBusy] = useState(false);
-  const [classMode, setClassMode] = useState<'clone-from-term' | 'from-curriculum'>(
-    'clone-from-term'
-  );
+  const [classMode, setClassMode] = useState(DEFAULT_CLASS_LIST_MODE);
   const [sourceTermId, setSourceTermId] = useState<string>('');
   const [classPreview, setClassPreview] = useState<GenerateClassListsResult | null>(null);
   const [classBusy, setClassBusy] = useState(false);
-  const [regPolicy, setRegPolicy] = useState<'auto' | 'hybrid' | 'self'>('auto');
+  const [regPolicy, setRegPolicy] = useState(DEFAULT_PANEL_REGISTRATION_POLICY);
   const [regPreview, setRegPreview] = useState<RegisterStudentsResult | null>(null);
   const [regBusy, setRegBusy] = useState(false);
   const [repairProgramId, setRepairProgramId] = useState('');
-  const [repairSourceYear, setRepairSourceYear] = useState('3');
-  const [repairSourceSemester, setRepairSourceSemester] = useState('1');
-  const [repairTargetYear, setRepairTargetYear] = useState('1');
-  const [repairTargetSemester, setRepairTargetSemester] = useState('2');
+  const [repairSourceYear, setRepairSourceYear] = useState('');
+  const [repairSourceSemester, setRepairSourceSemester] = useState('');
+  const [repairTargetYear, setRepairTargetYear] = useState('');
+  const [repairTargetSemester, setRepairTargetSemester] = useState('');
   const [repairPreview, setRepairPreview] = useState<ReassignCohortStandingResult | null>(null);
   const [repairBusy, setRepairBusy] = useState(false);
   const [repairIncludeCompleted, setRepairIncludeCompleted] = useState(true);
@@ -272,8 +266,6 @@ export function AcademicRolloverPanel({
       .getAcademicTerms()
       .then((rows) => {
         setTerms(rows);
-        const closed = rows.find((t) => t.status === 'Closed');
-        if (closed) setSourceTermId(closed.id);
       })
       .catch(() => setTerms([]));
     academicService
@@ -294,40 +286,7 @@ export function AcademicRolloverPanel({
   const closedTerms = terms.filter((t) => t.status === 'Closed');
   const hasActive = terms.some((t) => t.status === 'Active');
 
-  const promotePayload = () => ({
-    holdbackStudentIds: parseHoldbackIds(holdbackRaw),
-    holdbackGroups,
-    ...(promoteProgramId !== '__all__' ? { programId: promoteProgramId } : {}),
-    ...(promoteYear !== '__all__' ? { year: Number(promoteYear) } : {}),
-    ...(promoteSemester !== '__all__' ? { semester: Number(promoteSemester) } : {}),
-  });
-
-  const addHoldbackGroup = () => {
-    if (!groupProgramId) {
-      toast.error('Select a program for the holdback group');
-      return;
-    }
-    const reason = groupReason.trim();
-    if (reason.length < 3) {
-      toast.error('Enter a holdback reason (at least 3 characters)');
-      return;
-    }
-    const year = Number(groupYear);
-    const semester = Number(groupSemester);
-    const exists = holdbackGroups.some(
-      (g) => g.programId === groupProgramId && g.year === year && g.semester === semester
-    );
-    if (exists) {
-      toast.error('That program / year / semester is already in the holdback list');
-      return;
-    }
-    setHoldbackGroups((prev) => [
-      ...prev,
-      { programId: groupProgramId, year, semester, reason },
-    ]);
-    setGroupReason('');
-    setPromotePreview(null);
-  };
+  const promotePayload = () => promote.buildPayload();
 
   const runPromotePreview = async () => {
     setPromoteBusy(true);
@@ -348,13 +307,13 @@ export function AcademicRolloverPanel({
       return;
     }
     const scopeLabel = [
-      promoteProgramId !== '__all__'
-        ? programs.find((p) => p.id === promoteProgramId)?.code ||
-          programs.find((p) => p.id === promoteProgramId)?.name ||
+      promote.promoteProgramId !== PROMOTE_ALL
+        ? programs.find((p) => p.id === promote.promoteProgramId)?.code ||
+          programs.find((p) => p.id === promote.promoteProgramId)?.name ||
           'program'
         : 'all programs',
-      promoteYear !== '__all__' ? `Y${promoteYear}` : null,
-      promoteSemester !== '__all__' ? `S${promoteSemester}` : null,
+      promote.promoteYear !== PROMOTE_ALL ? `Y${promote.promoteYear}` : null,
+      promote.promoteSemester !== PROMOTE_ALL ? `S${promote.promoteSemester}` : null,
     ]
       .filter(Boolean)
       .join(' · ');
@@ -481,6 +440,10 @@ export function AcademicRolloverPanel({
       toast.error('Select a program');
       return;
     }
+    if (!repairSourceYear || !repairSourceSemester || !repairTargetYear || !repairTargetSemester) {
+      toast.error('Select source and target year and semester');
+      return;
+    }
     setRepairBusy(true);
     try {
       const data = await academicService.previewReassignCohortStanding(repairPayload());
@@ -529,6 +492,24 @@ export function AcademicRolloverPanel({
     }
   };
 
+  const resetRepairForm = () => {
+    setRepairProgramId('');
+    setRepairSourceYear('');
+    setRepairSourceSemester('');
+    setRepairTargetYear('');
+    setRepairTargetSemester('');
+    setRepairIncludeCompleted(true);
+    setRepairPreview(null);
+  };
+
+  const resetPromoteScope = () => {
+    promote.setPromoteProgramId(PROMOTE_ALL);
+    promote.setPromoteYear(PROMOTE_ALL);
+    promote.setPromoteSemester(PROMOTE_ALL);
+    promote.setHoldbackRaw('');
+    setPromotePreview(null);
+  };
+
   return (
     <div className={multi ? 'grid gap-6 lg:grid-cols-3' : 'max-w-xl'}>
       {showOfferings ? (
@@ -561,11 +542,18 @@ export function AcademicRolloverPanel({
           {classMode === 'clone-from-term' ? (
             <div>
               <Label>Source term</Label>
-              <Select value={sourceTermId || undefined} onValueChange={setSourceTermId}>
+              <Select
+                value={toOptionalSelectValue(sourceTermId)}
+                onValueChange={(v) => {
+                  setSourceTermId(fromOptionalSelectValue(v));
+                  setClassPreview(null);
+                }}
+              >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Latest closed (auto)" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={SELECT_UNSET}>Latest closed (auto)</SelectItem>
                   {closedTerms.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
@@ -602,180 +590,44 @@ export function AcademicRolloverPanel({
           {!hasActive ? (
             <p className="text-sm text-amber-700">Activate an academic term before promoting.</p>
           ) : null}
-          <div>
-            <LabelWithInfo info="Leave All to promote every Active student, or pick a program to limit the run.">
-              Program
-            </LabelWithInfo>
-            <Select
-              value={promoteProgramId}
-              onValueChange={(v) => {
-                setPromoteProgramId(v);
-                setPromotePreview(null);
-              }}
-            >
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="All programs" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All programs</SelectItem>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code ? `${p.name} (${p.code})` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <LabelWithInfo info="Optional filter. With semester, promotes one cohort group (e.g. Year 2 Sem 1).">
-                Year
-              </LabelWithInfo>
-              <Select
-                value={promoteYear}
-                onValueChange={(v) => {
-                  setPromoteYear(v);
-                  setPromotePreview(null);
-                }}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="All years" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All years</SelectItem>
-                  {[1, 2, 3, 4, 5, 6].map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      Year {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <LabelWithInfo info="Optional filter. Sem 1 students move to Sem 2; Sem 2 students move to next year Sem 1.">
-                Semester
-              </LabelWithInfo>
-              <Select
-                value={promoteSemester}
-                onValueChange={(v) => {
-                  setPromoteSemester(v);
-                  setPromotePreview(null);
-                }}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="All semesters" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All semesters</SelectItem>
-                  <SelectItem value="1">Semester 1</SelectItem>
-                  <SelectItem value="2">Semester 2</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="rounded-md border p-3 space-y-2">
-            <LabelWithInfo info="Hold an entire cohort (e.g. BCFCI Year 2 Sem 1 on internship) while other students promote. Status stays Active; reason is stored on each student as Held back standing.">
-              Hold back cohort
-            </LabelWithInfo>
-            <Select value={groupProgramId || undefined} onValueChange={setGroupProgramId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Program" />
-              </SelectTrigger>
-              <SelectContent>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code ? `${p.name} (${p.code})` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="grid grid-cols-2 gap-2">
-              <Select value={groupYear} onValueChange={setGroupYear}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5, 6].map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      Year {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={groupSemester} onValueChange={setGroupSemester}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semester" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Semester 1</SelectItem>
-                  <SelectItem value="2">Semester 2</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Input
-              placeholder="Reason (e.g. Clinical internship)"
-              value={groupReason}
-              onChange={(e) => setGroupReason(e.target.value)}
-            />
-            <Button type="button" variant="outline" size="sm" onClick={addHoldbackGroup}>
-              Add cohort holdback
-            </Button>
-            {holdbackGroups.length > 0 ? (
-              <ul className="space-y-1 text-xs">
-                {holdbackGroups.map((g) => {
-                  const prog = programs.find((p) => p.id === g.programId);
-                  const label = prog?.code || prog?.name || g.programId.slice(0, 8);
-                  return (
-                    <li
-                      key={`${g.programId}-${g.year}-${g.semester}`}
-                      className="flex items-start justify-between gap-2 rounded border bg-amber-50/50 px-2 py-1"
-                    >
-                      <span>
-                        {label} Y{g.year}.S{g.semester} — {g.reason}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-destructive shrink-0"
-                        onClick={() => {
-                          setHoldbackGroups((prev) =>
-                            prev.filter(
-                              (x) =>
-                                !(
-                                  x.programId === g.programId &&
-                                  x.year === g.year &&
-                                  x.semester === g.semester
-                                )
-                            )
-                          );
-                          setPromotePreview(null);
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
-          <div>
-            <LabelWithInfo
-              htmlFor="holdbacks"
-              info="Optional individual holdbacks by student UUID. Cohort holdbacks above are preferred for whole year/sem groups."
-            >
-              Individual holdbacks
-            </LabelWithInfo>
-            <Textarea
-              id="holdbacks"
-              className="mt-1 font-mono text-xs"
-              rows={3}
-              placeholder="Paste student UUIDs, one per line"
-              value={holdbackRaw}
-              onChange={(e) => setHoldbackRaw(e.target.value)}
-            />
-          </div>
+          <AcademicRolloverPromoteForm
+            programs={programs}
+            promoteProgramId={promote.promoteProgramId}
+            onPromoteProgramIdChange={promote.setPromoteProgramId}
+            promoteYear={promote.promoteYear}
+            onPromoteYearChange={promote.setPromoteYear}
+            promoteSemester={promote.promoteSemester}
+            onPromoteSemesterChange={promote.setPromoteSemester}
+            holdbackGroups={promote.holdbackGroups}
+            onRemoveHoldbackGroup={(g) => promote.removeHoldbackGroup(g, () => setPromotePreview(null))}
+            holdbackRaw={promote.holdbackRaw}
+            onHoldbackRawChange={promote.setHoldbackRaw}
+            groupProgramId={promote.groupProgramId}
+            onGroupProgramIdChange={promote.setGroupProgramId}
+            groupYear={promote.groupYear}
+            onGroupYearChange={promote.setGroupYear}
+            groupSemester={promote.groupSemester}
+            onGroupSemesterChange={promote.setGroupSemester}
+            groupReason={promote.groupReason}
+            onGroupReasonChange={promote.setGroupReason}
+            onAddHoldbackGroup={() => promote.addHoldbackGroup(programs, () => setPromotePreview(null))}
+            onResetHoldbackDraft={promote.resetHoldbackGroupDraft}
+            holdbackTextareaId="holdbacks"
+            onScopeChange={() => setPromotePreview(null)}
+          />
           {promotePreview ? <PromoteSummary result={promotePreview} /> : null}
           <div className="flex flex-wrap gap-2">
+            <ResetFiltersButton
+              label="Reset scope"
+              className="h-9"
+              disabled={
+                promote.promoteProgramId === PROMOTE_ALL &&
+                promote.promoteYear === PROMOTE_ALL &&
+                promote.promoteSemester === PROMOTE_ALL &&
+                !promote.holdbackRaw.trim()
+              }
+              onClick={resetPromoteScope}
+            />
             <Button variant="outline" disabled={promoteBusy || !hasActive} onClick={runPromotePreview}>
               Preview
             </Button>
@@ -856,9 +708,9 @@ export function AcademicRolloverPanel({
               Program
             </LabelWithInfo>
             <Select
-              value={repairProgramId || undefined}
+              value={toOptionalSelectValue(repairProgramId)}
               onValueChange={(v) => {
-                setRepairProgramId(v);
+                setRepairProgramId(fromOptionalSelectValue(v));
                 setRepairPreview(null);
               }}
             >
@@ -866,6 +718,7 @@ export function AcademicRolloverPanel({
                 <SelectValue placeholder="Select program" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={SELECT_UNSET}>Select program</SelectItem>
                 {programs.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.code ? `${p.name} (${p.code})` : p.name}
@@ -880,16 +733,17 @@ export function AcademicRolloverPanel({
               <div>
                 <Label>Year</Label>
                 <Select
-                  value={repairSourceYear}
+                  value={toOptionalSelectValue(repairSourceYear)}
                   onValueChange={(v) => {
-                    setRepairSourceYear(v);
+                    setRepairSourceYear(fromOptionalSelectValue(v));
                     setRepairPreview(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
                     {[1, 2, 3, 4, 5, 6].map((y) => (
                       <SelectItem key={y} value={String(y)}>
                         Year {y}
@@ -901,16 +755,17 @@ export function AcademicRolloverPanel({
               <div>
                 <Label>Semester</Label>
                 <Select
-                  value={repairSourceSemester}
+                  value={toOptionalSelectValue(repairSourceSemester)}
                   onValueChange={(v) => {
-                    setRepairSourceSemester(v);
+                    setRepairSourceSemester(fromOptionalSelectValue(v));
                     setRepairPreview(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select semester" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
                     <SelectItem value="1">Semester 1</SelectItem>
                     <SelectItem value="2">Semester 2</SelectItem>
                   </SelectContent>
@@ -928,16 +783,17 @@ export function AcademicRolloverPanel({
               <div>
                 <Label>Year</Label>
                 <Select
-                  value={repairTargetYear}
+                  value={toOptionalSelectValue(repairTargetYear)}
                   onValueChange={(v) => {
-                    setRepairTargetYear(v);
+                    setRepairTargetYear(fromOptionalSelectValue(v));
                     setRepairPreview(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
                     {[1, 2, 3, 4, 5, 6].map((y) => (
                       <SelectItem key={y} value={String(y)}>
                         Year {y}
@@ -949,16 +805,17 @@ export function AcademicRolloverPanel({
               <div>
                 <Label>Semester</Label>
                 <Select
-                  value={repairTargetSemester}
+                  value={toOptionalSelectValue(repairTargetSemester)}
                   onValueChange={(v) => {
-                    setRepairTargetSemester(v);
+                    setRepairTargetSemester(fromOptionalSelectValue(v));
                     setRepairPreview(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select semester" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
                     <SelectItem value="1">Semester 1</SelectItem>
                     <SelectItem value="2">Semester 2</SelectItem>
                   </SelectContent>
@@ -984,6 +841,19 @@ export function AcademicRolloverPanel({
           </div>
           {repairPreview ? <RepairCohortSummary result={repairPreview} /> : null}
           <div className="flex flex-wrap gap-2">
+            <ResetFiltersButton
+              label="Reset form"
+              className="h-9"
+              disabled={
+                !hasOptionalSelectValue(repairProgramId) &&
+                !hasOptionalSelectValue(repairSourceYear) &&
+                !hasOptionalSelectValue(repairSourceSemester) &&
+                !hasOptionalSelectValue(repairTargetYear) &&
+                !hasOptionalSelectValue(repairTargetSemester) &&
+                repairIncludeCompleted
+              }
+              onClick={resetRepairForm}
+            />
             <Button
               variant="outline"
               disabled={repairBusy || !repairProgramId}

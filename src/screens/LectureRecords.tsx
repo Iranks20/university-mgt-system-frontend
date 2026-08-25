@@ -52,6 +52,8 @@ import {
   type DeliveryMode,
 } from '@/lib/delivery-mode';
 import { AcademicTermFilter, TERM_FILTER_ACTIVE } from '@/components/AcademicTermFilter';
+import { AcademicTermArchivedBanner } from '@/components/AcademicTermArchivedBanner';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
@@ -490,6 +492,7 @@ export default function LectureRecords() {
     if (statusFilter !== 'All') filter.checkInStatus = statusFilter;
     if (dateFrom) filter.startDate = dateFrom;
     if (dateTo) filter.endDate = dateTo;
+    Object.assign(filter, termScopeQueryParam(academicTermId));
     return filter;
   };
 

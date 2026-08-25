@@ -37,7 +37,10 @@ export type PromoteStudentsResult = {
   heldBackIndividual?: number;
   completedCandidates: number;
   skippedNoProgram: number;
+  skippedAlreadyPromoted: number;
+  skippedWrongCohort?: number;
   promoted: number;
+  activeTermId?: string;
   errors: string[];
   samples: {
     promote: Array<{ id: string; studentNumber: string; from: string; to: string }>;
@@ -49,6 +52,7 @@ export type PromoteStudentsResult = {
       source?: 'existing' | 'group' | 'individual';
     }>;
     completed: Array<{ id: string; studentNumber: string; at: string }>;
+    skippedAlreadyPromoted?: Array<{ id: string; studentNumber: string; at: string }>;
   };
 };
 
@@ -759,6 +763,34 @@ export const academicService = {
     if (!response) return null;
     if (typeof response === 'object' && 'data' in response) return response.data ?? null;
     return response as AcademicTerm;
+  },
+
+  getRolloverReadiness: async (): Promise<{
+    hasActiveTerm: boolean;
+    activeTerm: AcademicTerm | null;
+    unscopedActiveClassCount: number;
+    activeClassCount: number;
+    activeStudentCount: number;
+  }> => {
+    const response = await api.get<
+      | {
+          data: {
+            hasActiveTerm: boolean;
+            activeTerm: AcademicTerm | null;
+            unscopedActiveClassCount: number;
+            activeClassCount: number;
+            activeStudentCount: number;
+          };
+        }
+      | {
+          hasActiveTerm: boolean;
+          activeTerm: AcademicTerm | null;
+          unscopedActiveClassCount: number;
+          activeClassCount: number;
+          activeStudentCount: number;
+        }
+    >('/academic/terms/rollover-readiness');
+    return (response as any)?.data ?? response;
   },
 
   createAcademicTerm: async (payload: {
