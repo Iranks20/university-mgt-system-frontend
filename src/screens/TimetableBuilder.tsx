@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Combobox } from '@/components/ui/combobox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { TimeInput12h } from '@/components/ui/time-input-12h';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -759,10 +760,18 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[110px]" type="time" disabled={isShared} value={d?.startTime ?? ''} onChange={e => updateDraft(c.id, { startTime: e.target.value })} />
+                          <TimeInput12h
+                            disabled={isShared}
+                            value={d?.startTime ?? ''}
+                            onChange={(v) => updateDraft(c.id, { startTime: v })}
+                          />
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[110px]" type="time" disabled={isShared} value={d?.endTime ?? ''} onChange={e => updateDraft(c.id, { endTime: e.target.value })} />
+                          <TimeInput12h
+                            disabled={isShared}
+                            value={d?.endTime ?? ''}
+                            onChange={(v) => updateDraft(c.id, { endTime: v })}
+                          />
                         </TableCell>
                         <TableCell>
                           <Input className="w-[90px]" disabled={isShared} value={d?.capacity ?? ''} onChange={e => updateDraft(c.id, { capacity: e.target.value })} />
