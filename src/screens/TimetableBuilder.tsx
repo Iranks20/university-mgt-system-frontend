@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Loader2, Plus, Save } from 'lucide-react';
+import { Copy, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService } from '@/services/academic.service';
 import { staffService } from '@/services/staff.service';
@@ -28,7 +28,23 @@ type CourseLite = { id: string; code: string; name: string; source?: 'program' |
 type VenueLite = { id: string; name: string };
 type LecturerLite = { id: string; name: string };
 
+type ClassScopeEntry = {
+  classId: string;
+  className: string;
+  lecturerId: string | null;
+  venueId: string | null;
+  deliveryMode: string;
+  meetingUrl: string | null;
+  dayOfWeek: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  capacity: number;
+  isSharedSchedule: boolean;
+  cohortProgramIntakeIds: string[];
+};
+
 type DraftRow = {
+  localId: string;
   courseId: string;
   className: string;
   lecturerId: string;
@@ -42,6 +58,68 @@ type DraftRow = {
   existingClassId?: string;
   isSharedSchedule?: boolean;
 };
+
+function normalizeClassesByCourse(
+  raw: Record<string, ClassScopeEntry | ClassScopeEntry[] | undefined>
+): Record<string, ClassScopeEntry[]> {
+  const out: Record<string, ClassScopeEntry[]> = {};
+  for (const [courseId, value] of Object.entries(raw)) {
+    if (!value) continue;
+    out[courseId] = Array.isArray(value) ? value : [value];
+  }
+  return out;
+}
+
+function scopeEntryToDraft(courseId: string, existing: ClassScopeEntry, groupName: string): DraftRow {
+  return {
+    localId: existing.classId,
+    courseId,
+    className: existing.className ?? groupName,
+    lecturerId: existing.lecturerId ?? '',
+    venueId: existing.venueId ?? '',
+    deliveryMode: (existing.deliveryMode as DeliveryMode) ?? 'InPerson',
+    meetingUrl: existing.meetingUrl ?? '',
+    dayOfWeek: existing.dayOfWeek != null ? String(existing.dayOfWeek) : '',
+    startTime: existing.startTime ?? '',
+    endTime: existing.endTime ?? '',
+    capacity: existing.capacity != null ? String(existing.capacity) : '50',
+    existingClassId: existing.classId,
+    isSharedSchedule: existing.isSharedSchedule ?? false,
+  };
+}
+
+function emptyDraft(courseId: string, groupName: string): DraftRow {
+  return {
+    localId: `new-${courseId}-${Math.random().toString(36).slice(2, 9)}`,
+    courseId,
+    className: groupName,
+    lecturerId: '',
+    venueId: '',
+    deliveryMode: 'InPerson',
+    meetingUrl: '',
+    dayOfWeek: '',
+    startTime: '',
+    endTime: '',
+    capacity: '50',
+  };
+}
+
+function classListItemToScopeEntry(cls: any): ClassScopeEntry {
+  return {
+    classId: cls.id,
+    className: cls.name,
+    lecturerId: cls.lecturerId ?? null,
+    venueId: cls.venueId ?? null,
+    deliveryMode: cls.deliveryMode ?? 'InPerson',
+    meetingUrl: cls.meetingUrl ?? null,
+    dayOfWeek: cls.dayOfWeek ?? null,
+    startTime: cls.startTime ?? null,
+    endTime: cls.endTime ?? null,
+    capacity: cls.capacity ?? 50,
+    isSharedSchedule: Array.isArray(cls.cohortProgramIntakeIds) && cls.cohortProgramIntakeIds.length > 1,
+    cohortProgramIntakeIds: cls.cohortProgramIntakeIds ?? [],
+  };
+}
 
 const INTAKES: { value: IntakeType; label: string }[] = [
   { value: 'Day', label: 'Day' },
@@ -87,7 +165,7 @@ export default function TimetableBuilder() {
   const [lecturers, setLecturers] = useState<LecturerLite[]>([]);
   const [refsLoading, setRefsLoading] = useState(true);
 
-  const [drafts, setDrafts] = useState<Record<string, DraftRow>>({});
+  const [draftsByCourse, setDraftsByCourse] = useState<Record<string, DraftRow[]>>({});
   const [creatingAll, setCreatingAll] = useState(false);
   const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
   const [activeTermId, setActiveTermId] = useState<string | null>(null);
@@ -205,6 +283,13 @@ export default function TimetableBuilder() {
     loadRefs();
   }, []);
 
+  const defaultGroupName = useMemo(() => {
+    if (selectedProgram?.code) {
+      return `${selectedProgram.code} Y${year}S${semester} ${intakeType}`;
+    }
+    return `Y${year}S${semester} ${intakeType}`;
+  }, [selectedProgram?.code, year, semester, intakeType]);
+
   const ensureIntakeAndLoadCourses = async () => {
     if (!programId) {
       toast.error('Select a program first');
@@ -218,7 +303,7 @@ export default function TimetableBuilder() {
 
       if (!intakeId) {
         setCourses([]);
-        setDrafts({});
+        setDraftsByCourse({});
         return;
       }
 
@@ -232,63 +317,41 @@ export default function TimetableBuilder() {
       setCourses(mapped);
       if (mapped.length === 0) {
         toast.info('No courses found for this program/year/semester. Add courses first in Admin Schools.');
-        setDrafts({});
+        setDraftsByCourse({});
         return;
       }
 
-      const groupName =
-        selectedProgram?.code
-          ? `${selectedProgram.code} Y${year}S${semester} ${intakeType}`
-          : `Y${year}S${semester} ${intakeType}`;
+      const groupName = defaultGroupName;
 
-      let classesByCourseId = scope?.classesByCourseId ?? {};
+      let classesByCourseId = normalizeClassesByCourse(scope?.classesByCourseId ?? {});
       if (termFilter !== TERM_FILTER_ACTIVE) {
         const classList = await fetchAllClassesForIntake(intakeId);
-        const fromClasses: Record<string, any> = {};
+        const fromClasses: Record<string, ClassScopeEntry[]> = {};
         for (const cls of classList) {
           const courseId = cls.courseId || cls.course?.id;
-          if (!courseId || fromClasses[courseId]) continue;
-          fromClasses[courseId] = {
-            classId: cls.id,
-            className: cls.name,
-            lecturerId: cls.lecturerId ?? null,
-            venueId: cls.venueId ?? null,
-            deliveryMode: cls.deliveryMode ?? 'InPerson',
-            meetingUrl: cls.meetingUrl ?? null,
-            dayOfWeek: cls.dayOfWeek ?? null,
-            startTime: cls.startTime ?? null,
-            endTime: cls.endTime ?? null,
-            capacity: cls.capacity ?? 50,
-            isSharedSchedule: Array.isArray(cls.cohortProgramIntakeIds) && cls.cohortProgramIntakeIds.length > 1,
-            cohortProgramIntakeIds: cls.cohortProgramIntakeIds ?? [],
-          };
+          if (!courseId) continue;
+          if (!fromClasses[courseId]) fromClasses[courseId] = [];
+          fromClasses[courseId].push(classListItemToScopeEntry(cls));
         }
         classesByCourseId = fromClasses;
       }
 
-      const nextDrafts: Record<string, DraftRow> = {};
+      const nextDrafts: Record<string, DraftRow[]> = {};
       for (const c of mapped) {
-        const existing = classesByCourseId[c.id];
-        const base: DraftRow = {
-          courseId: c.id,
-          className: existing?.className ?? groupName,
-          lecturerId: existing?.lecturerId ?? '',
-          venueId: existing?.venueId ?? '',
-          deliveryMode: (existing?.deliveryMode as DeliveryMode) ?? 'InPerson',
-          meetingUrl: existing?.meetingUrl ?? '',
-          dayOfWeek: existing?.dayOfWeek != null ? String(existing.dayOfWeek) : '',
-          startTime: existing?.startTime ?? '',
-          endTime: existing?.endTime ?? '',
-          capacity: existing?.capacity != null ? String(existing.capacity) : '50',
-          existingClassId: existing?.classId,
-          isSharedSchedule: existing?.isSharedSchedule ?? false,
-        };
-        nextDrafts[c.id] =
-          termFilter === TERM_FILTER_ACTIVE && drafts[c.id] && !existing
-            ? drafts[c.id]
-            : base;
+        const existingList = classesByCourseId[c.id] ?? [];
+        if (
+          termFilter === TERM_FILTER_ACTIVE &&
+          (draftsByCourse[c.id]?.length ?? 0) > 0 &&
+          existingList.length === 0
+        ) {
+          nextDrafts[c.id] = draftsByCourse[c.id];
+        } else if (existingList.length > 0) {
+          nextDrafts[c.id] = existingList.map(ex => scopeEntryToDraft(c.id, ex, groupName));
+        } else {
+          nextDrafts[c.id] = [emptyDraft(c.id, groupName)];
+        }
       }
-      setDrafts(nextDrafts);
+      setDraftsByCourse(nextDrafts);
 
       const combinedCount = mapped.filter((c) => c.source === 'combined').length;
       if (combinedCount > 0) {
@@ -300,7 +363,7 @@ export default function TimetableBuilder() {
       toast.error(e?.message || 'Failed to load scope');
       setProgramIntakeId('');
       setCourses([]);
-      setDrafts({});
+      setDraftsByCourse({});
     } finally {
       setCoursesLoading(false);
     }
@@ -422,16 +485,70 @@ export default function TimetableBuilder() {
     }
   };
 
-  const updateDraft = (courseId: string, patch: Partial<DraftRow>) => {
-    setDrafts(prev => ({ ...prev, [courseId]: { ...prev[courseId], ...patch } }));
+  const updateDraft = (courseId: string, sessionIndex: number, patch: Partial<DraftRow>) => {
+    setDraftsByCourse(prev => {
+      const rows = [...(prev[courseId] ?? [])];
+      if (!rows[sessionIndex]) return prev;
+      rows[sessionIndex] = { ...rows[sessionIndex], ...patch };
+      return { ...prev, [courseId]: rows };
+    });
   };
 
-  const createOne = async (courseId: string) => {
+  const addSession = (courseId: string) => {
+    const template = draftsByCourse[courseId]?.[0];
+    setDraftsByCourse(prev => ({
+      ...prev,
+      [courseId]: [
+        ...(prev[courseId] ?? []),
+        {
+          ...emptyDraft(courseId, template?.className ?? defaultGroupName),
+          className: template?.className ?? defaultGroupName,
+          lecturerId: template?.lecturerId ?? '',
+          venueId: template?.venueId ?? '',
+          deliveryMode: template?.deliveryMode ?? 'InPerson',
+          capacity: template?.capacity ?? '50',
+        },
+      ],
+    }));
+  };
+
+  const removeSession = async (courseId: string, sessionIndex: number) => {
+    const rows = draftsByCourse[courseId] ?? [];
+    const row = rows[sessionIndex];
+    if (!row) return;
+    if (row.isSharedSchedule) {
+      toast.info('This course uses a shared combined-cohort class. Edit it under Admin Classes.');
+      return;
+    }
+    if (row.existingClassId) {
+      if (!canWriteSchedule) {
+        toast.error('Schedule writes are only allowed for the Active term.');
+        return;
+      }
+      try {
+        await academicService.updateClass(row.existingClassId, { isActive: false } as any);
+        window.dispatchEvent(new CustomEvent('class-updated'));
+        toast.success('Session removed');
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to remove session');
+        return;
+      }
+    }
+    setDraftsByCourse(prev => {
+      const nextRows = (prev[courseId] ?? []).filter((_, i) => i !== sessionIndex);
+      return {
+        ...prev,
+        [courseId]: nextRows.length > 0 ? nextRows : [emptyDraft(courseId, defaultGroupName)],
+      };
+    });
+  };
+
+  const createOne = async (courseId: string, sessionIndex: number) => {
     if (!canWriteSchedule) {
       toast.error('Schedule writes are only allowed for the Active term.');
       return;
     }
-    const d = drafts[courseId];
+    const d = draftsByCourse[courseId]?.[sessionIndex];
     if (!d) return;
     if (d.isSharedSchedule && d.existingClassId) {
       toast.info('This course uses a shared combined-cohort class. Edit it under Admin Classes.');
@@ -469,7 +586,7 @@ export default function TimetableBuilder() {
       } else {
         const created = await academicService.createClass(payload as any);
         if (created?.id) {
-          updateDraft(courseId, { existingClassId: created.id });
+          updateDraft(courseId, sessionIndex, { existingClassId: created.id, localId: created.id });
         }
         toast.success('Class saved');
       }
@@ -491,9 +608,12 @@ export default function TimetableBuilder() {
     setCreatingAll(true);
     try {
       for (const c of courses) {
-        const draft = drafts[c.id];
-        if (draft?.isSharedSchedule) continue;
-        await createOne(c.id);
+        const sessions = draftsByCourse[c.id] ?? [];
+        for (let i = 0; i < sessions.length; i++) {
+          const draft = sessions[i];
+          if (draft?.isSharedSchedule) continue;
+          await createOne(c.id, i);
+        }
       }
     } finally {
       setCreatingAll(false);
@@ -688,32 +808,61 @@ export default function TimetableBuilder() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {courses.map(c => {
-                    const d = drafts[c.id];
-                    const isShared = d?.isSharedSchedule === true;
-                    return (
-                      <TableRow key={c.id} className={isShared ? 'bg-violet-50/60' : undefined}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span>{c.code}</span>
-                            {c.source === 'combined' ? (
-                              <Badge variant="outline" className="text-violet-800 border-violet-300 bg-violet-50">
-                                Combined cohort
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="text-xs text-muted-foreground">{c.name}</div>
-                          {isShared ? (
-                            <div className="text-xs text-violet-800 mt-1">
-                              Scheduled via shared class — edit in Admin Classes
+                  {courses.flatMap(c => {
+                    const sessions = draftsByCourse[c.id] ?? [emptyDraft(c.id, defaultGroupName)];
+                    const isShared = sessions.some(s => s.isSharedSchedule);
+                    return sessions.map((d, sessionIndex) => (
+                      <TableRow
+                        key={`${c.id}-${d.localId}`}
+                        className={d.isSharedSchedule ? 'bg-violet-50/60' : undefined}
+                      >
+                        {sessionIndex === 0 ? (
+                          <TableCell className="font-medium align-top" rowSpan={sessions.length}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{c.code}</span>
+                              {c.source === 'combined' ? (
+                                <Badge variant="outline" className="text-violet-800 border-violet-300 bg-violet-50">
+                                  Combined cohort
+                                </Badge>
+                              ) : null}
                             </div>
-                          ) : null}
+                            <div className="text-xs text-muted-foreground">{c.name}</div>
+                            {isShared ? (
+                              <div className="text-xs text-violet-800 mt-1">
+                                Scheduled via shared class — edit in Admin Classes
+                              </div>
+                            ) : sessions.length > 1 ? (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {sessions.length} sessions per week
+                              </div>
+                            ) : null}
+                            {!d.isSharedSchedule && canWriteSchedule ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-2 h-7 text-xs"
+                                onClick={() => addSession(c.id)}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Add session
+                              </Button>
+                            ) : null}
+                          </TableCell>
+                        ) : null}
+                        <TableCell>
+                          <Input
+                            value={d.className}
+                            disabled={d.isSharedSchedule}
+                            onChange={e => updateDraft(c.id, sessionIndex, { className: e.target.value })}
+                          />
                         </TableCell>
                         <TableCell>
-                          <Input value={d?.className ?? ''} disabled={isShared} onChange={e => updateDraft(c.id, { className: e.target.value })} />
-                        </TableCell>
-                        <TableCell>
-                          <Select value={d?.deliveryMode ?? 'InPerson'} disabled={isShared} onValueChange={v => updateDraft(c.id, { deliveryMode: v as DeliveryMode })}>
+                          <Select
+                            value={d.deliveryMode}
+                            disabled={d.isSharedSchedule}
+                            onValueChange={v => updateDraft(c.id, sessionIndex, { deliveryMode: v as DeliveryMode })}
+                          >
                             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               {DELIVERY_MODES.map(x => (
@@ -725,20 +874,20 @@ export default function TimetableBuilder() {
                         <TableCell>
                           <Combobox
                             options={lecturerOptions}
-                            value={d?.lecturerId ? d.lecturerId : UNASSIGNED}
-                            onValueChange={v => updateDraft(c.id, { lecturerId: v === UNASSIGNED ? '' : v })}
+                            value={d.lecturerId ? d.lecturerId : UNASSIGNED}
+                            onValueChange={v => updateDraft(c.id, sessionIndex, { lecturerId: v === UNASSIGNED ? '' : v })}
                             placeholder="Select lecturer"
                             searchPlaceholder="Search lecturer..."
                             emptyText="No lecturer found."
                             className="w-[220px]"
-                            disabled={isShared}
+                            disabled={d.isSharedSchedule}
                           />
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={d?.venueId ? d.venueId : UNASSIGNED}
-                            onValueChange={v => updateDraft(c.id, { venueId: v === UNASSIGNED ? '' : v })}
-                            disabled={isShared || (d?.deliveryMode ?? 'InPerson') === 'Online'}
+                            value={d.venueId ? d.venueId : UNASSIGNED}
+                            onValueChange={v => updateDraft(c.id, sessionIndex, { venueId: v === UNASSIGNED ? '' : v })}
+                            disabled={d.isSharedSchedule || d.deliveryMode === 'Online'}
                           >
                             <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
@@ -750,7 +899,11 @@ export default function TimetableBuilder() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Select value={d?.dayOfWeek ?? ''} disabled={isShared} onValueChange={v => updateDraft(c.id, { dayOfWeek: v })}>
+                          <Select
+                            value={d.dayOfWeek}
+                            disabled={d.isSharedSchedule}
+                            onValueChange={v => updateDraft(c.id, sessionIndex, { dayOfWeek: v })}
+                          >
                             <SelectTrigger className="w-[140px]"><SelectValue placeholder="Day" /></SelectTrigger>
                             <SelectContent>
                               {DAYS.map(x => (
@@ -761,41 +914,66 @@ export default function TimetableBuilder() {
                         </TableCell>
                         <TableCell>
                           <TimeInput12h
-                            disabled={isShared}
-                            value={d?.startTime ?? ''}
-                            onChange={(v) => updateDraft(c.id, { startTime: v })}
+                            disabled={d.isSharedSchedule}
+                            value={d.startTime}
+                            onChange={v => updateDraft(c.id, sessionIndex, { startTime: v })}
                           />
                         </TableCell>
                         <TableCell>
                           <TimeInput12h
-                            disabled={isShared}
-                            value={d?.endTime ?? ''}
-                            onChange={(v) => updateDraft(c.id, { endTime: v })}
+                            disabled={d.isSharedSchedule}
+                            value={d.endTime}
+                            onChange={v => updateDraft(c.id, sessionIndex, { endTime: v })}
                           />
                         </TableCell>
                         <TableCell>
-                          <Input className="w-[90px]" disabled={isShared} value={d?.capacity ?? ''} onChange={e => updateDraft(c.id, { capacity: e.target.value })} />
+                          <Input
+                            className="w-[90px]"
+                            disabled={d.isSharedSchedule}
+                            value={d.capacity}
+                            onChange={e => updateDraft(c.id, sessionIndex, { capacity: e.target.value })}
+                          />
                         </TableCell>
                         <TableCell>
                           <Input
                             className="w-[220px]"
-                            value={d?.meetingUrl ?? ''}
-                            onChange={e => updateDraft(c.id, { meetingUrl: e.target.value })}
-                            disabled={isShared || (d?.deliveryMode ?? 'InPerson') === 'InPerson'}
-                            placeholder={(d?.deliveryMode ?? 'InPerson') === 'InPerson' ? '—' : 'https://...'}
+                            value={d.meetingUrl}
+                            onChange={e => updateDraft(c.id, sessionIndex, { meetingUrl: e.target.value })}
+                            disabled={d.isSharedSchedule || d.deliveryMode === 'InPerson'}
+                            placeholder={d.deliveryMode === 'InPerson' ? '—' : 'https://...'}
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          {isShared ? (
+                          {d.isSharedSchedule ? (
                             <Badge variant="secondary">Shared</Badge>
                           ) : (
-                            <Button size="sm" className="bg-[#015F2B]" onClick={() => createOne(c.id)} disabled={!canWriteSchedule}>
-                              Save
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              {sessions.length > 1 ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeSession(c.id, sessionIndex)}
+                                  disabled={!canWriteSchedule}
+                                  title="Remove session"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              ) : null}
+                              <Button
+                                size="sm"
+                                className="bg-[#015F2B]"
+                                onClick={() => createOne(c.id, sessionIndex)}
+                                disabled={!canWriteSchedule}
+                              >
+                                Save
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
-                    );
+                    ));
                   })}
                 </TableBody>
               </Table>
