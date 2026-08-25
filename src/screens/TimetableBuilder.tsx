@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { Copy, AlertCircle, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { academicService } from '@/services/academic.service';
 import { staffService } from '@/services/staff.service';
@@ -13,10 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Link } from 'react-router';
 import { useSearchParams } from 'react-router';
 import {
   AcademicTermFilter,
   TERM_FILTER_ACTIVE,
+  TERM_FILTER_ALL,
 } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
@@ -169,9 +172,32 @@ export default function TimetableBuilder() {
   const [creatingAll, setCreatingAll] = useState(false);
   const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
   const [activeTermId, setActiveTermId] = useState<string | null>(null);
-  const [hasActiveTerm, setHasActiveTerm] = useState(true);
+  const [hasActiveTerm, setHasActiveTerm] = useState(false);
+  const [activeTermLoading, setActiveTermLoading] = useState(true);
+  const [activeTermLoadFailed, setActiveTermLoadFailed] = useState(false);
   const { termFilter, academicTermId, classStatusHint, onTermChange } = useAcademicTermFilterState();
-  const canWriteSchedule = termFilter === TERM_FILTER_ACTIVE && hasActiveTerm;
+  const canWriteSchedule =
+    !activeTermLoading &&
+    !activeTermLoadFailed &&
+    termFilter === TERM_FILTER_ACTIVE &&
+    hasActiveTerm;
+
+  const scheduleWriteBlockReason = useMemo(() => {
+    if (activeTermLoading) return null;
+    if (activeTermLoadFailed) {
+      return 'Could not load the active academic term from the server. Refresh the page or sign in again.';
+    }
+    if (!hasActiveTerm) {
+      return 'No academic term is set to Active in this environment. An admin must activate one under Admin → Calendar before schedules can be saved.';
+    }
+    if (termFilter === TERM_FILTER_ALL) {
+      return 'The Academic term filter is set to All terms. Switch it to Active term (default) to save schedules.';
+    }
+    if (termFilter !== TERM_FILTER_ACTIVE) {
+      return 'You are viewing a closed/archived term. Switch the Academic term filter to Active term (default) to save schedules.';
+    }
+    return null;
+  }, [activeTermLoadFailed, activeTermLoading, hasActiveTerm, termFilter]);
 
   const selectedProgram = useMemo(() => programs.find(p => p.id === programId) || null, [programId, programs]);
   const lecturerOptions = useMemo(
@@ -192,6 +218,8 @@ export default function TimetableBuilder() {
   }, []);
 
   useEffect(() => {
+    setActiveTermLoading(true);
+    setActiveTermLoadFailed(false);
     academicService
       .getActiveAcademicTerm()
       .then((term) => {
@@ -215,6 +243,10 @@ export default function TimetableBuilder() {
         setHasActiveTerm(false);
         setActiveTermLabel(null);
         setActiveTermId(null);
+        setActiveTermLoadFailed(true);
+      })
+      .finally(() => {
+        setActiveTermLoading(false);
       });
   }, [searchParams]);
 
@@ -636,6 +668,41 @@ export default function TimetableBuilder() {
           Create and manage timetables using school data, with automatic conflict checks.
         </p>
       </div>
+
+      {activeTermLoading ? (
+        <Alert className="border-blue-200 bg-blue-50/60">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
+          <AlertTitle className="text-blue-900">Checking active academic term…</AlertTitle>
+          <AlertDescription className="text-blue-800">
+            Save stays disabled until the server confirms which term is active.
+          </AlertDescription>
+        </Alert>
+      ) : scheduleWriteBlockReason ? (
+        <Alert variant="destructive" className="border-amber-300 bg-amber-50 text-amber-950 [&>svg]:text-amber-700">
+          <AlertCircle />
+          <AlertTitle>Saving is disabled</AlertTitle>
+          <AlertDescription className="text-amber-900">
+            <p>{scheduleWriteBlockReason}</p>
+            {!hasActiveTerm && !activeTermLoadFailed ? (
+              <p className="mt-2">
+                <Link to="/admin-calendar" className="font-medium underline underline-offset-2">
+                  Open Admin → Calendar
+                </Link>
+                {' '}to create or activate a term.
+              </p>
+            ) : null}
+            {termFilter !== TERM_FILTER_ACTIVE && hasActiveTerm ? (
+              <p className="mt-2">
+                Current filter:{' '}
+                <span className="font-medium">
+                  {termFilter === TERM_FILTER_ALL ? 'All terms' : activeTermLabel ?? 'Closed term'}
+                </span>
+                . Use the Academic term dropdown above and choose Active term (default).
+              </p>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Card>
         <CardHeader>
