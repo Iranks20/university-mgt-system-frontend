@@ -131,19 +131,19 @@ const INTAKES: { value: IntakeType; label: string }[] = [
 ];
 
 const DELIVERY_MODES: { value: DeliveryMode; label: string }[] = [
-  { value: 'InPerson', label: 'In-person' },
+  { value: 'InPerson', label: 'Campus' },
   { value: 'Online', label: 'Online' },
   { value: 'Hybrid', label: 'Hybrid' },
 ];
 
 const DAYS: { value: string; label: string }[] = [
-  { value: '1', label: 'Monday' },
-  { value: '2', label: 'Tuesday' },
-  { value: '3', label: 'Wednesday' },
-  { value: '4', label: 'Thursday' },
-  { value: '5', label: 'Friday' },
-  { value: '6', label: 'Saturday' },
-  { value: '0', label: 'Sunday' },
+  { value: '1', label: 'Mon' },
+  { value: '2', label: 'Tue' },
+  { value: '3', label: 'Wed' },
+  { value: '4', label: 'Thu' },
+  { value: '5', label: 'Fri' },
+  { value: '6', label: 'Sat' },
+  { value: '0', label: 'Sun' },
 ];
 
 const UNASSIGNED = '__unassigned__';
@@ -653,9 +653,9 @@ export default function TimetableBuilder() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 min-w-0">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Timetable Builder</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Timetable Builder</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {activeTermLabel
             ? `Scheduling for Active term: ${activeTermLabel}. New classes are stamped to this term.`
@@ -845,206 +845,215 @@ export default function TimetableBuilder() {
         </DialogContent>
       </Dialog>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Schedule</CardTitle>
+      <Card className="min-w-0">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Schedule</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2 sm:p-3 pt-0">
           {courses.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">
+            <div className="text-sm text-muted-foreground py-6 px-2">
               {programId
                 ? 'No courses found for this scope. Add courses under Admin Schools → Program → Year/Semester, then click "Load courses" again.'
                 : 'Select your timetable details above, then load courses to begin.'}
             </div>
           ) : (
-            <div className="rounded-md border bg-white overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Course</TableHead>
-                    <TableHead>Class name</TableHead>
-                    <TableHead>Mode</TableHead>
-                    <TableHead>Lecturer</TableHead>
-                    <TableHead>Venue</TableHead>
-                    <TableHead>Day</TableHead>
-                    <TableHead>Start</TableHead>
-                    <TableHead>End</TableHead>
-                    <TableHead>Cap.</TableHead>
-                    <TableHead>Meeting URL</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {courses.flatMap(c => {
-                    const sessions = draftsByCourse[c.id] ?? [emptyDraft(c.id, defaultGroupName)];
-                    const isShared = sessions.some(s => s.isSharedSchedule);
-                    return sessions.map((d, sessionIndex) => (
-                      <TableRow
-                        key={`${c.id}-${d.localId}`}
-                        className={d.isSharedSchedule ? 'bg-violet-50/60' : undefined}
-                      >
-                        {sessionIndex === 0 ? (
-                          <TableCell className="font-medium align-top" rowSpan={sessions.length}>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span>{c.code}</span>
-                              {c.source === 'combined' ? (
-                                <Badge variant="outline" className="text-violet-800 border-violet-300 bg-violet-50">
-                                  Combined cohort
-                                </Badge>
-                              ) : null}
+            <Table className="w-full text-xs">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="px-1.5 h-8 min-w-[120px]">Course</TableHead>
+                  <TableHead className="px-1.5 h-8 min-w-[88px]">Class</TableHead>
+                  <TableHead className="px-1.5 h-8 w-[72px]">Mode</TableHead>
+                  <TableHead className="px-1.5 h-8 min-w-[100px]">Lecturer</TableHead>
+                  <TableHead className="px-1.5 h-8 min-w-[88px]">Venue</TableHead>
+                  <TableHead className="px-1.5 h-8 w-[56px]">Day</TableHead>
+                  <TableHead className="px-1.5 h-8 min-w-[168px]">Time</TableHead>
+                  <TableHead className="px-1.5 h-8 w-[52px]">Cap</TableHead>
+                  <TableHead className="px-1.5 h-8 w-[1%] whitespace-nowrap">URL</TableHead>
+                  <TableHead className="px-1 h-8 w-[1%] whitespace-nowrap text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {courses.flatMap(c => {
+                  const sessions = draftsByCourse[c.id] ?? [emptyDraft(c.id, defaultGroupName)];
+                  const isShared = sessions.some(s => s.isSharedSchedule);
+                  return sessions.map((d, sessionIndex) => (
+                    <TableRow
+                      key={`${c.id}-${d.localId}`}
+                      className={d.isSharedSchedule ? 'bg-violet-50/60' : undefined}
+                    >
+                      {sessionIndex === 0 ? (
+                        <TableCell className="font-medium align-top whitespace-normal break-words px-1.5 py-1.5" rowSpan={sessions.length}>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="font-semibold">{c.code}</span>
+                            {c.source === 'combined' ? (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-violet-800 border-violet-300 bg-violet-50">
+                                Combined
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground line-clamp-2 leading-snug mt-0.5">{c.name}</div>
+                          {isShared ? (
+                            <div className="text-[10px] text-violet-800 mt-1 leading-snug">
+                              Shared class — edit in Admin Classes
                             </div>
-                            <div className="text-xs text-muted-foreground">{c.name}</div>
-                            {isShared ? (
-                              <div className="text-xs text-violet-800 mt-1">
-                                Scheduled via shared class — edit in Admin Classes
-                              </div>
-                            ) : sessions.length > 1 ? (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {sessions.length} sessions per week
-                              </div>
-                            ) : null}
-                            {!d.isSharedSchedule && canWriteSchedule ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2 h-7 text-xs"
-                                onClick={() => addSession(c.id)}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add session
-                              </Button>
-                            ) : null}
-                          </TableCell>
-                        ) : null}
-                        <TableCell>
+                          ) : sessions.length > 1 ? (
+                            <div className="text-[10px] text-muted-foreground mt-1">
+                              {sessions.length} sessions/week
+                            </div>
+                          ) : null}
+                          {!d.isSharedSchedule && canWriteSchedule ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-1.5 h-6 text-[10px] px-2"
+                              onClick={() => addSession(c.id)}
+                            >
+                              <Plus className="h-3 w-3 mr-0.5" />
+                              Session
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      ) : null}
+                      <TableCell className="px-1.5 py-1.5 whitespace-normal">
+                        <Input
+                          className="h-8 text-xs min-w-0 w-full"
+                          value={d.className}
+                          disabled={d.isSharedSchedule}
+                          onChange={e => updateDraft(c.id, sessionIndex, { className: e.target.value })}
+                        />
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5">
+                        <Select
+                          value={d.deliveryMode}
+                          disabled={d.isSharedSchedule}
+                          onValueChange={v => updateDraft(c.id, sessionIndex, { deliveryMode: v as DeliveryMode })}
+                        >
+                          <SelectTrigger className="h-8 w-[72px] text-xs px-2"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DELIVERY_MODES.map(x => (
+                              <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5 whitespace-normal">
+                        <Combobox
+                          options={lecturerOptions}
+                          value={d.lecturerId ? d.lecturerId : UNASSIGNED}
+                          onValueChange={v => updateDraft(c.id, sessionIndex, { lecturerId: v === UNASSIGNED ? '' : v })}
+                          placeholder="Lecturer"
+                          searchPlaceholder="Search…"
+                          emptyText="None found."
+                          className="w-full min-w-0 [&_button]:h-8 [&_button]:text-xs [&_button]:px-2"
+                          disabled={d.isSharedSchedule}
+                        />
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5">
+                        <Select
+                          value={d.venueId ? d.venueId : UNASSIGNED}
+                          onValueChange={v => updateDraft(c.id, sessionIndex, { venueId: v === UNASSIGNED ? '' : v })}
+                          disabled={d.isSharedSchedule || d.deliveryMode === 'Online'}
+                        >
+                          <SelectTrigger className="h-8 w-full min-w-0 text-xs px-2"><SelectValue placeholder="Venue" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                            {venues.map(v => (
+                              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5">
+                        <Select
+                          value={d.dayOfWeek}
+                          disabled={d.isSharedSchedule}
+                          onValueChange={v => updateDraft(c.id, sessionIndex, { dayOfWeek: v })}
+                        >
+                          <SelectTrigger className="h-8 w-[56px] text-xs px-1.5"><SelectValue placeholder="Day" /></SelectTrigger>
+                          <SelectContent>
+                            {DAYS.map(x => (
+                              <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5 whitespace-normal align-top min-w-[168px]">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] uppercase text-muted-foreground w-8 shrink-0">Start</span>
+                            <TimeInput12h
+                              compact
+                              disabled={d.isSharedSchedule}
+                              value={d.startTime}
+                              onChange={v => updateDraft(c.id, sessionIndex, { startTime: v })}
+                            />
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] uppercase text-muted-foreground w-8 shrink-0">End</span>
+                            <TimeInput12h
+                              compact
+                              disabled={d.isSharedSchedule}
+                              value={d.endTime}
+                              onChange={v => updateDraft(c.id, sessionIndex, { endTime: v })}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5 w-[52px]">
+                        <Input
+                          className="h-8 w-[52px] text-xs px-1.5 text-center"
+                          disabled={d.isSharedSchedule}
+                          value={d.capacity}
+                          onChange={e => updateDraft(c.id, sessionIndex, { capacity: e.target.value })}
+                        />
+                      </TableCell>
+                      <TableCell className="px-1 py-1.5 w-[1%] whitespace-nowrap">
+                        {d.deliveryMode === 'InPerson' || d.isSharedSchedule ? (
+                          <span className="text-muted-foreground px-1">—</span>
+                        ) : (
                           <Input
-                            value={d.className}
-                            disabled={d.isSharedSchedule}
-                            onChange={e => updateDraft(c.id, sessionIndex, { className: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={d.deliveryMode}
-                            disabled={d.isSharedSchedule}
-                            onValueChange={v => updateDraft(c.id, sessionIndex, { deliveryMode: v as DeliveryMode })}
-                          >
-                            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {DELIVERY_MODES.map(x => (
-                                <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Combobox
-                            options={lecturerOptions}
-                            value={d.lecturerId ? d.lecturerId : UNASSIGNED}
-                            onValueChange={v => updateDraft(c.id, sessionIndex, { lecturerId: v === UNASSIGNED ? '' : v })}
-                            placeholder="Select lecturer"
-                            searchPlaceholder="Search lecturer..."
-                            emptyText="No lecturer found."
-                            className="w-[220px]"
-                            disabled={d.isSharedSchedule}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={d.venueId ? d.venueId : UNASSIGNED}
-                            onValueChange={v => updateDraft(c.id, sessionIndex, { venueId: v === UNASSIGNED ? '' : v })}
-                            disabled={d.isSharedSchedule || d.deliveryMode === 'Online'}
-                          >
-                            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Select" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
-                              {venues.map(v => (
-                                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={d.dayOfWeek}
-                            disabled={d.isSharedSchedule}
-                            onValueChange={v => updateDraft(c.id, sessionIndex, { dayOfWeek: v })}
-                          >
-                            <SelectTrigger className="w-[140px]"><SelectValue placeholder="Day" /></SelectTrigger>
-                            <SelectContent>
-                              {DAYS.map(x => (
-                                <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <TimeInput12h
-                            disabled={d.isSharedSchedule}
-                            value={d.startTime}
-                            onChange={v => updateDraft(c.id, sessionIndex, { startTime: v })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TimeInput12h
-                            disabled={d.isSharedSchedule}
-                            value={d.endTime}
-                            onChange={v => updateDraft(c.id, sessionIndex, { endTime: v })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            className="w-[90px]"
-                            disabled={d.isSharedSchedule}
-                            value={d.capacity}
-                            onChange={e => updateDraft(c.id, sessionIndex, { capacity: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            className="w-[220px]"
+                            className="h-8 w-[88px] text-xs px-2"
                             value={d.meetingUrl}
                             onChange={e => updateDraft(c.id, sessionIndex, { meetingUrl: e.target.value })}
-                            disabled={d.isSharedSchedule || d.deliveryMode === 'InPerson'}
-                            placeholder={d.deliveryMode === 'InPerson' ? '—' : 'https://...'}
+                            placeholder="URL"
                           />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {d.isSharedSchedule ? (
-                            <Badge variant="secondary">Shared</Badge>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              {sessions.length > 1 ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                  onClick={() => removeSession(c.id, sessionIndex)}
-                                  disabled={!canWriteSchedule}
-                                  title="Remove session"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              ) : null}
+                        )}
+                      </TableCell>
+                      <TableCell className="px-1 py-1.5 w-[1%] whitespace-nowrap">
+                        {d.isSharedSchedule ? (
+                          <Badge variant="secondary" className="text-[10px]">Shared</Badge>
+                        ) : (
+                          <div className="inline-flex items-center gap-0.5">
+                            {sessions.length > 1 ? (
                               <Button
+                                type="button"
+                                variant="ghost"
                                 size="sm"
-                                className="bg-[#015F2B]"
-                                onClick={() => createOne(c.id, sessionIndex)}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeSession(c.id, sessionIndex)}
                                 disabled={!canWriteSchedule}
+                                title="Remove session"
                               >
-                                Save
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ));
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              className="bg-[#015F2B] h-7 px-2 text-xs"
+                              onClick={() => createOne(c.id, sessionIndex)}
+                              disabled={!canWriteSchedule}
+                            >
+                              Save
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ));
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

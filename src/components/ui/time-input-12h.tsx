@@ -11,9 +11,10 @@ type TimeInput12hProps = {
   onChange: (value: string) => void;
   disabled?: boolean;
   className?: string;
+  compact?: boolean;
 };
 
-export function TimeInput12h({ value, onChange, disabled, className }: TimeInput12hProps) {
+export function TimeInput12h({ value, onChange, disabled, className, compact }: TimeInput12hProps) {
   const parsed = useMemo(() => parseTime24To12(value), [value]);
   const [hour, setHour] = useState(parsed?.hour ?? '');
   const [minute, setMinute] = useState(parsed?.minute ?? '');
@@ -35,7 +36,13 @@ export function TimeInput12h({ value, onChange, disabled, className }: TimeInput
   };
 
   return (
-    <div className={cn('flex items-center gap-0.5 min-w-[168px]', className)}>
+    <div
+      className={cn(
+        'flex items-center',
+        compact ? 'w-full min-w-[138px] max-w-[158px] gap-1' : 'min-w-[168px] gap-0.5',
+        className
+      )}
+    >
       <Select
         value={hour || undefined}
         disabled={disabled}
@@ -44,7 +51,14 @@ export function TimeInput12h({ value, onChange, disabled, className }: TimeInput
           emitChange(v, minute || '00', period);
         }}
       >
-        <SelectTrigger className="h-8 w-[52px] px-1.5 text-xs" aria-label="Hour">
+        <SelectTrigger
+          size="sm"
+          className={cn(
+            'justify-center gap-0.5 px-1 text-xs *:data-[slot=select-value]:line-clamp-none [&_svg]:size-3',
+            compact ? 'h-7 min-w-[44px] flex-1' : 'h-8 w-[52px] px-1.5'
+          )}
+          aria-label="Hour"
+        >
           <SelectValue placeholder="Hr" />
         </SelectTrigger>
         <SelectContent>
@@ -64,7 +78,14 @@ export function TimeInput12h({ value, onChange, disabled, className }: TimeInput
           emitChange(hour || '12', v, period);
         }}
       >
-        <SelectTrigger className="h-8 w-[52px] px-1.5 text-xs" aria-label="Minute">
+        <SelectTrigger
+          size="sm"
+          className={cn(
+            'justify-center gap-0.5 px-1 text-xs *:data-[slot=select-value]:line-clamp-none [&_svg]:size-3',
+            compact ? 'h-7 min-w-[44px] flex-1' : 'h-8 w-[52px] px-1.5'
+          )}
+          aria-label="Minute"
+        >
           <SelectValue placeholder="Min" />
         </SelectTrigger>
         <SelectContent className="max-h-48">
@@ -84,7 +105,14 @@ export function TimeInput12h({ value, onChange, disabled, className }: TimeInput
           emitChange(hour || '12', minute || '00', nextPeriod);
         }}
       >
-        <SelectTrigger className="h-8 w-[56px] px-1.5 text-xs" aria-label="AM or PM">
+        <SelectTrigger
+          size="sm"
+          className={cn(
+            'justify-center gap-0.5 px-1 text-xs *:data-[slot=select-value]:line-clamp-none [&_svg]:size-3',
+            compact ? 'h-7 min-w-[48px] shrink-0' : 'h-8 w-[56px] px-1.5'
+          )}
+          aria-label="AM or PM"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
