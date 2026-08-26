@@ -27,9 +27,10 @@ import { toast } from 'sonner';
 import type { StudentAttendanceReport } from '@/types/student';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 export default function ManagementStudentPerformance() {
-  const { termFilter, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
+  const { termFilter, academicTermId, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
   const [programFilter, setProgramFilter] = useState<string>('All');
@@ -62,7 +63,12 @@ export default function ManagementStudentPerformance() {
         const performanceData = await Promise.all(
           students.slice(0, 100).map(async (student: any) => {
             const [perfData, academicData] = await Promise.all([
-              analyticsService.getStudentPerformance(student.id, termStartDate, termEndDate) as any,
+              analyticsService.getStudentPerformance(
+                student.id,
+                termStartDate,
+                termEndDate,
+                academicTermId === 'all' ? 'all' : academicTermId
+              ) as any,
               analyticsService.getStudentAcademicPerformance(student.id).catch(() => null),
             ]);
             const attendanceRate = perfData?.attendanceRate ?? 0;

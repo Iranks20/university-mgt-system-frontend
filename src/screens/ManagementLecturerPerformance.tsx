@@ -26,9 +26,10 @@ import { reportService } from '@/services/report.service';
 import { toast } from 'sonner';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 export default function ManagementLecturerPerformance() {
-  const { termFilter, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
+  const { termFilter, academicTermId, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('All');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
@@ -56,12 +57,15 @@ export default function ManagementLecturerPerformance() {
         if (departmentFilter !== 'All') params.department = departmentFilter;
         if (searchTerm) params.search = searchTerm;
 
+        const termParams = {
+          ...(termStartDate ? { startDate: termStartDate } : {}),
+          ...(termEndDate ? { endDate: termEndDate } : {}),
+          ...termScopeQueryParam(academicTermId),
+        };
+
         const [lecturersResult, allLectureRecords] = await Promise.all([
           staffService.getLecturers(params),
-          qaService.getLectureRecords({
-            ...(termStartDate ? { startDate: termStartDate } : {}),
-            ...(termEndDate ? { endDate: termEndDate } : {}),
-          } as any),
+          qaService.getLectureRecords(termParams as any),
         ]);
         const lecturers = Array.isArray(lecturersResult) ? lecturersResult : lecturersResult.data || [];
         const records = Array.isArray(allLectureRecords) ? allLectureRecords : (allLectureRecords as any)?.data || [];
@@ -84,7 +88,12 @@ export default function ManagementLecturerPerformance() {
         const performanceData = await Promise.all(
           lecturers.map(async (lecturer: any) => {
             const [perf, rating] = await Promise.all([
-              analyticsService.getLecturerPerformance(lecturer.id, termStartDate, termEndDate) as any,
+              analyticsService.getLecturerPerformance(
+                lecturer.id,
+                termStartDate,
+                termEndDate,
+                academicTermId === 'all' ? 'all' : academicTermId
+              ) as any,
               staffService.getStaffStudentRating(lecturer.id).catch(() => null),
             ]);
             const attendanceRate = perf?.attendanceRate ?? 0;

@@ -6,17 +6,33 @@ import {
   academicService,
   type AcademicTerm,
   type GenerateClassListsResult,
-  type HoldbackGroupPayload,
   type PromoteStudentsResult,
   type RegisterStudentsResult,
 } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
+import { downloadCsv } from '@/lib/academic-term-scope';
+import { useAcademicRolloverPromoteState } from '@/lib/academic-rollover-promote';
+import {
+  DEFAULT_CLASS_LIST_MODE,
+  DEFAULT_REGISTRATION_POLICY,
+  DEFAULT_SKIP_CLASS_LISTS,
+  DEFAULT_SKIP_PROMOTE,
+  DEFAULT_SKIP_REGISTER,
+  type RegistrationPolicy,
+} from '@/lib/academic-rollover-defaults';
+import {
+  ROLLOVER_WIZARD_STEPS,
+  buildRolloverPreviewCsvRows,
+  buildRolloverWizardPayload,
+  isRegisterBlockedByOfferings,
+  suggestNextTerm,
+} from '@/lib/academic-rollover-wizard';
+import { AcademicRolloverPromoteForm } from '@/components/admin/AcademicRolloverPromoteForm';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LabelWithInfo } from '@/components/ui/label-with-info';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -24,8 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-type RegistrationPolicy = 'auto' | 'hybrid' | 'self' | 'none';
 
 type WizardPreview = {
   closeTermId: string | null;
@@ -57,7 +71,7 @@ type WizardResult = {
   nextTermId: string;
   nextTermName: string;
   timetableHandoff: string;
-  promote: { promoted: number; heldBack: number; completedCandidates: number } | null;
+  promote: { promoted: number; heldBack: number; completedCandidates: number; skippedAlreadyPromoted?: number } | null;
   classLists: { created: number; skippedExisting: number } | null;
   register: {
     policy: string;
@@ -68,57 +82,6 @@ type WizardResult = {
   steps: Array<{ step: string; status: string }>;
 };
 
-function parseHoldbackIds(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(/[\s,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-    ),
-  ];
-}
-
-function suggestNextTerm(active: AcademicTerm | null) {
-  const yearNow = new Date().getFullYear();
-  if (!active || active.semester === 0) {
-    const year = active ? active.academicYear + 1 : yearNow;
-    return {
-      name: `Academic Year ${year}`,
-      academicYear: String(year),
-      semester: '0',
-      startDate: `${year}-01-15`,
-      endDate: `${year}-05-30`,
-    };
-  }
-  if (active.semester === 1) {
-    return {
-      name: `Academic Year ${active.academicYear} — Semester 2`,
-      academicYear: String(active.academicYear),
-      semester: '2',
-      startDate: `${active.academicYear}-07-01`,
-      endDate: `${active.academicYear}-12-15`,
-    };
-  }
-  const nextYear = active.academicYear + 1;
-  return {
-    name: `Academic Year ${nextYear}`,
-    academicYear: String(nextYear),
-    semester: '0',
-    startDate: `${nextYear}-01-15`,
-    endDate: `${nextYear}-05-30`,
-  };
-}
-
-const STEPS = [
-  'Close',
-  'Next term',
-  'Publish offerings',
-  'Promote',
-  'Register',
-  'Review',
-] as const;
-
 export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => void }) {
   const navigate = useNavigate();
   const [terms, setTerms] = useState<AcademicTerm[]>([]);
@@ -127,34 +90,38 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<WizardPreview | null>(null);
   const [result, setResult] = useState<WizardResult | null>(null);
-  const [holdbackRaw, setHoldbackRaw] = useState('');
-  const [holdbackGroups, setHoldbackGroups] = useState<HoldbackGroupPayload[]>([]);
-  const [groupProgramId, setGroupProgramId] = useState<string>('');
-  const [groupYear, setGroupYear] = useState<string>('2');
-  const [groupSemester, setGroupSemester] = useState<string>('1');
-  const [groupReason, setGroupReason] = useState('');
-  const [promoteProgramId, setPromoteProgramId] = useState<string>('__all__');
-  const [promoteYear, setPromoteYear] = useState<string>('__all__');
-  const [promoteSemester, setPromoteSemester] = useState<string>('__all__');
-  const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const promote = useAcademicRolloverPromoteState();
   const [closeTermId, setCloseTermId] = useState<string>('');
-  const [classListMode, setClassListMode] = useState<'clone-from-term' | 'from-curriculum'>(
-    'clone-from-term'
+  const [classListMode, setClassListMode] = useState(DEFAULT_CLASS_LIST_MODE);
+  const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicy>(
+    DEFAULT_REGISTRATION_POLICY
   );
-  const [registrationPolicy, setRegistrationPolicy] = useState<RegistrationPolicy>('auto');
-  const [skipPromote, setSkipPromote] = useState(false);
-  const [skipClassLists, setSkipClassLists] = useState(true);
-  const [skipRegister, setSkipRegister] = useState(false);
+  const [skipPromote, setSkipPromote] = useState(DEFAULT_SKIP_PROMOTE);
+  const [skipClassLists, setSkipClassLists] = useState(DEFAULT_SKIP_CLASS_LISTS);
+  const [skipRegister, setSkipRegister] = useState(DEFAULT_SKIP_REGISTER);
+  const [registerNoOfferingsOverride, setRegisterNoOfferingsOverride] = useState(false);
+  const [maxStepReached, setMaxStepReached] = useState(0);
   const [form, setForm] = useState(suggestNextTerm(null));
+
+  const [programs, setPrograms] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+
+  const [readiness, setReadiness] = useState<{
+    hasActiveTerm: boolean;
+    unscopedActiveClassCount: number;
+    activeClassCount: number;
+    activeStudentCount: number;
+  } | null>(null);
 
   const load = async () => {
     try {
-      const [rows, activeTerm] = await Promise.all([
+      const [rows, activeTerm, ready] = await Promise.all([
         academicService.getAcademicTerms(),
         academicService.getActiveAcademicTerm(),
+        academicService.getRolloverReadiness(),
       ]);
       setTerms(rows);
       setActive(activeTerm);
+      setReadiness(ready);
       if (activeTerm) {
         setCloseTermId(activeTerm.id);
         setForm(suggestNextTerm(activeTerm));
@@ -191,29 +158,17 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
     [terms]
   );
 
-  const payload = () => ({
-    closeTermId: closeTermId || undefined,
-    includeUnscopedActiveClasses: true,
-    nextTerm: {
-      name: form.name.trim(),
-      academicYear: Number(form.academicYear),
-      semester: Number(form.semester) as 0 | 1 | 2,
-      startDate: form.startDate,
-      endDate: form.endDate,
-    },
-    holdbackStudentIds: parseHoldbackIds(holdbackRaw),
-    holdbackGroups,
-    ...(promoteProgramId !== '__all__' ? { programId: promoteProgramId } : {}),
-    ...(promoteYear !== '__all__' ? { year: Number(promoteYear) } : {}),
-    ...(promoteSemester !== '__all__' ? { semester: Number(promoteSemester) } : {}),
-    classListMode,
-    sourceTermId: closeTermId || undefined,
-    skipPromote,
-    skipClassLists,
-    skipRegister: skipRegister || registrationPolicy === 'none',
-    registrationPolicy,
-    openRegistration: registrationPolicy === 'self' || registrationPolicy === 'hybrid',
-  });
+  const payload = () =>
+    buildRolloverWizardPayload({
+      closeTermId,
+      form,
+      promotePayload: promote.buildPayload(),
+      classListMode,
+      skipPromote,
+      skipClassLists,
+      skipRegister,
+      registrationPolicy,
+    });
 
   const runPreview = async () => {
     setBusy(true);
@@ -222,7 +177,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
       setPreview(data);
       setResult(null);
       toast.success('Rollover preview ready');
-      setStep(5);
+      goToStep(5);
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Could not preview rollover'));
     } finally {
@@ -253,7 +208,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
       toast.success(`Rollover complete — ${data.nextTermName}`);
       await load();
       onCompleted?.();
-      setStep(5);
+      goToStep(5);
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Rollover failed'));
     } finally {
@@ -261,18 +216,41 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
     }
   };
 
+  const goToStep = (next: number) => {
+    setStep(next);
+    setMaxStepReached((prev) => Math.max(prev, next));
+  };
+
+  const downloadPreviewCsv = () => {
+    if (!preview) return;
+    downloadCsv(
+      `rollover-preview-${preview.nextTerm.name.replace(/\s+/g, '-')}.csv`,
+      buildRolloverPreviewCsvRows(preview)
+    );
+  };
+
+  const registerBlockedByOfferings = isRegisterBlockedByOfferings({
+    skipRegister,
+    registrationPolicy,
+    skipClassLists,
+    preview,
+  });
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Semester rollover</CardTitle>
         <CardDescription>Close the current term and open the next one.</CardDescription>
         <div className="flex flex-wrap gap-2 pt-2">
-          {STEPS.map((label, i) => (
+          {ROLLOVER_WIZARD_STEPS.map((label, i) => (
             <button
               key={label}
               type="button"
-              onClick={() => setStep(i)}
-              className={`text-xs px-2.5 py-1 rounded-md border ${
+              onClick={() => {
+                if (i <= maxStepReached) goToStep(i);
+              }}
+              disabled={i > maxStepReached}
+              className={`text-xs px-2.5 py-1 rounded-md border disabled:opacity-40 disabled:cursor-not-allowed ${
                 step === i
                   ? 'bg-[#015F2B] text-white border-[#015F2B]'
                   : 'bg-background text-muted-foreground'
@@ -284,6 +262,25 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {readiness ? (
+          <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+            <p className="font-medium">Preconditions</p>
+            <p>
+              Active term:{' '}
+              <strong>{readiness.hasActiveTerm ? active?.name ?? 'yes' : 'none — create or activate first'}</strong>
+            </p>
+            <p>
+              Active-term classes: <strong>{readiness.activeClassCount}</strong> · Active students:{' '}
+              <strong>{readiness.activeStudentCount}</strong>
+            </p>
+            {readiness.unscopedActiveClassCount > 0 ? (
+              <p className="text-amber-800">
+                {readiness.unscopedActiveClassCount} unscoped active class(es) — attach from Terms
+                before closing.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {step === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
@@ -309,7 +306,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={() => setStep(1)} className="bg-[#015F2B] hover:bg-[#014a22]">
+            <Button onClick={() => goToStep(1)} className="bg-[#015F2B] hover:bg-[#014a22]">
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </div>
@@ -376,10 +373,10 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(0)}>
+              <Button variant="outline" onClick={() => goToStep(0)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(2)} className="bg-[#015F2B] hover:bg-[#014a22]">
+              <Button onClick={() => goToStep(2)} className="bg-[#015F2B] hover:bg-[#014a22]">
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
@@ -418,10 +415,10 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
               </div>
             ) : null}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
+              <Button variant="outline" onClick={() => goToStep(1)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(3)} className="bg-[#015F2B] hover:bg-[#014a22]">
+              <Button onClick={() => goToStep(3)} className="bg-[#015F2B] hover:bg-[#014a22]">
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
@@ -442,200 +439,36 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
               Skip promote step
             </label>
             {!skipPromote ? (
-              <>
-                <div>
-                  <LabelWithInfo info="Leave All to promote every Active student, or pick a program to limit the run.">
-                    Program
-                  </LabelWithInfo>
-                  <Select value={promoteProgramId} onValueChange={setPromoteProgramId}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="All programs" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All programs</SelectItem>
-                      {programs.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.code ? `${p.name} (${p.code})` : p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <LabelWithInfo info="Optional filter. With semester, promotes one cohort group (e.g. Year 2 Sem 1).">
-                      Year
-                    </LabelWithInfo>
-                    <Select value={promoteYear} onValueChange={setPromoteYear}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="All years" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">All years</SelectItem>
-                        {[1, 2, 3, 4, 5, 6].map((y) => (
-                          <SelectItem key={y} value={String(y)}>
-                            Year {y}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <LabelWithInfo info="Optional filter. Sem 1 students move to Sem 2; Sem 2 students move to next year Sem 1.">
-                      Semester
-                    </LabelWithInfo>
-                    <Select value={promoteSemester} onValueChange={setPromoteSemester}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="All semesters" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">All semesters</SelectItem>
-                        <SelectItem value="1">Semester 1</SelectItem>
-                        <SelectItem value="2">Semester 2</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="rounded-md border p-3 space-y-2">
-                  <LabelWithInfo info="Hold an entire cohort while others promote (e.g. internship year). Students stay Active with a Held back reason.">
-                    Hold back cohort
-                  </LabelWithInfo>
-                  <Select value={groupProgramId || undefined} onValueChange={setGroupProgramId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Program" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {programs.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.code ? `${p.name} (${p.code})` : p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select value={groupYear} onValueChange={setGroupYear}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5, 6].map((y) => (
-                          <SelectItem key={y} value={String(y)}>
-                            Year {y}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={groupSemester} onValueChange={setGroupSemester}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Semester 1</SelectItem>
-                        <SelectItem value="2">Semester 2</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Input
-                    placeholder="Reason (e.g. Clinical internship)"
-                    value={groupReason}
-                    onChange={(e) => setGroupReason(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (!groupProgramId) {
-                        toast.error('Select a program for the holdback group');
-                        return;
-                      }
-                      const reason = groupReason.trim();
-                      if (reason.length < 3) {
-                        toast.error('Enter a holdback reason (at least 3 characters)');
-                        return;
-                      }
-                      const year = Number(groupYear);
-                      const semester = Number(groupSemester);
-                      if (
-                        holdbackGroups.some(
-                          (g) =>
-                            g.programId === groupProgramId &&
-                            g.year === year &&
-                            g.semester === semester
-                        )
-                      ) {
-                        toast.error('That cohort is already in the holdback list');
-                        return;
-                      }
-                      setHoldbackGroups((prev) => [
-                        ...prev,
-                        { programId: groupProgramId, year, semester, reason },
-                      ]);
-                      setGroupReason('');
-                    }}
-                  >
-                    Add cohort holdback
-                  </Button>
-                  {holdbackGroups.length > 0 ? (
-                    <ul className="space-y-1 text-xs">
-                      {holdbackGroups.map((g) => {
-                        const prog = programs.find((p) => p.id === g.programId);
-                        const label = prog?.code || prog?.name || g.programId.slice(0, 8);
-                        return (
-                          <li
-                            key={`${g.programId}-${g.year}-${g.semester}`}
-                            className="flex items-start justify-between gap-2 rounded border bg-amber-50/50 px-2 py-1"
-                          >
-                            <span>
-                              {label} Y{g.year}.S{g.semester} — {g.reason}
-                            </span>
-                            <button
-                              type="button"
-                              className="text-destructive shrink-0"
-                              onClick={() =>
-                                setHoldbackGroups((prev) =>
-                                  prev.filter(
-                                    (x) =>
-                                      !(
-                                        x.programId === g.programId &&
-                                        x.year === g.year &&
-                                        x.semester === g.semester
-                                      )
-                                  )
-                                )
-                              }
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-                </div>
-                <div>
-                  <LabelWithInfo
-                    htmlFor="wiz-holdbacks"
-                    info="Optional individual UUID holdbacks. Prefer cohort holdbacks for whole year/sem groups."
-                  >
-                    Individual holdbacks
-                  </LabelWithInfo>
-                  <Textarea
-                    id="wiz-holdbacks"
-                    className="mt-1 font-mono text-xs"
-                    rows={3}
-                    placeholder="Paste student UUIDs, one per line"
-                    value={holdbackRaw}
-                    onChange={(e) => setHoldbackRaw(e.target.value)}
-                  />
-                </div>
-              </>
+              <AcademicRolloverPromoteForm
+                programs={programs}
+                promoteProgramId={promote.promoteProgramId}
+                onPromoteProgramIdChange={promote.setPromoteProgramId}
+                promoteYear={promote.promoteYear}
+                onPromoteYearChange={promote.setPromoteYear}
+                promoteSemester={promote.promoteSemester}
+                onPromoteSemesterChange={promote.setPromoteSemester}
+                holdbackGroups={promote.holdbackGroups}
+                onRemoveHoldbackGroup={(g) => promote.removeHoldbackGroup(g)}
+                holdbackRaw={promote.holdbackRaw}
+                onHoldbackRawChange={promote.setHoldbackRaw}
+                groupProgramId={promote.groupProgramId}
+                onGroupProgramIdChange={promote.setGroupProgramId}
+                groupYear={promote.groupYear}
+                onGroupYearChange={promote.setGroupYear}
+                groupSemester={promote.groupSemester}
+                onGroupSemesterChange={promote.setGroupSemester}
+                groupReason={promote.groupReason}
+                onGroupReasonChange={promote.setGroupReason}
+            onAddHoldbackGroup={() => promote.addHoldbackGroup(programs)}
+            onResetHoldbackDraft={promote.resetHoldbackGroupDraft}
+            holdbackTextareaId="wiz-holdbacks"
+              />
             ) : null}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(2)}>
+              <Button variant="outline" onClick={() => goToStep(2)}>
                 Back
               </Button>
-              <Button onClick={() => setStep(4)} className="bg-[#015F2B] hover:bg-[#014a22]">
+              <Button onClick={() => goToStep(4)} className="bg-[#015F2B] hover:bg-[#014a22]">
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
@@ -674,12 +507,29 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                 </Select>
               </div>
             ) : null}
+            {registerBlockedByOfferings ? (
+              <label className="flex items-center gap-2 text-sm text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={registerNoOfferingsOverride}
+                  onChange={(e) => setRegisterNoOfferingsOverride(e.target.checked)}
+                />
+                No offerings detected in preview — confirm register anyway
+              </label>
+            ) : null}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(3)}>
+              <Button variant="outline" onClick={() => goToStep(3)}>
                 Back
               </Button>
               <Button
-                onClick={runPreview}
+                onClick={async () => {
+                  if (registerBlockedByOfferings && !registerNoOfferingsOverride) {
+                    toast.error('Confirm register without offerings or run preview after publishing offerings.');
+                    return;
+                  }
+                  await runPreview();
+                  goToStep(5);
+                }}
                 disabled={busy}
                 className="bg-[#015F2B] hover:bg-[#014a22]"
               >
@@ -721,7 +571,7 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                     {preview.skipPromote
                       ? 'skipped'
                       : preview.promote
-                        ? `${preview.promote.toPromote} to promote · ${preview.promote.heldBack} holdbacks · ${preview.promote.completedCandidates} completed`
+                        ? `${preview.promote.toPromote} to promote · ${preview.promote.heldBack} holdbacks · ${preview.promote.completedCandidates} completed${preview.promote.skippedAlreadyPromoted > 0 ? ` · ${preview.promote.skippedAlreadyPromoted} already promoted this term` : ''}${(preview.promote.skippedWrongCohort ?? 0) > 0 ? ` · ${preview.promote.skippedWrongCohort} wrong cohort` : ''}`
                         : 'unavailable (no Active term for preview)'}
                   </strong>
                 </p>
@@ -749,7 +599,11 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
                 </p>
                 <p>
                   Offerings created: {result.classLists?.created ?? 0} · Promoted:{' '}
-                  {result.promote?.promoted ?? 0} · Auto seats: {result.register?.enrolled ?? 0}
+                  {result.promote?.promoted ?? 0}
+                  {(result.promote?.skippedAlreadyPromoted ?? 0) > 0
+                    ? ` · Skipped (already promoted): ${result.promote?.skippedAlreadyPromoted}`
+                    : ''}{' '}
+                  · Auto seats: {result.register?.enrolled ?? 0}
                   {result.register?.registrationOpened ? ' · Self-registration opened' : ''}
                 </p>
                 <p className="text-muted-foreground">Audit log: entity AcademicTermRollover</p>
@@ -762,11 +616,14 @@ export function AcademicRolloverWizard({ onCompleted }: { onCompleted?: () => vo
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setStep(4)} disabled={busy}>
+                <Button variant="outline" onClick={() => goToStep(4)} disabled={busy}>
                   Back
                 </Button>
                 <Button variant="outline" onClick={runPreview} disabled={busy}>
                   Refresh preview
+                </Button>
+                <Button variant="outline" onClick={downloadPreviewCsv} disabled={!preview}>
+                  Download CSV
                 </Button>
                 <Button
                   className="bg-[#015F2B] hover:bg-[#014a22]"

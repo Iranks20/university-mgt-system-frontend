@@ -4,6 +4,7 @@ import {
   type AcademicTermFilterSelection,
   type AcademicTermFilterValue,
 } from '@/components/AcademicTermFilter';
+import type { AcademicTerm } from '@/services/academic.service';
 
 export function useAcademicTermFilterState() {
   const [termFilter, setTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
@@ -11,6 +12,7 @@ export function useAcademicTermFilterState() {
   const [classStatusHint, setClassStatusHint] = useState<'active' | 'all'>('active');
   const [termStartDate, setTermStartDate] = useState<string | undefined>(undefined);
   const [termEndDate, setTermEndDate] = useState<string | undefined>(undefined);
+  const [selectedTerm, setSelectedTerm] = useState<AcademicTerm | null>(null);
 
   const onTermChange = useCallback((sel: AcademicTermFilterSelection) => {
     setTermFilter(sel.value);
@@ -18,6 +20,7 @@ export function useAcademicTermFilterState() {
     setClassStatusHint(sel.classStatusHint);
     setTermStartDate(sel.term?.startDate);
     setTermEndDate(sel.term?.endDate);
+    setSelectedTerm(sel.term);
   }, []);
 
   const applyTermDatesTo = useCallback(
@@ -36,6 +39,7 @@ export function useAcademicTermFilterState() {
     classStatusHint,
     termStartDate,
     termEndDate,
+    selectedTerm,
     onTermChange,
     applyTermDatesTo,
   };
