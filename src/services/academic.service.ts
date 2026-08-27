@@ -92,6 +92,8 @@ export type RegisterStudentsResult = {
 export type ReassignCohortStandingResult = {
   dryRun: boolean;
   mode: 'reactivate' | 'reassign';
+  selectionMode?: 'selected' | 'cohort';
+  selectedCount?: number | null;
   program: { id: string; name: string; code: string | null };
   source: { year: number; semester: number };
   target: { year: number; semester: number };
@@ -115,6 +117,26 @@ export type ReassignCohortStandingResult = {
     to: string;
     priorStatus: string;
   }>;
+};
+
+export type CohortStandingStudent = {
+  id: string;
+  studentNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status: string;
+  year: number;
+  semester: number;
+};
+
+export type CohortStandingStudentsResult = {
+  program: { id: string; name: string; code: string | null };
+  year: number;
+  semester: number;
+  includeCompleted: boolean;
+  total: number;
+  students: CohortStandingStudent[];
 };
 
 type ClassUpsertPayload = {
@@ -962,6 +984,7 @@ export const academicService = {
     targetSemester: number;
     reEnroll?: boolean;
     includeCompleted?: boolean;
+    studentIds?: string[];
   }): Promise<ReassignCohortStandingResult> => {
     const response = await api.post<
       { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
@@ -977,10 +1000,30 @@ export const academicService = {
     targetSemester: number;
     reEnroll?: boolean;
     includeCompleted?: boolean;
+    studentIds?: string[];
   }): Promise<ReassignCohortStandingResult> => {
     const response = await api.post<
       { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
     >('/academic/terms/cohort-standing/reassign', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  listCohortStandingStudents: async (params: {
+    programId: string;
+    year: number;
+    semester: number;
+    includeCompleted?: boolean;
+    search?: string;
+  }): Promise<CohortStandingStudentsResult> => {
+    const query = new URLSearchParams();
+    query.set('programId', params.programId);
+    query.set('year', String(params.year));
+    query.set('semester', String(params.semester));
+    if (params.includeCompleted != null) query.set('includeCompleted', String(params.includeCompleted));
+    if (params.search?.trim()) query.set('search', params.search.trim());
+    const response = await api.get<{ data: CohortStandingStudentsResult } | CohortStandingStudentsResult>(
+      `/academic/terms/cohort-standing/students?${query.toString()}`
+    );
     return (response as any)?.data ?? response;
   },
 
