@@ -8016,7 +8016,9 @@ function AcademicCalendarTab() {
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="outline" className="w-full justify-between">
-                Manual / repair steps (advanced)
+                <span>
+                  Manual / repair steps (<span className="text-red-600 font-semibold">advanced</span>)
+                </span>
                 <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
               </Button>
             </CollapsibleTrigger>
