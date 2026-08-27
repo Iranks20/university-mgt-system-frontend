@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   academicService,
   type AcademicTerm,
+  type CohortStandingStudent,
   type GenerateClassListsResult,
   type PromoteStudentsResult,
   type ReassignCohortStandingResult,
@@ -14,8 +15,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LabelWithInfo } from '@/components/ui/label-with-info';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -36,6 +41,7 @@ import { useAcademicRolloverPromoteState, PROMOTE_ALL } from '@/lib/academic-rol
 import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 
 type RolloverSection = 'offerings' | 'promote' | 'register' | 'repair';
+type RepairScopeMode = 'selected' | 'cohort';
 
 function PromoteSummary({ result }: { result: PromoteStudentsResult }) {
   const scopeParts = [
@@ -151,6 +157,14 @@ function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult 
         Program: <strong>{programLabel}</strong>
       </p>
       <p>
+        Scope:{' '}
+        <strong>
+          {result.selectionMode === 'selected'
+            ? `${result.selectedCount ?? result.toReassign} selected student(s)`
+            : 'Entire source cohort'}
+        </strong>
+      </p>
+      <p>
         {result.mode === 'reactivate' ? (
           <>
             Reactivate at <strong>Y{result.source.year} S{result.source.semester}</strong> (same
@@ -158,7 +172,7 @@ function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult 
           </>
         ) : (
           <>
-            Move cohort:{' '}
+            Move:{' '}
             <strong>
               Y{result.source.year} S{result.source.semester}
             </strong>{' '}
@@ -175,7 +189,7 @@ function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult 
         Completed in source cohort: <strong>{result.completedInSourceCohort}</strong>
       </p>
       <p>
-        Included (total): <strong>{result.totalInSourceCohort}</strong>
+        Included in this run: <strong>{result.totalInSourceCohort}</strong>
         {!result.includeCompleted && result.completedInSourceCohort > 0 ? (
           <span className="text-amber-800"> — enable Include Completed to restore them</span>
         ) : null}
@@ -199,6 +213,16 @@ function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult 
           Enrolled: {result.enrolled} · dropped from wrong classes: {result.dropped}
         </p>
       ) : null}
+      {result.samples.length > 0 ? (
+        <ul className="mt-2 max-h-40 overflow-y-auto text-xs space-y-0.5">
+          {result.samples.map((s) => (
+            <li key={s.id}>
+              {s.studentNumber}: {s.from} → {s.to}
+              {s.priorStatus !== 'Active' ? ` (${s.priorStatus})` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {result.errors.length > 0 ? (
         <p className="text-destructive">Errors: {result.errors.slice(0, 5).join('; ')}</p>
       ) : null}
@@ -216,15 +240,6 @@ function RepairCohortSummary({ result }: { result: ReassignCohortStandingResult 
             Use one of these as the source cohort if they were wrongly marked Completed.
           </p>
         </div>
-      ) : null}
-      {result.samples.length > 0 ? (
-        <ul className="mt-2 text-muted-foreground list-disc pl-4 max-h-40 overflow-auto">
-          {result.samples.map((s) => (
-            <li key={s.id}>
-              {s.studentNumber} ({s.priorStatus}): {s.from} → {s.to}
-            </li>
-          ))}
-        </ul>
       ) : null}
     </div>
   );
@@ -260,6 +275,11 @@ export function AcademicRolloverPanel({
   const [repairPreview, setRepairPreview] = useState<ReassignCohortStandingResult | null>(null);
   const [repairBusy, setRepairBusy] = useState(false);
   const [repairIncludeCompleted, setRepairIncludeCompleted] = useState(true);
+  const [repairScopeMode, setRepairScopeMode] = useState<RepairScopeMode>('selected');
+  const [repairStudents, setRepairStudents] = useState<CohortStandingStudent[]>([]);
+  const [repairStudentsLoading, setRepairStudentsLoading] = useState(false);
+  const [repairSelectedIds, setRepairSelectedIds] = useState<Set<string>>(new Set());
+  const [repairStudentSearch, setRepairStudentSearch] = useState('');
 
   useEffect(() => {
     academicService
@@ -282,6 +302,60 @@ export function AcademicRolloverPanel({
       })
       .catch(() => setPrograms([]));
   }, []);
+
+  useEffect(() => {
+    if (
+      repairScopeMode !== 'selected' ||
+      !repairProgramId ||
+      !repairSourceYear ||
+      !repairSourceSemester
+    ) {
+      setRepairStudents([]);
+      setRepairSelectedIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    setRepairStudentsLoading(true);
+    academicService
+      .listCohortStandingStudents({
+        programId: repairProgramId,
+        year: Number(repairSourceYear),
+        semester: Number(repairSourceSemester),
+        includeCompleted: repairIncludeCompleted,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setRepairStudents(res.students ?? []);
+        setRepairSelectedIds(new Set());
+        setRepairPreview(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRepairStudents([]);
+        toast.error(getApiErrorMessage(error, 'Could not load cohort students'));
+      })
+      .finally(() => {
+        if (!cancelled) setRepairStudentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    repairScopeMode,
+    repairProgramId,
+    repairSourceYear,
+    repairSourceSemester,
+    repairIncludeCompleted,
+  ]);
+
+  const filteredRepairStudents = useMemo(() => {
+    const term = repairStudentSearch.trim().toLowerCase();
+    if (!term) return repairStudents;
+    return repairStudents.filter((s) => {
+      const hay = `${s.studentNumber} ${s.firstName} ${s.lastName} ${s.email}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [repairStudents, repairStudentSearch]);
 
   const closedTerms = terms.filter((t) => t.status === 'Closed');
   const hasActive = terms.some((t) => t.status === 'Active');
@@ -433,7 +507,45 @@ export function AcademicRolloverPanel({
     targetSemester: Number(repairTargetSemester),
     reEnroll: true,
     includeCompleted: repairIncludeCompleted,
+    ...(repairScopeMode === 'selected' ? { studentIds: [...repairSelectedIds] } : {}),
   });
+
+  const toggleRepairStudent = (id: string, checked: boolean) => {
+    setRepairSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        if (next.size >= 200 && !next.has(id)) {
+          toast.error('You can select at most 200 students');
+          return prev;
+        }
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+    setRepairPreview(null);
+  };
+
+  const selectAllFilteredRepairStudents = () => {
+    setRepairSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const s of filteredRepairStudents) {
+        if (next.size >= 200) break;
+        next.add(s.id);
+      }
+      if (filteredRepairStudents.some((s) => !prev.has(s.id)) && next.size >= 200) {
+        toast.message('Selection capped at 200 students');
+      }
+      return next;
+    });
+    setRepairPreview(null);
+  };
+
+  const clearRepairSelection = () => {
+    setRepairSelectedIds(new Set());
+    setRepairPreview(null);
+  };
 
   const runRepairPreview = async () => {
     if (!repairProgramId) {
@@ -442,6 +554,10 @@ export function AcademicRolloverPanel({
     }
     if (!repairSourceYear || !repairSourceSemester || !repairTargetYear || !repairTargetSemester) {
       toast.error('Select source and target year and semester');
+      return;
+    }
+    if (repairScopeMode === 'selected' && repairSelectedIds.size === 0) {
+      toast.error('Select at least one student, or switch to Entire cohort');
       return;
     }
     setRepairBusy(true);
@@ -461,16 +577,26 @@ export function AcademicRolloverPanel({
       toast.error('Run preview first');
       return;
     }
+    if (repairScopeMode === 'selected' && repairSelectedIds.size === 0) {
+      toast.error('Select at least one student, or switch to Entire cohort');
+      return;
+    }
     const prog = programs.find((p) => p.id === repairProgramId);
     const label = prog?.code || prog?.name || 'program';
     const sameCohort =
       repairSourceYear === repairTargetYear && repairSourceSemester === repairTargetSemester;
+    const scopeNote =
+      repairScopeMode === 'selected'
+        ? `Only the ${repairPreview.toReassign} selected student(s) will change; others in this cohort stay where they are.\n\n`
+        : `This affects the entire source cohort (${repairPreview.toReassign} student(s)).\n\n`;
     const ok = window.confirm(
       sameCohort
         ? `Reactivate ${repairPreview.toReassign} Completed student(s) in ${label} at Y${repairSourceYear} S${repairSourceSemester}?\n\n` +
+            scopeNote +
             `Standing stays the same. Status becomes Active and students are re-enrolled on Active-term classes.\n\n` +
             `Back up the database first if you have not already.`
         : `Move ${repairPreview.toReassign} student(s) in ${label} from Y${repairSourceYear} S${repairSourceSemester} to Y${repairTargetYear} S${repairTargetSemester}?\n\n` +
+            scopeNote +
             `This sets standing directly (not promote). Wrong class enrollments will be dropped and students re-enrolled on Active-term classes for the target cohort.\n\n` +
             `Back up the database first if you have not already.`
     );
@@ -499,6 +625,10 @@ export function AcademicRolloverPanel({
     setRepairTargetYear('');
     setRepairTargetSemester('');
     setRepairIncludeCompleted(true);
+    setRepairScopeMode('selected');
+    setRepairStudents([]);
+    setRepairSelectedIds(new Set());
+    setRepairStudentSearch('');
     setRepairPreview(null);
   };
 
@@ -511,7 +641,16 @@ export function AcademicRolloverPanel({
   };
 
   return (
-    <div className={multi ? 'grid gap-6 lg:grid-cols-3' : 'max-w-xl'}>
+    <div className="space-y-6">
+      <div
+        className={
+          [showOfferings, showPromote, showRegister].filter(Boolean).length > 1
+            ? 'grid gap-6 lg:grid-cols-3'
+            : multi
+              ? 'grid gap-6'
+              : 'max-w-xl'
+        }
+      >
       {showOfferings ? (
       <Card>
         <CardHeader>
@@ -687,160 +826,288 @@ export function AcademicRolloverPanel({
         </CardContent>
       </Card>
       ) : null}
+      </div>
 
       {showRepair ? (
-      <Card>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle>Repair cohort standing</CardTitle>
           <CardDescription>
-            Move an entire program cohort to a specific year/semester — use after accidental
-            over-promotion. This is not Promote (which only advances one step).
+            Move wrongly placed students to a specific year/semester — selected students only, or
+            the entire cohort. This is not Promote (which only advances one step).
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {!hasActive ? (
             <p className="text-sm text-amber-700">
               Activate an academic term before re-enrolling students onto classes.
             </p>
           ) : null}
-          <div>
-            <LabelWithInfo info="Required. Only Active students on this program with the source year and semester are moved.">
-              Program
-            </LabelWithInfo>
-            <Select
-              value={toOptionalSelectValue(repairProgramId)}
-              onValueChange={(v) => {
-                setRepairProgramId(fromOptionalSelectValue(v));
-                setRepairPreview(null);
-              }}
-            >
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select program" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SELECT_UNSET}>Select program</SelectItem>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code ? `${p.name} (${p.code})` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="rounded-md border p-3 space-y-2">
-            <p className="text-sm font-medium">Source cohort (current wrong standing)</p>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+            <div className="space-y-4">
               <div>
-                <Label>Year</Label>
+                <LabelWithInfo info="Required. Students must belong to this program at the source year and semester.">
+                  Program
+                </LabelWithInfo>
                 <Select
-                  value={toOptionalSelectValue(repairSourceYear)}
+                  value={toOptionalSelectValue(repairProgramId)}
                   onValueChange={(v) => {
-                    setRepairSourceYear(fromOptionalSelectValue(v));
+                    setRepairProgramId(fromOptionalSelectValue(v));
                     setRepairPreview(null);
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select year" />
+                    <SelectValue placeholder="Select program" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
-                    {[1, 2, 3, 4, 5, 6].map((y) => (
-                      <SelectItem key={y} value={String(y)}>
-                        Year {y}
+                    <SelectItem value={SELECT_UNSET}>Select program</SelectItem>
+                    {programs.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.code ? `${p.name} (${p.code})` : p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Semester</Label>
-                <Select
-                  value={toOptionalSelectValue(repairSourceSemester)}
-                  onValueChange={(v) => {
-                    setRepairSourceSemester(fromOptionalSelectValue(v));
+              <div className="rounded-md border p-4 space-y-3">
+                <p className="text-sm font-medium">Source cohort (current wrong standing)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Year</Label>
+                    <Select
+                      value={toOptionalSelectValue(repairSourceYear)}
+                      onValueChange={(v) => {
+                        setRepairSourceYear(fromOptionalSelectValue(v));
+                        setRepairPreview(null);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
+                        {[1, 2, 3, 4, 5, 6].map((y) => (
+                          <SelectItem key={y} value={String(y)}>
+                            Year {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Semester</Label>
+                    <Select
+                      value={toOptionalSelectValue(repairSourceSemester)}
+                      onValueChange={(v) => {
+                        setRepairSourceSemester(fromOptionalSelectValue(v));
+                        setRepairPreview(null);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select semester" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
+                        <SelectItem value="1">Semester 1</SelectItem>
+                        <SelectItem value="2">Semester 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-md border border-[#015F2B]/30 bg-[#015F2B]/5 p-4 space-y-3">
+                <p className="text-sm font-medium">Target standing (correct cohort)</p>
+                <p className="text-xs text-muted-foreground">
+                  Same year/semester as source reactivates Completed students only (status → Active).
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Year</Label>
+                    <Select
+                      value={toOptionalSelectValue(repairTargetYear)}
+                      onValueChange={(v) => {
+                        setRepairTargetYear(fromOptionalSelectValue(v));
+                        setRepairPreview(null);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
+                        {[1, 2, 3, 4, 5, 6].map((y) => (
+                          <SelectItem key={y} value={String(y)}>
+                            Year {y}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Semester</Label>
+                    <Select
+                      value={toOptionalSelectValue(repairTargetSemester)}
+                      onValueChange={(v) => {
+                        setRepairTargetSemester(fromOptionalSelectValue(v));
+                        setRepairPreview(null);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select semester" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
+                        <SelectItem value="1">Semester 1</SelectItem>
+                        <SelectItem value="2">Semester 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border p-3">
+                <Checkbox
+                  id="repair-include-completed"
+                  checked={repairIncludeCompleted}
+                  onCheckedChange={(checked) => {
+                    setRepairIncludeCompleted(checked === true);
                     setRepairPreview(null);
                   }}
+                />
+                <LabelWithInfo
+                  htmlFor="repair-include-completed"
+                  info="Promote marks final-year Sem 2 students as Completed. Over-promotion can do this too early. Keep this on to restore those students to Active and move them to the target cohort."
                 >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select semester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
-                    <SelectItem value="1">Semester 1</SelectItem>
-                    <SelectItem value="2">Semester 2</SelectItem>
-                  </SelectContent>
-                </Select>
+                  Include Completed students (reactivate)
+                </LabelWithInfo>
               </div>
             </div>
-          </div>
-          <div className="rounded-md border border-[#015F2B]/30 bg-[#015F2B]/5 p-3 space-y-2">
-            <p className="text-sm font-medium">Target standing (correct cohort)</p>
-            <p className="text-xs text-muted-foreground">
-              Set the same year/semester as source to reactivate Completed students only (e.g. keep
-              Y5 S2 but change status from Completed to Active).
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Year</Label>
-                <Select
-                  value={toOptionalSelectValue(repairTargetYear)}
+
+            <div className="rounded-md border p-4 space-y-3 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <LabelWithInfo info="Selected students: only checked students move; others in the cohort stay. Entire cohort: everyone in the source standing is moved.">
+                  Who to repair
+                </LabelWithInfo>
+                <RadioGroup
+                  value={repairScopeMode}
                   onValueChange={(v) => {
-                    setRepairTargetYear(fromOptionalSelectValue(v));
+                    setRepairScopeMode(v as RepairScopeMode);
                     setRepairPreview(null);
                   }}
+                  className="flex flex-row flex-wrap gap-4"
                 >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SELECT_UNSET}>Select year</SelectItem>
-                    {[1, 2, 3, 4, 5, 6].map((y) => (
-                      <SelectItem key={y} value={String(y)}>
-                        Year {y}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="selected" id="repair-scope-selected" />
+                    <Label htmlFor="repair-scope-selected" className="font-normal">
+                      Selected students
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="cohort" id="repair-scope-cohort" />
+                    <Label htmlFor="repair-scope-cohort" className="font-normal">
+                      Entire cohort
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
-              <div>
-                <Label>Semester</Label>
-                <Select
-                  value={toOptionalSelectValue(repairTargetSemester)}
-                  onValueChange={(v) => {
-                    setRepairTargetSemester(fromOptionalSelectValue(v));
-                    setRepairPreview(null);
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select semester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SELECT_UNSET}>Select semester</SelectItem>
-                    <SelectItem value="1">Semester 1</SelectItem>
-                    <SelectItem value="2">Semester 2</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {repairScopeMode === 'selected' ? (
+                <div className="space-y-3">
+                  {!repairProgramId || !repairSourceYear || !repairSourceSemester ? (
+                    <p className="text-sm text-muted-foreground">
+                      Choose program and source year/semester to load students.
+                    </p>
+                  ) : repairStudentsLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading cohort students…</p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          value={repairStudentSearch}
+                          onChange={(e) => setRepairStudentSearch(e.target.value)}
+                          placeholder="Search name, number, email"
+                          className="h-9 min-w-[14rem] flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          disabled={filteredRepairStudents.length === 0}
+                          onClick={selectAllFilteredRepairStudents}
+                        >
+                          Select visible
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          disabled={repairSelectedIds.size === 0}
+                          onClick={clearRepairSelection}
+                        >
+                          Clear
+                        </Button>
+                        <Badge variant="secondary" className="h-9 px-3 text-sm font-normal">
+                          {repairSelectedIds.size} selected
+                          {repairStudents.length > 0 ? ` / ${repairStudents.length}` : ''}
+                        </Badge>
+                      </div>
+                      {repairStudents.length === 0 ? (
+                        <p className="text-sm text-amber-800">
+                          No Active{repairIncludeCompleted ? '/Completed' : ''} students in this
+                          source cohort.
+                        </p>
+                      ) : (
+                        <div className="max-h-[28rem] overflow-y-auto rounded-md border divide-y">
+                          {filteredRepairStudents.map((s) => {
+                            const checked = repairSelectedIds.has(s.id);
+                            return (
+                              <label
+                                key={s.id}
+                                className="flex cursor-pointer items-start gap-3 px-4 py-2.5 text-sm hover:bg-muted/40"
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(v) => toggleRepairStudent(s.id, v === true)}
+                                  className="mt-0.5"
+                                />
+                                <span className="min-w-0 flex-1 leading-snug">
+                                  <span className="font-medium">
+                                    {s.lastName}, {s.firstName}
+                                  </span>
+                                  <span className="text-muted-foreground"> · {s.studentNumber}</span>
+                                  {s.status === 'Completed' ? (
+                                    <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                                      Completed
+                                    </Badge>
+                                  ) : null}
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {filteredRepairStudents.length === 0 ? (
+                            <p className="px-4 py-3 text-sm text-muted-foreground">
+                              No students match this search.
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Cap 200 students per repair. Unselected students stay in the source cohort.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Every Active{repairIncludeCompleted ? '/Completed' : ''} student at the source
+                  year/semester will be moved (or reactivated).
+                </p>
+              )}
             </div>
           </div>
-          <div className="flex items-start gap-2 rounded-md border p-3">
-            <Checkbox
-              id="repair-include-completed"
-              checked={repairIncludeCompleted}
-              onCheckedChange={(checked) => {
-                setRepairIncludeCompleted(checked === true);
-                setRepairPreview(null);
-              }}
-            />
-            <LabelWithInfo
-              htmlFor="repair-include-completed"
-              info="Promote marks final-year Sem 2 students as Completed. Over-promotion can do this too early. Keep this on to restore those students to Active and move them to the target cohort."
-            >
-              Include Completed students (reactivate)
-            </LabelWithInfo>
-          </div>
+
           {repairPreview ? <RepairCohortSummary result={repairPreview} /> : null}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 border-t pt-4">
             <ResetFiltersButton
               label="Reset form"
               className="h-9"
@@ -850,7 +1117,10 @@ export function AcademicRolloverPanel({
                 !hasOptionalSelectValue(repairSourceSemester) &&
                 !hasOptionalSelectValue(repairTargetYear) &&
                 !hasOptionalSelectValue(repairTargetSemester) &&
-                repairIncludeCompleted
+                repairIncludeCompleted &&
+                repairScopeMode === 'selected' &&
+                repairSelectedIds.size === 0 &&
+                !repairStudentSearch
               }
               onClick={resetRepairForm}
             />
