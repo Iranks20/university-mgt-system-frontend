@@ -8025,7 +8025,7 @@ function AcademicCalendarTab() {
             <CollapsibleContent className="mt-4 space-y-4">
               <p className="text-sm text-muted-foreground">
                 Use the wizard above for normal semester transitions. These panels are for repair,
-                partial runs, or cohort standing fixes only.
+                partial runs, or cohort standing fixes (selected students or entire cohort) only.
               </p>
               <AcademicRolloverPanel sections={['offerings', 'promote', 'repair', 'register']} />
             </CollapsibleContent>
