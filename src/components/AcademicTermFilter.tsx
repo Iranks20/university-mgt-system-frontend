@@ -19,7 +19,34 @@ export type AcademicTermFilterSelection = {
   academicTermId?: string;
   classStatusHint: 'active' | 'all';
   term: AcademicTerm | null;
+  dateFrom: string;
+  dateTo: string;
 };
+
+function isoDateOnly(value: string): string {
+  return value.slice(0, 10);
+}
+
+export function computeTermFilterDateRange(
+  value: AcademicTermFilterValue,
+  terms: AcademicTerm[]
+): { dateFrom: string; dateTo: string } {
+  if (value === TERM_FILTER_ALL) {
+    const dated = terms.filter((t) => t.startDate && t.endDate);
+    if (dated.length === 0) return { dateFrom: '', dateTo: '' };
+    const starts = dated.map((t) => isoDateOnly(t.startDate!)).sort();
+    const ends = dated.map((t) => isoDateOnly(t.endDate!)).sort();
+    return { dateFrom: starts[0]!, dateTo: ends[ends.length - 1]! };
+  }
+  const term =
+    value === TERM_FILTER_ACTIVE
+      ? (terms.find((t) => t.status === 'Active') ?? null)
+      : (terms.find((t) => t.id === value) ?? null);
+  if (term?.startDate && term?.endDate) {
+    return { dateFrom: isoDateOnly(term.startDate), dateTo: isoDateOnly(term.endDate) };
+  }
+  return { dateFrom: '', dateTo: '' };
+}
 
 function coverageLabel(semester: number) {
   if (semester === 0) return 'Both';
@@ -34,12 +61,15 @@ export function resolveAcademicTermFilter(
   value: AcademicTermFilterValue,
   terms: AcademicTerm[]
 ): AcademicTermFilterSelection {
+  const { dateFrom, dateTo } = computeTermFilterDateRange(value, terms);
   if (value === TERM_FILTER_ALL) {
     return {
       value,
       academicTermId: 'all',
       classStatusHint: 'all',
       term: null,
+      dateFrom,
+      dateTo,
     };
   }
   if (value === TERM_FILTER_ACTIVE) {
@@ -49,6 +79,8 @@ export function resolveAcademicTermFilter(
       academicTermId: undefined,
       classStatusHint: 'active',
       term: active,
+      dateFrom,
+      dateTo,
     };
   }
   const term = terms.find((t) => t.id === value) ?? null;
@@ -58,6 +90,8 @@ export function resolveAcademicTermFilter(
     academicTermId: value,
     classStatusHint: closedOrDraft ? 'all' : 'active',
     term,
+    dateFrom,
+    dateTo,
   };
 }
 
