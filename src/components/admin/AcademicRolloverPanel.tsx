@@ -10,6 +10,14 @@ import {
   type RegisterStudentsResult,
 } from '@/services/academic.service';
 import { getApiErrorMessage } from '@/lib/api';
+
+function isRepairCohortStaleSelectionError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string }).code === 'STUDENTS_NOT_IN_COHORT'
+  );
+}
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,6 +50,9 @@ import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 
 type RolloverSection = 'offerings' | 'promote' | 'register' | 'repair';
 type RepairScopeMode = 'selected' | 'cohort';
+
+const REPAIR_REENROLL_BATCH_MAX = 50;
+const REPAIR_STANDING_BATCH_MAX = 200;
 
 function PromoteSummary({ result }: { result: PromoteStudentsResult }) {
   const scopeParts = [
@@ -275,11 +286,17 @@ export function AcademicRolloverPanel({
   const [repairPreview, setRepairPreview] = useState<ReassignCohortStandingResult | null>(null);
   const [repairBusy, setRepairBusy] = useState(false);
   const [repairIncludeCompleted, setRepairIncludeCompleted] = useState(true);
+  const [repairReEnroll, setRepairReEnroll] = useState(true);
   const [repairScopeMode, setRepairScopeMode] = useState<RepairScopeMode>('selected');
   const [repairStudents, setRepairStudents] = useState<CohortStandingStudent[]>([]);
   const [repairStudentsLoading, setRepairStudentsLoading] = useState(false);
   const [repairSelectedIds, setRepairSelectedIds] = useState<Set<string>>(new Set());
   const [repairStudentSearch, setRepairStudentSearch] = useState('');
+  const [repairStudentsRefreshKey, setRepairStudentsRefreshKey] = useState(0);
+
+  const refreshRepairStudentList = () => {
+    setRepairStudentsRefreshKey((key) => key + 1);
+  };
 
   useEffect(() => {
     academicService
@@ -346,6 +363,7 @@ export function AcademicRolloverPanel({
     repairSourceYear,
     repairSourceSemester,
     repairIncludeCompleted,
+    repairStudentsRefreshKey,
   ]);
 
   const filteredRepairStudents = useMemo(() => {
@@ -499,13 +517,15 @@ export function AcademicRolloverPanel({
     }
   };
 
+  const repairBatchMax = repairReEnroll ? REPAIR_REENROLL_BATCH_MAX : REPAIR_STANDING_BATCH_MAX;
+
   const repairPayload = () => ({
     programId: repairProgramId,
     sourceYear: Number(repairSourceYear),
     sourceSemester: Number(repairSourceSemester),
     targetYear: Number(repairTargetYear),
     targetSemester: Number(repairTargetSemester),
-    reEnroll: true,
+    reEnroll: repairReEnroll,
     includeCompleted: repairIncludeCompleted,
     ...(repairScopeMode === 'selected' ? { studentIds: [...repairSelectedIds] } : {}),
   });
@@ -514,8 +534,8 @@ export function AcademicRolloverPanel({
     setRepairSelectedIds((prev) => {
       const next = new Set(prev);
       if (checked) {
-        if (next.size >= 200 && !next.has(id)) {
-          toast.error('You can select at most 200 students');
+        if (next.size >= repairBatchMax && !next.has(id)) {
+          toast.error(`You can select at most ${repairBatchMax} students per apply`);
           return prev;
         }
         next.add(id);
@@ -531,11 +551,11 @@ export function AcademicRolloverPanel({
     setRepairSelectedIds((prev) => {
       const next = new Set(prev);
       for (const s of filteredRepairStudents) {
-        if (next.size >= 200) break;
+        if (next.size >= repairBatchMax) break;
         next.add(s.id);
       }
-      if (filteredRepairStudents.some((s) => !prev.has(s.id)) && next.size >= 200) {
-        toast.message('Selection capped at 200 students');
+      if (filteredRepairStudents.some((s) => !prev.has(s.id)) && next.size >= repairBatchMax) {
+        toast.message(`Selection capped at ${repairBatchMax} students per apply`);
       }
       return next;
     });
@@ -566,7 +586,14 @@ export function AcademicRolloverPanel({
       setRepairPreview(data);
       toast.success('Repair preview ready');
     } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Could not preview cohort repair'));
+      if (isRepairCohortStaleSelectionError(error)) {
+        refreshRepairStudentList();
+        toast.error(
+          'Some selected students are no longer in this source cohort. The list was refreshed — select again and preview.'
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, 'Could not preview cohort repair'));
+      }
     } finally {
       setRepairBusy(false);
     }
@@ -611,8 +638,16 @@ export function AcademicRolloverPanel({
           ? `Reactivated ${data.reactivated} student(s)`
           : `Reassigned ${data.reassigned} student(s)`
       );
+      refreshRepairStudentList();
     } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Could not reassign cohort'));
+      if (isRepairCohortStaleSelectionError(error)) {
+        refreshRepairStudentList();
+        toast.error(
+          'Some selected students are no longer in this source cohort. The list was refreshed — select again and preview.'
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, 'Could not reassign cohort'));
+      }
     } finally {
       setRepairBusy(false);
     }
@@ -625,6 +660,7 @@ export function AcademicRolloverPanel({
     setRepairTargetYear('');
     setRepairTargetSemester('');
     setRepairIncludeCompleted(true);
+    setRepairReEnroll(true);
     setRepairScopeMode('selected');
     setRepairStudents([]);
     setRepairSelectedIds(new Set());
@@ -966,6 +1002,25 @@ export function AcademicRolloverPanel({
               </div>
               <div className="flex items-start gap-2 rounded-md border p-3">
                 <Checkbox
+                  id="repair-re-enroll"
+                  checked={repairReEnroll}
+                  onCheckedChange={(checked) => {
+                    setRepairReEnroll(checked === true);
+                    setRepairPreview(null);
+                    if (checked !== true && repairSelectedIds.size > REPAIR_STANDING_BATCH_MAX) {
+                      setRepairSelectedIds(new Set());
+                    }
+                  }}
+                />
+                <LabelWithInfo
+                  htmlFor="repair-re-enroll"
+                  info={`When on, students are auto-enrolled on Active-term classes after standing is fixed (max ${REPAIR_REENROLL_BATCH_MAX} per apply). Turn off to move up to ${REPAIR_STANDING_BATCH_MAX} standings only, then use Register.`}
+                >
+                  Re-enroll on Active-term classes
+                </LabelWithInfo>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border p-3">
+                <Checkbox
                   id="repair-include-completed"
                   checked={repairIncludeCompleted}
                   onCheckedChange={(checked) => {
@@ -1026,6 +1081,21 @@ export function AcademicRolloverPanel({
                           placeholder="Search name, number, email"
                           className="h-9 min-w-[14rem] flex-1"
                         />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          disabled={
+                            repairStudentsLoading ||
+                            !repairProgramId ||
+                            !repairSourceYear ||
+                            !repairSourceSemester
+                          }
+                          onClick={refreshRepairStudentList}
+                        >
+                          {repairStudentsLoading ? 'Refreshing…' : 'Refresh list'}
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
@@ -1092,7 +1162,9 @@ export function AcademicRolloverPanel({
                         </div>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Cap 200 students per repair. Unselected students stay in the source cohort.
+                        Cap {repairBatchMax} students per apply
+                        {repairReEnroll ? ' with re-enroll' : ''}. The list refreshes after each
+                        successful apply. Use Refresh list if another tab or batch changed standings.
                       </p>
                     </>
                   )}
@@ -1107,6 +1179,13 @@ export function AcademicRolloverPanel({
           </div>
 
           {repairPreview ? <RepairCohortSummary result={repairPreview} /> : null}
+          {repairPreview && repairPreview.toReassign > repairBatchMax ? (
+            <p className="text-sm text-amber-700">
+              This preview affects {repairPreview.toReassign} students — max {repairBatchMax} per
+              apply{repairReEnroll ? ' with re-enroll' : ''}. Select a smaller group
+              {!repairReEnroll ? '' : ', or turn off re-enroll for standing-only moves up to ' + REPAIR_STANDING_BATCH_MAX}.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2 border-t pt-4">
             <ResetFiltersButton
               label="Reset form"
@@ -1133,7 +1212,13 @@ export function AcademicRolloverPanel({
             </Button>
             <Button
               className="bg-[#015F2B] hover:bg-[#014a22]"
-              disabled={repairBusy || !hasActive || !repairPreview || repairPreview.toReassign === 0}
+              disabled={
+                repairBusy ||
+                !hasActive ||
+                !repairPreview ||
+                repairPreview.toReassign === 0 ||
+                repairPreview.toReassign > repairBatchMax
+              }
               onClick={runRepair}
             >
               {repairBusy ? 'Working…' : repairPreview?.mode === 'reactivate' ? 'Reactivate' : 'Apply repair'}
