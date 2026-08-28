@@ -26,6 +26,8 @@ import {
 } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
+const RESET_OFFERINGS_ENABLED = false;
+
 function statusBadge(status: AcademicTerm['status']) {
   const map: Record<AcademicTerm['status'], string> = {
     Draft: 'bg-gray-100 text-gray-700',
@@ -389,7 +391,12 @@ export function AcademicTermsPanel() {
                         Attach legacy
                       </Button>
                     ) : null}
-                    <Button variant="destructive" size="sm" onClick={() => openReset(term)}>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={!RESET_OFFERINGS_ENABLED}
+                      onClick={() => openReset(term)}
+                    >
                       <Eraser className="h-4 w-4 mr-1" /> Reset offerings
                     </Button>
                   </TableCell>

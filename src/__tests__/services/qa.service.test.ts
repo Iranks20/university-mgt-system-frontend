@@ -122,6 +122,50 @@ describe('qaService.getMyLectureRecords', () => {
   });
 });
 
+describe('qaService.getLectureRecords term scope', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('forwards academicTermId to lecture-records API', async () => {
+    (api.get as any).mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 20 });
+
+    await qaService.getLectureRecords({
+      academicTermId: 'term-closed-123',
+      page: 1,
+      limit: 20,
+    });
+
+    expect(api.get).toHaveBeenCalledWith('/qa/lecture-records', {
+      page: 1,
+      limit: 20,
+      academicTermId: 'term-closed-123',
+    });
+  });
+
+  it('forwards academicTermId to lecture-records-summary API', async () => {
+    (api.get as any).mockResolvedValue({
+      totalRecords: 0,
+      taughtCount: 0,
+      untaughtCount: 0,
+      pendingCount: 0,
+      onTimeCount: 0,
+      onTimeRatePct: 0,
+      hasFilters: true,
+    });
+
+    await qaService.getLectureRecordsSummary({
+      academicTermId: 'all',
+      startDate: '2026-01-01',
+    });
+
+    expect(api.get).toHaveBeenCalledWith('/qa/lecture-records-summary', {
+      startDate: '2026-01-01',
+      academicTermId: 'all',
+    });
+  });
+});
+
 describe('qaService.getReconciliationReport', () => {
   beforeEach(() => {
     vi.clearAllMocks();

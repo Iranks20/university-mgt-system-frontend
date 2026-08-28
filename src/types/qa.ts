@@ -128,8 +128,8 @@ export interface QAMonthlyReport {
 }
 
 export interface QAFilter {
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: Date | string;
+  endDate?: Date | string;
   school?: string;
   department?: string;
   lecturerName?: string;
@@ -138,6 +138,7 @@ export interface QAFilter {
   search?: string;
   comment?: string;
   checkInStatus?: string;
+  academicTermId?: string;
   page?: number;
   limit?: number;
   status?: QALecturerRecord['status'];
