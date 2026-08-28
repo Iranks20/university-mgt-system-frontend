@@ -622,6 +622,25 @@ export const academicService = {
     }
   },
 
+  getClassLecturerPool: async (
+    classId: string
+  ): Promise<Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }>> => {
+    try {
+      const response = await api.get<
+        | { classId: string; lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> }
+        | { data: { classId: string; lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> } }
+      >(`/academic/classes/${classId}/lecturer-pool`);
+      if (Array.isArray((response as { lecturers?: unknown[] })?.lecturers)) {
+        return (response as { lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> }).lecturers;
+      }
+      const nested = (response as { data?: { lecturers?: unknown[] } })?.data?.lecturers;
+      return (nested ?? []) as Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }>;
+    } catch (error) {
+      console.error('Error fetching class lecturer pool:', error);
+      return [];
+    }
+  },
+
   createClass: async (classData: ClassUpsertPayload): Promise<Class> => {
     try {
       return await api.post<Class>('/academic/classes', classData);

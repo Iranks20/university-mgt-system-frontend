@@ -18,8 +18,8 @@ export function useAcademicTermFilterState() {
     setTermFilter(sel.value);
     setAcademicTermId(sel.academicTermId);
     setClassStatusHint(sel.classStatusHint);
-    setTermStartDate(sel.term?.startDate);
-    setTermEndDate(sel.term?.endDate);
+    setTermStartDate(sel.dateFrom || sel.term?.startDate);
+    setTermEndDate(sel.dateTo || sel.term?.endDate);
     setSelectedTerm(sel.term);
   }, []);
 
@@ -27,8 +27,8 @@ export function useAcademicTermFilterState() {
     (setFrom: (v: string) => void, setTo: (v: string) => void) =>
       (sel: AcademicTermFilterSelection) => {
         onTermChange(sel);
-        if (sel.term?.startDate) setFrom(sel.term.startDate);
-        if (sel.term?.endDate) setTo(sel.term.endDate);
+        setFrom(sel.dateFrom);
+        setTo(sel.dateTo);
       },
     [onTermChange]
   );
