@@ -15,7 +15,11 @@ type LecturerTableRow = QALecturerSummary & { school: string };
 const PAGE_SIZE = 20;
 const ALL = 'All';
 
-export function QALecturerSummary() {
+type QALecturerSummaryProps = {
+  scopedDateRange?: { dateFrom: string; dateTo: string };
+};
+
+export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
   const [reports, setReports] = useState<QALecturerSummaryReport[]>([]);
   const [schoolOptions, setSchoolOptions] = useState<string[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<string>(ALL);
@@ -27,6 +31,7 @@ export function QALecturerSummary() {
   const [page, setPage] = useState(1);
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (scopedDateRange) return scopedDateRange;
     const now = new Date();
     if (dateRangeKey === 'all') return undefined;
     if (dateRangeKey === 'last_30_days') {
@@ -48,13 +53,13 @@ export function QALecturerSummary() {
 
   useEffect(() => {
     loadReports();
-  }, [selectedSchool, dateRangeKey, selectedClass, selectedCourseUnit, selectedLecturer]);
+  }, [selectedSchool, dateRangeKey, selectedClass, selectedCourseUnit, selectedLecturer, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
 
   useEffect(() => {
     setSelectedClass(ALL);
     setSelectedCourseUnit(ALL);
     setSelectedLecturer(ALL);
-  }, [selectedSchool, dateRangeKey]);
+  }, [selectedSchool, dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
 
   useEffect(() => {
     setPage(1);
@@ -102,7 +107,7 @@ export function QALecturerSummary() {
       }
     };
     loadOptions();
-  }, [selectedSchool, dateRangeKey]);
+  }, [selectedSchool, dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
 
   const schoolFilterOptions = useMemo(() => {
     const fromReports = reports.map((report) => report.school);
@@ -163,6 +168,7 @@ export function QALecturerSummary() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2 items-center mb-6">
+            {!scopedDateRange ? (
             <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Date range" />
@@ -173,6 +179,7 @@ export function QALecturerSummary() {
                 <SelectItem value="this_term">Last 3 months</SelectItem>
               </SelectContent>
             </Select>
+            ) : null}
             <Select value={selectedSchool} onValueChange={setSelectedSchool}>
               <SelectTrigger className="w-[220px]">
                 <SelectValue placeholder="Filter by School" />

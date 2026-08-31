@@ -15,12 +15,17 @@ import type { QASchoolSummary } from '@/types/qa';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
-export function QASchoolSummary() {
+type QASchoolSummaryProps = {
+  scopedDateRange?: { dateFrom: string; dateTo: string };
+};
+
+export function QASchoolSummary({ scopedDateRange }: QASchoolSummaryProps) {
   const [summaries, setSummaries] = useState<QASchoolSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>('all');
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (scopedDateRange) return scopedDateRange;
     const now = new Date();
     if (dateRangeKey === 'all') return undefined;
     if (dateRangeKey === 'last_30_days') {
@@ -38,7 +43,7 @@ export function QASchoolSummary() {
 
   useEffect(() => {
     loadSummaries();
-  }, [dateRangeKey]);
+  }, [dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
 
   const loadSummaries = async () => {
     setIsLoading(true);
@@ -67,6 +72,7 @@ export function QASchoolSummary() {
           <p className="text-gray-500">Summary by school with untaught breakdown</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
+          {!scopedDateRange ? (
           <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Date range" />
@@ -77,6 +83,7 @@ export function QASchoolSummary() {
               <SelectItem value="this_term">Last 3 months</SelectItem>
             </SelectContent>
           </Select>
+          ) : null}
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export Excel
