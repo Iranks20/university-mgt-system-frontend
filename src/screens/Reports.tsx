@@ -38,9 +38,12 @@ import { toast } from 'sonner';
 import {
   AcademicTermFilter,
   TERM_FILTER_ACTIVE,
-  type AcademicTermFilterValue,
+  resolveAcademicTermFilter,
+  type AcademicTermFilterSelection,
 } from '@/components/AcademicTermFilter';
 import { termScopeQueryParam } from '@/lib/academic-term-scope';
+import { resolveReportsScopedDates } from '@/lib/reports-term-scope';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const REPORT_TABLE_PAGE_SIZE = 20;
@@ -76,7 +79,14 @@ function ReportTablePagination({
 
 export default function Reports() {
   const { user } = useAuth();
-  const [dateRange, setDateRange] = useState('week');
+  const {
+    termFilter,
+    academicTermId,
+    classStatusHint,
+    termStartDate,
+    termEndDate,
+    onTermChange,
+  } = useAcademicTermFilterState();
   const [reportType, setReportType] = useState('school');
   const [overviewStats, setOverviewStats] = useState<{ teachingRatePercent?: number; studentAttendancePercent?: number; recentQARecords?: number; untaughtLectures?: number; scheduledCountLast30?: number; teachingRateVsScheduledPercent?: number } | null>(null);
   const [attendanceTrends, setAttendanceTrends] = useState<{ day: string; present: number; absent: number }[]>([]);
@@ -139,9 +149,11 @@ export default function Reports() {
   const [attendDateFrom, setAttendDateFrom] = useState('');
   const [attendDateTo, setAttendDateTo] = useState('');
   const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
-  const [attendTermFilter, setAttendTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
-  const [attendTermId, setAttendTermId] = useState<string | undefined>(undefined);
-  const [attendTermClassStatus, setAttendTermClassStatus] = useState<'active' | 'all'>('active');
+  const reportsScopedDates = useMemo(
+    () => resolveReportsScopedDates(termFilter, termStartDate, termEndDate),
+    [termFilter, termStartDate, termEndDate]
+  );
+  const reportsTermScoped = reportsScopedDates != null;
   const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
   const [classAttendLoading, setClassAttendLoading] = useState(false);
   const [classAttendExporting, setClassAttendExporting] = useState(false);
@@ -176,6 +188,7 @@ export default function Reports() {
   const [compReportLoading, setCompReportLoading] = useState(false);
 
   const getSchoolPerfDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (schoolPerfDateRange === 'all') return undefined;
     if (schoolPerfDateRange === 'last_30_days') {
@@ -192,6 +205,7 @@ export default function Reports() {
   };
 
   const getLecturerDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (lecturerDateRange === 'all') return undefined;
     if (lecturerDateRange === 'last_30_days') {
@@ -208,6 +222,7 @@ export default function Reports() {
   };
 
   const getStudentAttendDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (studentAttendDateRange === 'all') return undefined;
     if (studentAttendDateRange === 'last_30_days') {
@@ -223,13 +238,53 @@ export default function Reports() {
     return undefined;
   };
 
+  const handleReportsTermChange = useCallback(
+    (sel: AcademicTermFilterSelection) => {
+      onTermChange(sel);
+      setActiveTermLabel(sel.term?.name ?? null);
+      if (sel.dateFrom) {
+        setAttendDateFrom(sel.dateFrom);
+        setReconDateFrom(sel.dateFrom);
+        setCompDateFrom(sel.dateFrom);
+      }
+      if (sel.dateTo) {
+        setAttendDateTo(sel.dateTo);
+        setReconDateTo(sel.dateTo);
+        setCompDateTo(sel.dateTo);
+      }
+      setAttendSelectedClassId(ALL_VALUE);
+    },
+    [onTermChange]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    academicService
+      .getAcademicTerms()
+      .then((terms) => {
+        if (cancelled) return;
+        handleReportsTermChange(resolveAcademicTermFilter(TERM_FILTER_ACTIVE, terms));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [handleReportsTermChange]);
+
   useEffect(() => {
     const load = async () => {
       setOverviewLoading(true);
       try {
         const now = new Date();
-        const last30To = now.toISOString().slice(0, 10);
-        const last30From = (() => { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+        const scoped = reportsScopedDates;
+        const last30To = scoped?.dateTo ?? now.toISOString().slice(0, 10);
+        const last30From =
+          scoped?.dateFrom ??
+          (() => {
+            const d = new Date(now);
+            d.setDate(d.getDate() - 30);
+            return d.toISOString().slice(0, 10);
+          })();
         const [stats, trends, dist, reports, schoolSummaryLast30, scheduledBySchool] = await Promise.all([
           analyticsService.getDashboardStats(),
           analyticsService.getAttendanceTrends(7),
@@ -270,7 +325,7 @@ export default function Reports() {
       }
     };
     load();
-  }, [retryCount]);
+  }, [retryCount, reportsScopedDates]);
 
   useEffect(() => {
     setSchoolsLoading(true);
@@ -308,7 +363,7 @@ export default function Reports() {
       }
     };
     load();
-  }, [schoolPerfDateRange]);
+  }, [schoolPerfDateRange, reportsScopedDates]);
 
   useEffect(() => {
     setLecturersLoading(true);
@@ -330,7 +385,7 @@ export default function Reports() {
       }));
       setLecturersLoading(false);
     }).catch(() => setLecturersLoading(false));
-  }, [lecturerDateRange, schoolFilter]);
+  }, [lecturerDateRange, schoolFilter, reportsScopedDates]);
 
   useEffect(() => {
     setLecturerDeptFilter('all');
@@ -345,15 +400,6 @@ export default function Reports() {
     academicService.getLevels().then((list) => setAttendLevels(list || [])).catch(() => setAttendLevels([]));
     academicService.getDepartments().then((list) => setAttendDepartments(list || [])).catch(() => setAttendDepartments([]));
     academicService.getPrograms().then((list) => setAttendPrograms((list as any[]) || [])).catch(() => setAttendPrograms([]));
-    academicService
-      .getActiveAcademicTerm()
-      .then((term) => {
-        if (!term) return;
-        setActiveTermLabel(term.name);
-        setAttendDateFrom((prev) => prev || term.startDate);
-        setAttendDateTo((prev) => prev || term.endDate);
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -454,12 +500,12 @@ export default function Reports() {
       .getClasses({
         courseId: attendSelectedCourseId,
         limit: 200,
-        ...(attendTermId ? { academicTermId: attendTermId } : {}),
-        classStatus: attendTermClassStatus,
+        ...(academicTermId ? { academicTermId } : {}),
+        classStatus: classStatusHint,
       })
       .then((r) => setAttendClasses(r.data || []))
       .catch(() => setAttendClasses([]));
-  }, [attendSelectedCourseId, attendTermId, attendTermClassStatus]);
+  }, [attendSelectedCourseId, academicTermId, classStatusHint]);
 
   useEffect(() => {
     if (attendSelectedProgramId === ALL_VALUE) {
@@ -490,7 +536,7 @@ export default function Reports() {
     if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
     if (attendDateFrom) params.startDate = attendDateFrom;
     if (attendDateTo) params.endDate = attendDateTo;
-    Object.assign(params, termScopeQueryParam(attendTermId));
+    Object.assign(params, termScopeQueryParam(academicTermId));
     return params;
   }, [
     attendSelectedSchool,
@@ -502,7 +548,7 @@ export default function Reports() {
     attendSelectedSemester,
     attendDateFrom,
     attendDateTo,
-    attendTermId,
+    academicTermId,
   ]);
 
   const canLoadClassAttendReport =
@@ -881,18 +927,12 @@ export default function Reports() {
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">Reports & Analytics</h1>
             <p className="text-gray-500">Generate and view detailed attendance and performance reports.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Select period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="semester">This Semester</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap gap-2 items-center">
+            <AcademicTermFilter
+              value={termFilter}
+              triggerClassName="w-[240px]"
+              onChange={handleReportsTermChange}
+            />
             <Button
               variant="outline"
               className="gap-2 min-w-[130px]"
@@ -1017,12 +1057,12 @@ export default function Reports() {
 
           {/* SCHOOL SUMMARY TAB - Matches 1.csv format */}
           <TabsContent value="school-summary" className="space-y-4">
-            <QASchoolSummary />
+            <QASchoolSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* LECTURER SUMMARY TAB - Matches 2.csv format */}
           <TabsContent value="lecturer-summary" className="space-y-4">
-            <QALecturerSummary />
+            <QALecturerSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* OVERVIEW TAB */}
@@ -1239,18 +1279,20 @@ export default function Reports() {
 
           {/* SCHOOLS TAB */}
           <TabsContent value="schools" className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={schoolPerfDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setSchoolPerfDateRange(v)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Date range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All time</SelectItem>
-                  <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                  <SelectItem value="this_term">Last 3 months</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!reportsTermScoped ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={schoolPerfDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setSchoolPerfDateRange(v)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All time</SelectItem>
+                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                    <SelectItem value="this_term">Last 3 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle>School Performance Comparison</CardTitle>
@@ -1337,6 +1379,7 @@ export default function Reports() {
                </CardHeader>
                <CardContent>
                  <div className="flex flex-wrap gap-2 items-center mb-6">
+                   {!reportsTermScoped ? (
                    <Select value={lecturerDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setLecturerDateRange(v)}>
                      <SelectTrigger className="w-[180px]">
                        <SelectValue placeholder="Date range" />
@@ -1347,6 +1390,7 @@ export default function Reports() {
                        <SelectItem value="this_term">Last 3 months</SelectItem>
                      </SelectContent>
                    </Select>
+                   ) : null}
                    <Select value={schoolFilter} onValueChange={setSchoolFilter}>
                       <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="Filter School" />
@@ -1465,18 +1509,6 @@ export default function Reports() {
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                     <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
-                    <AcademicTermFilter
-                      value={attendTermFilter}
-                      triggerClassName="w-[220px]"
-                      onChange={(sel) => {
-                        setAttendTermFilter(sel.value);
-                        setAttendTermId(sel.academicTermId);
-                        setAttendTermClassStatus(sel.classStatusHint);
-                        setAttendSelectedClassId(ALL_VALUE);
-                        if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
-                        if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
-                      }}
-                    />
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">School</label>
                       <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
@@ -1666,18 +1698,6 @@ export default function Reports() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
-                  <AcademicTermFilter
-                    value={attendTermFilter}
-                    triggerClassName="w-[220px]"
-                    onChange={(sel) => {
-                      setAttendTermFilter(sel.value);
-                      setAttendTermId(sel.academicTermId);
-                      setAttendTermClassStatus(sel.classStatusHint);
-                      setAttendSelectedClassId(ALL_VALUE);
-                      if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
-                      if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
-                    }}
-                  />
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
                     <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
@@ -1872,17 +1892,6 @@ export default function Reports() {
           </TabsContent>
 
           <TabsContent value="weekly-matrix" className="space-y-4">
-            <AcademicTermFilter
-              value={attendTermFilter}
-              triggerClassName="w-[220px]"
-              onChange={(sel) => {
-                setAttendTermFilter(sel.value);
-                setAttendTermId(sel.academicTermId);
-                setAttendTermClassStatus(sel.classStatusHint);
-                if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
-                if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
-              }}
-            />
             <WeeklyAttendanceMatrixPanel
               schools={attendSchools.map((s) => ({ id: s.id, name: s.name }))}
               programs={attendPrograms}
@@ -1906,18 +1915,7 @@ export default function Reports() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
-                  <AcademicTermFilter
-                    value={attendTermFilter}
-                    triggerClassName="w-[220px]"
-                    onChange={(sel) => {
-                      setAttendTermFilter(sel.value);
-                      setAttendTermId(sel.academicTermId);
-                      setAttendTermClassStatus(sel.classStatusHint);
-                      setAttendSelectedClassId(ALL_VALUE);
-                      if (sel.term?.startDate) setAttendDateFrom(sel.term.startDate);
-                      if (sel.term?.endDate) setAttendDateTo(sel.term.endDate);
-                    }}
-                  />
+                  {!reportsTermScoped ? (
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Period</label>
                     <Select value={studentAttendDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setStudentAttendDateRange(v)}>
@@ -1929,6 +1927,7 @@ export default function Reports() {
                       </SelectContent>
                     </Select>
                   </div>
+                  ) : null}
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
                     <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
