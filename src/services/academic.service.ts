@@ -139,6 +139,19 @@ export type CohortStandingStudentsResult = {
   students: CohortStandingStudent[];
 };
 
+export type CohortPromotionStatusResult = {
+  status: 'promoted' | 'partial' | 'pending' | 'empty' | 'not_applicable' | 'no_active_term';
+  programId: string;
+  year: number;
+  semester: number;
+  sourceYear: number | null;
+  sourceSemester: number | null;
+  activeTermId: string | null;
+  activeTermName: string | null;
+  promotedCount: number;
+  pendingAtSource: number;
+};
+
 type ClassUpsertPayload = {
   name: string;
   courseId: string;
@@ -1042,6 +1055,23 @@ export const academicService = {
     if (params.search?.trim()) query.set('search', params.search.trim());
     const response = await api.get<{ data: CohortStandingStudentsResult } | CohortStandingStudentsResult>(
       `/academic/terms/cohort-standing/students?${query.toString()}`
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  getCohortPromotionStatus: async (params: {
+    programId: string;
+    year: number;
+    semester: number;
+    intakeType?: 'Day' | 'Evening' | 'Weekend';
+  }): Promise<CohortPromotionStatusResult> => {
+    const query = new URLSearchParams();
+    query.set('programId', params.programId);
+    query.set('year', String(params.year));
+    query.set('semester', String(params.semester));
+    if (params.intakeType) query.set('intakeType', params.intakeType);
+    const response = await api.get<{ data: CohortPromotionStatusResult } | CohortPromotionStatusResult>(
+      `/academic/terms/cohort-promotion-status?${query.toString()}`
     );
     return (response as any)?.data ?? response;
   },
