@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
 import { studentService, staffService, academicService, enrollmentService } from '@/services';
+import type { CohortPromotionStatusResult } from '@/services';
 import { adminService } from '@/services/admin.service';
 import { timetableService, type TimetableClass } from '@/services/timetable.service';
 import { downloadStudentImportTemplateExcel, downloadStaffImportTemplateExcel, downloadLecturerImportTemplateExcel } from '@/utils/excel';
@@ -174,6 +175,41 @@ function StudentsTab({
   const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
   const [importPrograms, setImportPrograms] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cohortPromotionStatus, setCohortPromotionStatus] = useState<CohortPromotionStatusResult | null>(null);
+  const [cohortPromotionLoading, setCohortPromotionLoading] = useState(false);
+
+  const cohortScopeSelected =
+    filters.programId !== '__all__' &&
+    filters.year !== '__all__' &&
+    filters.semester !== '__all__';
+
+  useEffect(() => {
+    if (!cohortScopeSelected) {
+      setCohortPromotionStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setCohortPromotionLoading(true);
+    academicService
+      .getCohortPromotionStatus({
+        programId: filters.programId,
+        year: parseInt(filters.year, 10),
+        semester: parseInt(filters.semester, 10),
+        intakeType: filters.intakeType !== '__all__' ? (filters.intakeType as 'Day' | 'Evening' | 'Weekend') : undefined,
+      })
+      .then((data) => {
+        if (!cancelled) setCohortPromotionStatus(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCohortPromotionStatus(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCohortPromotionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cohortScopeSelected, filters.programId, filters.year, filters.semester, filters.intakeType]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -522,6 +558,43 @@ function StudentsTab({
 
   const studentTemplateCsv = 'name,email,studentId,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,TempPassword123!\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,TempPassword123!';
 
+  const cohortPromotionBadge = cohortScopeSelected ? (
+    cohortPromotionLoading ? (
+      <Badge variant="outline" className="shrink-0 text-muted-foreground font-normal">
+        <Loader2 className="mr-1 h-3 w-3 animate-spin inline" />
+        Checking promotion…
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'promoted' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 border-[#015F2B] text-[#015F2B] bg-[#015F2B]/5 font-normal"
+        title={
+          cohortPromotionStatus.activeTermName
+            ? `Promoted from Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester} in ${cohortPromotionStatus.activeTermName} (${cohortPromotionStatus.promotedCount} students)`
+            : undefined
+        }
+      >
+        Promoted this term
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'partial' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 border-amber-600 text-amber-800 bg-amber-50 font-normal"
+        title={`${cohortPromotionStatus.promotedCount} promoted · ${cohortPromotionStatus.pendingAtSource} still at Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester}`}
+      >
+        Partially promoted
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'pending' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 text-muted-foreground font-normal"
+        title={`${cohortPromotionStatus.pendingAtSource} still at Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester}`}
+      >
+        Not promoted yet
+      </Badge>
+    ) : null
+  ) : null;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
@@ -538,6 +611,7 @@ function StudentsTab({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="lg:hidden">{cohortPromotionBadge}</span>
             <Button variant="outline" className="lg:hidden" onClick={() => setMobileFiltersOpen(true)}>
               <Filter className="mr-2 h-4 w-4" /> Filters
             </Button>
@@ -653,6 +727,8 @@ function StudentsTab({
           </div>
 
           <ResetFiltersButton onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied} />
+
+          <span className="hidden lg:contents">{cohortPromotionBadge}</span>
         </div>
       </div>
 
