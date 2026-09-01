@@ -22,6 +22,7 @@ import {
   TERM_FILTER_ALL,
 } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { getApiErrorCode, getApiErrorMessage } from '@/lib/api';
 
 type IntakeType = 'Day' | 'Evening' | 'Weekend';
 type DeliveryMode = 'InPerson' | 'Online' | 'Hybrid';
@@ -624,7 +625,12 @@ export default function TimetableBuilder() {
       }
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save class');
+      const message = getApiErrorMessage(e, 'Failed to save class');
+      if (getApiErrorCode(e) === 'INACTIVE_CLASS_EXISTS') {
+        toast.error(message, { duration: 8000 });
+      } else {
+        toast.error(message);
+      }
     }
   };
 
