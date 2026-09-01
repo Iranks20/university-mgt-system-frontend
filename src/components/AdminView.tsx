@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
   MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle
+  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6812,6 +6812,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [deactivatingClass, setDeactivatingClass] = useState<TimetableClass | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [reactivatingClass, setReactivatingClass] = useState<TimetableClass | null>(null);
+  const [reactivating, setReactivating] = useState(false);
   const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
   const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
   const [filters, setFilters] = useState({ ...DEFAULT_TIMETABLE_FILTERS });
@@ -7069,14 +7072,25 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     }
   };
 
-  const handleActivateClass = async (cls: TimetableClass) => {
+  const openReactivateModal = (cls: TimetableClass) => {
+    setReactivatingClass(cls);
+    setReactivateOpen(true);
+  };
+
+  const handleConfirmReactivate = async () => {
+    if (!reactivatingClass) return;
+    setReactivating(true);
     try {
-      await timetableService.activateClass(cls.id);
-      toast.success('Class activated');
+      await timetableService.activateClass(reactivatingClass.id);
+      toast.success('Class reactivated');
+      setReactivateOpen(false);
+      setReactivatingClass(null);
       await loadTimetable();
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to activate class');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to reactivate class');
+    } finally {
+      setReactivating(false);
     }
   };
 
@@ -7217,7 +7231,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                 ? ' across all terms'
                 : ' for the selected term'}
             . Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
-            Inactive / prior-term schedules are read-only (deactivate stays available for active classes).
+            Use Status “Inactive classes” to find deactivated rows and reactivate them. Inactive schedules are read-only until reactivated.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -7276,8 +7290,15 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                           <Edit className="h-4 w-4" />
                             </Button>
                         {cls.isActive === false ? (
-                          <Button variant="ghost" size="sm" onClick={() => handleActivateClass(cls)} className="text-[#015F2B]">
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openReactivateModal(cls)}
+                            className="text-[#015F2B] border-[#015F2B]/30 hover:bg-[#015F2B]/5"
+                            title="Reactivate class"
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Reactivate
                           </Button>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => openDeactivateModal(cls)} title="Deactivate class">
@@ -7473,6 +7494,30 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             >
               {deactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reactivateOpen} onOpenChange={setReactivateOpen}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reactivate Class</DialogTitle>
+            <DialogDescription>
+              Reactivate &quot;{reactivatingClass?.name}&quot;? It will appear again in schedules and class lists.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReactivateOpen(false)} disabled={reactivating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#015F2B] hover:bg-[#014a22] text-white"
+              onClick={handleConfirmReactivate}
+              disabled={reactivating}
+            >
+              {reactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Reactivate
             </Button>
           </DialogFooter>
         </DialogContent>
