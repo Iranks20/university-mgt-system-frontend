@@ -4,7 +4,7 @@ import {
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
   MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw
+  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw, UserX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,8 @@ import {
 import { getApiErrorMessage } from '@/lib/api';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
 import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
+import { StudentStatusDialog } from '@/components/admin/StudentStatusDialog';
+import { studentStatusBadgeClass, studentStatusLabel } from '@/lib/student-lifecycle';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -165,6 +167,9 @@ function StudentsTab({
     clearHoldback: false,
   });
   const [editStudentPasswordVisible, setEditStudentPasswordVisible] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusDialogTargets, setStatusDialogTargets] = useState<StudentRow[]>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<any[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [previewCourses, setPreviewCourses] = useState<any[]>([]);
@@ -458,6 +463,30 @@ function StudentsTab({
 
   const listStudents = students;
 
+  const openStatusDialog = (rows: StudentRow[]) => {
+    setStatusDialogTargets(rows);
+    setStatusDialogOpen(true);
+  };
+
+  const toggleStudentSelected = (id: string, checked: boolean) => {
+    setSelectedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllOnPage = (checked: boolean) => {
+    if (!checked) {
+      setSelectedStudentIds(new Set());
+      return;
+    }
+    setSelectedStudentIds(new Set(listStudents.map((s) => s.id)));
+  };
+
+  const allOnPageSelected = listStudents.length > 0 && listStudents.every((s) => selectedStudentIds.has(s.id));
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -616,6 +645,17 @@ function StudentsTab({
               <Filter className="mr-2 h-4 w-4" /> Filters
             </Button>
 
+            <Button
+              variant="outline"
+              disabled={selectedStudentIds.size === 0}
+              onClick={() =>
+                openStatusDialog(listStudents.filter((s) => selectedStudentIds.has(s.id)))
+              }
+            >
+              <UserX className="mr-2 h-4 w-4" />
+              Change status ({selectedStudentIds.size || 0})
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -715,24 +755,25 @@ function StudentsTab({
             <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
               <SelectTrigger><SelectValue placeholder="Status (All)" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All statuses</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="__held_back__">Held back</SelectItem>
-                <SelectItem value="Inactive">Inactive</SelectItem>
-                <SelectItem value="Suspended">Suspended</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <ResetFiltersButton onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied} />
-
-          <span className="hidden lg:contents">{cohortPromotionBadge}</span>
+              <SelectItem value="__all__">All statuses</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="OnLeave">On leave</SelectItem>
+              <SelectItem value="Withdrawn">Withdrawn</SelectItem>
+              <SelectItem value="__held_back__">Held back</SelectItem>
+              <SelectItem value="Suspended">Suspended</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Inactive">Inactive (legacy)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
 
-      <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <ResetFiltersButton onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied} />
+
+        <span className="hidden lg:contents">{cohortPromotionBadge}</span>
+      </div>
+    </div>
+
+    <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Filters</DialogTitle>
@@ -797,11 +838,12 @@ function StudentsTab({
                 <SelectContent>
                   <SelectItem value="__all__">All statuses</SelectItem>
                   <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="OnLeave">On leave</SelectItem>
+                  <SelectItem value="Withdrawn">Withdrawn</SelectItem>
                   <SelectItem value="__held_back__">Held back</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
                   <SelectItem value="Suspended">Suspended</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Inactive">Inactive (legacy)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -825,6 +867,13 @@ function StudentsTab({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allOnPageSelected}
+                  onCheckedChange={(checked) => toggleSelectAllOnPage(checked === true)}
+                  aria-label="Select all students on page"
+                />
+              </TableHead>
               <TableHead>Student</TableHead>
               <TableHead>ID</TableHead>
               <TableHead>Program</TableHead>
@@ -837,6 +886,13 @@ function StudentsTab({
           <TableBody>
             {listStudents.map((student) => (
               <TableRow key={student.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedStudentIds.has(student.id)}
+                    onCheckedChange={(checked) => toggleStudentSelected(student.id, checked === true)}
+                    aria-label={`Select ${student.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
@@ -856,9 +912,9 @@ function StudentsTab({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge
                       variant={student.status === 'Active' ? 'default' : 'destructive'}
-                      className={student.status === 'Active' ? 'bg-[#015F2B] hover:bg-[#015F2B]/90' : ''}
+                      className={studentStatusBadgeClass(student.status) || undefined}
                     >
-                      {student.status}
+                      {studentStatusLabel(student.status)}
                     </Badge>
                     {student.holdbackReason ? (
                       <Badge
@@ -901,6 +957,9 @@ function StudentsTab({
                         setCurrentEnrollments([]);
                         setEditOpen(true);
                       }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openStatusDialog([student])}>
+                        <UserX className="mr-2 h-4 w-4" /> Change status
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-red-600" onClick={async () => {
                         if (confirm(`Delete student "${student.name}"?`)) {
                           try {
@@ -1839,6 +1898,22 @@ function StudentsTab({
           </form>
         </DialogContent>
       </Dialog>
+
+      <StudentStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        targets={statusDialogTargets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          year: s.year,
+          semester: s.semester,
+        }))}
+        onCompleted={() => {
+          setSelectedStudentIds(new Set());
+          void runQuery(studentsPage);
+        }}
+      />
 
     </div>
   );
