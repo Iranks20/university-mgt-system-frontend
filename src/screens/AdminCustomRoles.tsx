@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Loader2, Search, Shield, Save } from 'lucide-reac
 import { toast } from 'sonner';
 import { adminService, type CustomRoleRow, type PermissionCatalogRow, type PermissionGroupRow } from '@/services/admin.service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -281,8 +282,13 @@ export default function AdminCustomRoles() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
         <p className="text-gray-500">
-          The sidebar and pages are controlled by permissions on this screen. After changes, users must sign out and
-          sign in again.
+          The sidebar and pages are controlled by permissions on this screen. Changes take effect within a few
+          minutes for people already signed in, and immediately for new sign-ins.
+        </p>
+        <p className="text-gray-500 mt-1">
+          Rows marked <span className="font-medium text-gray-700">System role</span> mirror a built-in account role
+          and edit that role's permission set for everyone who has it. To change what role a specific person has,
+          use the Users screen — deactivating or editing a system role here does not move any individual user off it.
         </p>
       </div>
 
@@ -347,7 +353,14 @@ export default function AdminCustomRoles() {
                     ) : (
                       roles.map((r) => (
                         <TableRow key={r.id}>
-                          <TableCell className="font-medium">{r.name}</TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{r.name}</span>
+                              {SYSTEM_ROLE_CODES.has(r.code) && (
+                                <Badge variant="outline" className="text-[10px] font-normal">System role</Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="font-mono text-sm">{r.code}</TableCell>
                           <TableCell>{r.isActive ? 'Active' : 'Inactive'}</TableCell>
                           <TableCell>{r.userCount ?? 0}</TableCell>

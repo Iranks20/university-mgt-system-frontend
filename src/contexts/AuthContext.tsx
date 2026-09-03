@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import api from '@/lib/api';
 
 type User = {
@@ -63,12 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(initialState.isAuthenticated);
   const [userRole, setUserRole] = useState<string | null>(initialState.userRole);
   const [user, setUser] = useState<User | null>(initialState.user);
+  const lastRefreshAtRef = useRef<number>(0);
 
   const refreshUser = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('kcu-token') : null;
     if (!token) return;
     const next = await api.get<User>('/auth/me');
     if (!next?.id) return;
+    lastRefreshAtRef.current = Date.now();
     setIsAuthenticated(true);
     setUserRole(next.role);
     setUser(next);
@@ -84,6 +86,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearSession();
     });
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const REFRESH_INTERVAL_MS = 3 * 60 * 1000;
+    const MIN_GAP_MS = 30 * 1000;
+
+    const tick = () => {
+      refreshUser().catch(() => {});
+    };
+
+    const interval = window.setInterval(tick, REFRESH_INTERVAL_MS);
+
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastRefreshAtRef.current < MIN_GAP_MS) return;
+      tick();
+    };
+
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [isAuthenticated]);
 
   const login = async (email: string, password: string, studentId?: string) => {
     const payload = studentId ? { studentId, password } : { email, password };
