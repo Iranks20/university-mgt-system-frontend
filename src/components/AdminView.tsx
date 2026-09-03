@@ -697,19 +697,22 @@ function StudentsTab({
         <div className="hidden lg:flex gap-3 flex-wrap">
           <div className="min-w-[240px]">
             <Label className="sr-only">Program</Label>
-            <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
-              <SelectTrigger>
-                <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'Program (All)'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All programs</SelectItem>
-                {filterPrograms.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code ? `${p.code} — ${p.name}` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: '__all__', label: 'All programs' },
+                ...filterPrograms.map((p: any) => ({
+                  value: p.id,
+                  label: p.code ? `${p.code} — ${p.name}` : p.name,
+                })),
+              ]}
+              value={filters.programId}
+              onValueChange={(v) => setFilters((f) => ({ ...f, programId: v || '__all__' }))}
+              disabled={filtersLoading}
+              placeholder={filtersLoading ? 'Loading programs…' : 'Program (All)'}
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
           </div>
 
           <div className="min-w-[140px]">
@@ -782,19 +785,23 @@ function StudentsTab({
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label>Program</Label>
-              <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'All programs'} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All programs</SelectItem>
-                  {filterPrograms.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.code ? `${p.code} — ${p.name}` : p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="mt-1"
+                options={[
+                  { value: '__all__', label: 'All programs' },
+                  ...filterPrograms.map((p: any) => ({
+                    value: p.id,
+                    label: p.code ? `${p.code} — ${p.name}` : p.name,
+                  })),
+                ]}
+                value={filters.programId}
+                onValueChange={(v) => setFilters((f) => ({ ...f, programId: v || '__all__' }))}
+                disabled={filtersLoading}
+                placeholder={filtersLoading ? 'Loading programs…' : 'All programs'}
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
             </div>
             <div>
               <Label>Year</Label>
@@ -7192,18 +7199,27 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       <div className="flex justify-between gap-4 flex-wrap">
         <div className="flex gap-2 flex-wrap">
           <div className="w-[200px]">
-            <Select
-              value={filters.programId || 'all'}
-              onValueChange={(v) => setFilters({ ...filters, programId: v === 'all' ? '__all__' : v, program: '' })}
-            >
-              <SelectTrigger><SelectValue placeholder="Program" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All programs</SelectItem>
-                {timetablePrograms.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: 'all', label: 'All programs' },
+                ...timetablePrograms.map((p) => ({
+                  value: p.id,
+                  label: `${p.name} (${p.code})`,
+                })),
+              ]}
+              value={filters.programId === '__all__' || !filters.programId ? 'all' : filters.programId}
+              onValueChange={(v) =>
+                setFilters({
+                  ...filters,
+                  programId: !v || v === 'all' ? '__all__' : v,
+                  program: '',
+                })
+              }
+              placeholder="Program"
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
           </div>
           <Select value={filters.year || "all"} onValueChange={(v) => setFilters({ ...filters, year: v === "all" ? "" : v })}>
             <SelectTrigger className="w-[100px]">

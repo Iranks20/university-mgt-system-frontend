@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -590,6 +591,62 @@ export default function Reports() {
     ).sort();
   }, [lecturerTableData]);
 
+  const lecturerSchoolComboboxOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Schools' },
+      ...lecturerSchoolOptions.map((name) => ({ value: name, label: name })),
+    ],
+    [lecturerSchoolOptions]
+  );
+
+  const lecturerDeptComboboxOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Departments' },
+      ...lecturerDeptOptions.map((name) => ({ value: name, label: name })),
+    ],
+    [lecturerDeptOptions]
+  );
+
+  const attendSchoolComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All schools' },
+      ...attendSchools.map((s) => ({ value: s.id, label: s.name || s.id })),
+    ],
+    [attendSchools]
+  );
+
+  const attendProgramComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All programs' },
+      ...attendFilteredPrograms.map((p) => ({ value: p.id, label: p.name || p.code || p.id })),
+    ],
+    [attendFilteredPrograms]
+  );
+
+  const attendProgrammeComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All programmes' },
+      ...attendFilteredPrograms.map((p) => ({ value: p.id, label: p.name || p.code || p.id })),
+    ],
+    [attendFilteredPrograms]
+  );
+
+  const attendCourseComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All courses' },
+      ...attendFilteredCourses.map((c) => ({ value: c.id, label: c.name || c.code || c.id })),
+    ],
+    [attendFilteredCourses]
+  );
+
+  const attendClassComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All classes in course' },
+      ...attendClasses.map((c) => ({ value: c.id, label: String(c.name || c.id) })),
+    ],
+    [attendClasses]
+  );
+
   const paginatedLecturers = useMemo(() => {
     const start = (lecturerPage - 1) * REPORT_TABLE_PAGE_SIZE;
     return filteredLecturers.slice(start, start + REPORT_TABLE_PAGE_SIZE);
@@ -994,17 +1051,23 @@ export default function Reports() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 block mb-1">School</label>
-                    <Select value={reconSchoolId || 'all'} onValueChange={(v) => { setReconSchoolId(v === 'all' ? '' : v); setReconCourseId(''); }}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="All schools" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All schools</SelectItem>
-                        {schoolsList.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={[
+                        { value: 'all', label: 'All schools' },
+                        ...schoolsList.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      value={reconSchoolId || 'all'}
+                      onValueChange={(v) => {
+                        const next = v || 'all';
+                        setReconSchoolId(next === 'all' ? '' : next);
+                        setReconCourseId('');
+                      }}
+                      placeholder="All schools"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <Button onClick={loadReconciliationReport} disabled={reconciliationLoading}>
                     {reconciliationLoading ? 'Loading...' : 'Apply'}
@@ -1391,28 +1454,26 @@ export default function Reports() {
                      </SelectContent>
                    </Select>
                    ) : null}
-                   <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Filter School" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Schools</SelectItem>
-                        {lecturerSchoolOptions.map(name => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                   </Select>
-                   <Select value={lecturerDeptFilter} onValueChange={setLecturerDeptFilter}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Departments</SelectItem>
-                        {lecturerDeptOptions.map(name => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                   </Select>
+                   <Combobox
+                      className="w-[200px]"
+                      options={lecturerSchoolComboboxOptions}
+                      value={schoolFilter}
+                      onValueChange={(v) => setSchoolFilter(v || 'all')}
+                      placeholder="Filter School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                   />
+                   <Combobox
+                      className="w-[200px]"
+                      options={lecturerDeptComboboxOptions}
+                      value={lecturerDeptFilter}
+                      onValueChange={(v) => setLecturerDeptFilter(v || 'all')}
+                      placeholder="Department"
+                      searchPlaceholder="Search departments..."
+                      emptyText="No department found."
+                      initialDisplayCount={50}
+                   />
                    <Select value={lecturerRateFilter} onValueChange={(v: 'all' | 'below_90' | '90_plus') => setLecturerRateFilter(v)}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Teaching rate" />
@@ -1511,43 +1572,71 @@ export default function Reports() {
                     <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">School</label>
-                      <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                          {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[180px]"
+                        options={attendSchoolComboboxOptions}
+                        value={attendSelectedSchool}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedSchool(next);
+                          setAttendSelectedProgramId(ALL_VALUE);
+                          setAttendSelectedCourseId(ALL_VALUE);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="School"
+                        searchPlaceholder="Search schools..."
+                        emptyText="No school found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Program</label>
-                      <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All programs</SelectItem>
-                          {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[200px]"
+                        options={attendProgramComboboxOptions}
+                        value={attendSelectedProgramId}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedProgramId(next);
+                          setAttendSelectedCourseId(ALL_VALUE);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="Program"
+                        searchPlaceholder="Search programs..."
+                        emptyText="No program found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Course</label>
-                      <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                          {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[220px]"
+                        options={attendCourseComboboxOptions}
+                        value={attendSelectedCourseId}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedCourseId(next);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="Course"
+                        searchPlaceholder="Search courses..."
+                        emptyText="No course found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Class</label>
-                      <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                        <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                          {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[200px]"
+                        options={attendClassComboboxOptions}
+                        value={attendSelectedClassId}
+                        onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                        disabled={attendSelectedCourseId === ALL_VALUE}
+                        placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                        searchPlaceholder="Search classes..."
+                        emptyText="No class found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Year</label>
@@ -1700,23 +1789,42 @@ export default function Reports() {
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
-                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[180px]"
+                      options={attendSchoolComboboxOptions}
+                      value={attendSelectedSchool}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedSchool(next);
+                        setAttendSelectedProgramId(ALL_VALUE);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                        setAttendSelectedProgramIntakeId(ALL_VALUE);
+                      }}
+                      placeholder="School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Programme</label>
-                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Programme" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All programmes</SelectItem>
-                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendProgrammeComboboxOptions}
+                      value={attendSelectedProgramId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedProgramId(next);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                        setAttendSelectedProgramIntakeId(ALL_VALUE);
+                      }}
+                      placeholder="Programme"
+                      searchPlaceholder="Search programmes..."
+                      emptyText="No programme found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class / year</label>
@@ -1761,23 +1869,34 @@ export default function Reports() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Course</label>
-                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[220px]"
+                      options={attendCourseComboboxOptions}
+                      value={attendSelectedCourseId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedCourseId(next);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Course"
+                      searchPlaceholder="Search courses..."
+                      emptyText="No course found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class</label>
-                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendClassComboboxOptions}
+                      value={attendSelectedClassId}
+                      onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                      disabled={attendSelectedCourseId === ALL_VALUE}
+                      placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                      searchPlaceholder="Search classes..."
+                      emptyText="No class found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Date from</label>
@@ -1930,43 +2049,71 @@ export default function Reports() {
                   ) : null}
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
-                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[180px]"
+                      options={attendSchoolComboboxOptions}
+                      value={attendSelectedSchool}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedSchool(next);
+                        setAttendSelectedProgramId(ALL_VALUE);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Program</label>
-                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All programs</SelectItem>
-                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendProgramComboboxOptions}
+                      value={attendSelectedProgramId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedProgramId(next);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Program"
+                      searchPlaceholder="Search programs..."
+                      emptyText="No program found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Course</label>
-                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[220px]"
+                      options={attendCourseComboboxOptions}
+                      value={attendSelectedCourseId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedCourseId(next);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Course"
+                      searchPlaceholder="Search courses..."
+                      emptyText="No course found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class</label>
-                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendClassComboboxOptions}
+                      value={attendSelectedClassId}
+                      onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                      disabled={attendSelectedCourseId === ALL_VALUE}
+                      placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                      searchPlaceholder="Search classes..."
+                      emptyText="No class found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Year</label>

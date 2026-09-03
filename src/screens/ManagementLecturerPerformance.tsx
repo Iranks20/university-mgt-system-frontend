@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -359,30 +360,35 @@ export default function ManagementLecturerPerformance() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Departments</SelectItem>
-                  {uniqueDepartments.map(([deptId, deptName]) => (
-                    <SelectItem key={deptId} value={deptId}>
-                      {deptName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Schools</SelectItem>
-                  {Array.from(new Set(lecturerPerformance.map(l => l.school))).map(school => (
-                    <SelectItem key={school} value={school}>{school}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Departments' },
+                  ...uniqueDepartments.map(([deptId, deptName]) => ({ value: deptId, label: deptName })),
+                ]}
+                value={departmentFilter}
+                onValueChange={(v) => setDepartmentFilter(v || 'All')}
+                placeholder="Department"
+                searchPlaceholder="Search departments..."
+                emptyText="No department found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Schools' },
+                  ...Array.from(new Set(lecturerPerformance.map((l) => l.school))).map((school) => ({
+                    value: school,
+                    label: school,
+                  })),
+                ]}
+                value={schoolFilter}
+                onValueChange={(v) => setSchoolFilter(v || 'All')}
+                placeholder="School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
             </div>
             <div className="flex flex-col md:flex-row gap-4">
               <Select value={performanceFilter} onValueChange={setPerformanceFilter}>

@@ -1330,41 +1330,47 @@ export default function LectureRecords() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={lecturerFilter} onValueChange={setLecturerFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Lecturer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Lecturers</SelectItem>
-                  {allLecturers.map(lecturer => (
-                    <SelectItem key={lecturer} value={lecturer}>{lecturer}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={classFilter} onValueChange={setClassFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Classes</SelectItem>
-                  {allClasses.map(cls => (
-                    <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-[180px]"
+                options={[
+                  { value: 'All', label: 'All Lecturers' },
+                  ...allLecturers.map((lecturer) => ({ value: lecturer, label: lecturer })),
+                ]}
+                value={lecturerFilter}
+                onValueChange={(v) => setLecturerFilter(v || 'All')}
+                placeholder="Filter Lecturer"
+                searchPlaceholder="Search lecturers..."
+                emptyText="No lecturer found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[180px]"
+                options={[
+                  { value: 'All', label: 'All Classes' },
+                  ...allClasses.map((cls) => ({ value: cls, label: cls })),
+                ]}
+                value={classFilter}
+                onValueChange={(v) => setClassFilter(v || 'All')}
+                placeholder="Filter Class"
+                searchPlaceholder="Search classes..."
+                emptyText="No class found."
+                initialDisplayCount={50}
+              />
             </div>
             <div className="flex flex-col md:flex-row flex-wrap items-end gap-4">
-              <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Schools</SelectItem>
-                  {schools.map(school => (
-                    <SelectItem key={school} value={school}>{school}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Schools' },
+                  ...schools.map((school) => ({ value: school, label: school })),
+                ]}
+                value={schoolFilter}
+                onValueChange={(v) => setSchoolFilter(v || 'All')}
+                placeholder="Filter by School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Check-in Status" />
