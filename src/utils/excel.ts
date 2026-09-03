@@ -10,7 +10,7 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord } from '@/types/qa';
-import { mapImportStatusToComment } from '@/lib/lecture-outcome';
+import { mapImportStatusToComment, normalizeLectureComment } from '@/lib/lecture-outcome';
 import { deliveryModeLabel } from '@/lib/delivery-mode';
 import type {
   ProgramAttendanceData,
@@ -21,6 +21,7 @@ import type {
   WeeklyAttendanceMatrixReport,
 } from '@/types/student';
 import { UNIVERSITY_NAME } from '@/lib/institution';
+import { normalizeClockTime, clockTimeToMinutes, formatClockTimeForDisplay } from '@/lib/clock-time';
 
 /**
  * Export Lecture Records to CSV/Excel (matches 3.csv format exactly)
@@ -41,7 +42,6 @@ export function exportLectureRecordsToCSV(
       'CHECK-IN TIME',
       'CHECK-OUT TIME',
       'DURATION',
-      'LESSON TIMEOUT',
       'TIME LOST',
       'MODE OF DELIVERY',
       'STATUS',
@@ -53,14 +53,13 @@ export function exportLectureRecordsToCSV(
       record.lecturerName,
       record.class || (record as any).className || '',
       record.courseUnit,
-      record.timeForStarting,
-      record.timeOutForEnding,
-      record.checkInTime || '',
-      record.checkOutTime || '',
-      record.duration,
-      record.lessonTimeout || record.duration,
-      record.timeLost,
-      deliveryModeLabel(record.deliveryMode),
+      formatClockTimeForDisplay(record.timeForStarting),
+      formatClockTimeForDisplay(record.timeOutForEnding),
+      formatClockTimeForDisplay(record.checkInTime),
+      formatClockTimeForDisplay(record.checkOutTime),
+      formatClockTimeForDisplay(record.duration),
+      formatClockTimeForDisplay(record.timeLost),
+      normalizeLectureComment(record.comment) === 'TAUGHT' ? deliveryModeLabel(record.deliveryMode) : '',
       record.comment,
       record.remarks || '',
       record.substituteLecturerName || '',
@@ -79,7 +78,6 @@ export function exportLectureRecordsToCSV(
     { wch: 15 },
     { wch: 15 },
     { wch: 12 },
-    { wch: 15 },
     { wch: 12 },
     { wch: 18 },
     { wch: 20 },
@@ -692,26 +690,25 @@ export function exportAllQAReports(
   });
 
   const lectureData = [
-    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'LESSON TIMEOUT', 'TIME LOST', 'STATUS', 'COMMENT', 'SUBSTITUTE LECTURER'],
+    ['DATE', 'LECTURER\'S NAME', 'CLASS', 'COURSE UNIT', 'TIME FOR STARTING', 'TIME OUT FOR ENDING', 'CHECK-IN TIME', 'CHECK-OUT TIME', 'DURATION', 'TIME LOST', 'STATUS', 'COMMENT', 'SUBSTITUTE LECTURER'],
     ...lectureRecords.map(r => [
       formatDateForCSV(r.date),
       r.lecturerName,
       r.class,
       r.courseUnit,
-      r.timeForStarting,
-      r.timeOutForEnding,
-      r.checkInTime || '',
-      r.checkOutTime || '',
-      r.duration,
-      r.lessonTimeout || r.duration,
-      r.timeLost,
+      formatClockTimeForDisplay(r.timeForStarting),
+      formatClockTimeForDisplay(r.timeOutForEnding),
+      formatClockTimeForDisplay(r.checkInTime),
+      formatClockTimeForDisplay(r.checkOutTime),
+      formatClockTimeForDisplay(r.duration),
+      formatClockTimeForDisplay(r.timeLost),
       r.comment,
       r.remarks || '',
       r.substituteLecturerName || '',
     ]),
   ];
   const lectureSheet = XLSX.utils.aoa_to_sheet(lectureData);
-  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 40 }, { wch: 25 }];
+  lectureSheet['!cols'] = [{ wch: 15 }, { wch: 25 }, { wch: 30 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 40 }, { wch: 25 }];
   XLSX.utils.book_append_sheet(wb, lectureSheet, 'Lecture Records');
 
   const defaultFilename = `QA_Complete_Report_${formatDate(new Date())}.xlsx`;
@@ -821,14 +818,15 @@ function formatDate(date: Date): string {
 
 /**
  * Helper function to format time
+ * Accepts 24hr ("14:30", "14:30:00") or 12hr ("2:30 PM", "02:30:00 AM") input from
+ * imported spreadsheets and always normalizes to 24hr "HH:MM:SS" for storage, so
+ * records entered on different devices/locales never end up mixed formats.
  */
 function formatTime(time: any): string {
   if (!time) return '00:00:00';
   if (typeof time === 'string') {
-    // If already in HH:MM:SS format, return as is
-    if (time.match(/^\d{2}:\d{2}:\d{2}$/)) return time;
-    // If in HH:MM format, add seconds
-    if (time.match(/^\d{2}:\d{2}$/)) return `${time}:00`;
+    const normalized = normalizeClockTime(time, { withSeconds: true });
+    if (normalized) return normalized;
     return time;
   }
   return '00:00:00';
@@ -851,14 +849,7 @@ export function exportQARecords(
     const endTime = timeMatch ? timeMatch[2] + ':00' : '10:00:00';
     
     // Calculate duration
-    const parseTime = (timeStr: string): number => {
-      const parts = timeStr.split(':');
-      if (parts.length >= 2) {
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      }
-      return 0;
-    };
-    const durationMinutes = parseTime(endTime) - parseTime(startTime);
+    const durationMinutes = (clockTimeToMinutes(endTime) ?? 0) - (clockTimeToMinutes(startTime) ?? 0);
     const hours = Math.floor(durationMinutes / 60);
     const minutes = durationMinutes % 60;
     const duration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
