@@ -1,14 +1,14 @@
 export type DeliveryMode = 'InPerson' | 'Online' | 'Hybrid';
 
 export const DELIVERY_MODE_OPTIONS: Array<{ value: DeliveryMode; label: string }> = [
-  { value: 'InPerson', label: 'Physical (in-person)' },
+  { value: 'InPerson', label: 'Physical' },
   { value: 'Online', label: 'Online' },
   { value: 'Hybrid', label: 'Hybrid' },
 ];
 
 export function deliveryModeLabel(mode?: string | null): string {
   const match = DELIVERY_MODE_OPTIONS.find((option) => option.value === mode);
-  return match?.label ?? 'Physical (in-person)';
+  return match?.label ?? 'Physical';
 }
 
 export function normalizeDeliveryMode(mode?: string | null): DeliveryMode {

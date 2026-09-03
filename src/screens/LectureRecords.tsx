@@ -51,6 +51,7 @@ import {
   normalizeDeliveryMode,
   type DeliveryMode,
 } from '@/lib/delivery-mode';
+import { clockTimeToMinutes, normalizeClockTime } from '@/lib/clock-time';
 import { AcademicTermFilter, TERM_FILTER_ACTIVE, resolveAcademicTermFilter } from '@/components/AcademicTermFilter';
 import { AcademicTermArchivedBanner } from '@/components/AcademicTermArchivedBanner';
 import { termScopeQueryParam } from '@/lib/academic-term-scope';
@@ -727,24 +728,18 @@ export default function LectureRecords() {
     }
   };
 
-  // Calculate duration from start and end times
+  // Calculate duration from start and end times (accepts 24hr "HH:mm" or 12hr "hh:mm AM/PM")
   const calculateDuration = (startTime: string, endTime: string): string => {
-    const parseTime = (timeStr: string): number => {
-      const parts = timeStr.split(':');
-      if (parts.length >= 2) {
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      }
-      return 0;
-    };
+    const start = clockTimeToMinutes(startTime);
+    const end = clockTimeToMinutes(endTime);
 
-    const start = parseTime(startTime);
-    const end = parseTime(endTime);
+    if (start == null || end == null) return '00:00:00';
+
     const diff = end - start;
-    
     if (diff < 0) return '00:00:00';
-    
+
     const hours = Math.floor(diff / 60);
-    const minutes = diff % 60;
+    const minutes = Math.round(diff % 60);
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
   };
 
@@ -761,10 +756,12 @@ export default function LectureRecords() {
     }
     const formData = new FormData(e.target as HTMLFormElement);
     
-    const startTime = formData.get('timeForStarting') as string;
-    const endTime = formData.get('timeOutForEnding') as string;
-    const checkInTime = formData.get('checkInTime') as string;
-    const checkOutTime = formData.get('checkOutTime') as string;
+    const startTime = normalizeClockTime(formData.get('timeForStarting') as string) || (formData.get('timeForStarting') as string);
+    const endTime = normalizeClockTime(formData.get('timeOutForEnding') as string) || (formData.get('timeOutForEnding') as string);
+    const checkInTimeRaw = formData.get('checkInTime') as string;
+    const checkOutTimeRaw = formData.get('checkOutTime') as string;
+    const checkInTime = checkInTimeRaw ? (normalizeClockTime(checkInTimeRaw) || checkInTimeRaw) : '';
+    const checkOutTime = checkOutTimeRaw ? (normalizeClockTime(checkOutTimeRaw) || checkOutTimeRaw) : '';
     
     // Calculate duration from check-in to check-out if available, otherwise from scheduled times
     let duration: string;
