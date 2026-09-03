@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import {
   Table,
   TableBody,
@@ -277,28 +278,32 @@ export default function HrEmployeesPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-            <SelectTrigger className="w-full lg:w-56">
-              <SelectValue placeholder="School" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All schools</SelectItem>
-              {schools.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={deptFilter} onValueChange={setDeptFilter}>
-            <SelectTrigger className="w-full lg:w-48">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {visibleDepts.map((d) => (
-                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Combobox
+            className="w-full lg:w-56"
+            options={[
+              { value: 'all', label: 'All schools' },
+              ...schools.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            value={schoolFilter}
+            onValueChange={(v) => setSchoolFilter(v || 'all')}
+            placeholder="School"
+            searchPlaceholder="Search schools..."
+            emptyText="No school found."
+            initialDisplayCount={50}
+          />
+          <Combobox
+            className="w-full lg:w-48"
+            options={[
+              { value: 'all', label: 'All departments' },
+              ...visibleDepts.map((d) => ({ value: d.id, label: d.name })),
+            ]}
+            value={deptFilter}
+            onValueChange={(v) => setDeptFilter(v || 'all')}
+            placeholder="Department"
+            searchPlaceholder="Search departments..."
+            emptyText="No department found."
+            initialDisplayCount={50}
+          />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full lg:w-40">
               <SelectValue placeholder="Status" />

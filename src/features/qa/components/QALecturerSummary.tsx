@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
 import { exportLecturerSummaryReports } from '@/utils/excel';
@@ -114,6 +115,29 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
     return Array.from(new Set([...schoolOptions, ...fromReports])).sort();
   }, [schoolOptions, reports]);
 
+  const schoolComboboxOptions = useMemo(
+    () => [{ value: ALL, label: 'All Schools' }, ...schoolFilterOptions.map((school) => ({ value: school, label: school }))],
+    [schoolFilterOptions]
+  );
+  const classComboboxOptions = useMemo(
+    () => [{ value: ALL, label: 'All Classes' }, ...optionCatalog.classes.map((cls) => ({ value: cls, label: cls }))],
+    [optionCatalog.classes]
+  );
+  const courseUnitComboboxOptions = useMemo(
+    () => [
+      { value: ALL, label: 'All Course Units' },
+      ...optionCatalog.courseUnits.map((unit) => ({ value: unit, label: unit })),
+    ],
+    [optionCatalog.courseUnits]
+  );
+  const lecturerComboboxOptions = useMemo(
+    () => [
+      { value: ALL, label: 'All Lecturers' },
+      ...optionCatalog.lecturers.map((name) => ({ value: name, label: name })),
+    ],
+    [optionCatalog.lecturers]
+  );
+
   const tableRows: LecturerTableRow[] = useMemo(
     () =>
       reports.flatMap((report) =>
@@ -180,58 +204,46 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
               </SelectContent>
             </Select>
             ) : null}
-            <Select value={selectedSchool} onValueChange={setSelectedSchool}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Filter by School" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All Schools</SelectItem>
-                {schoolFilterOptions.map((school) => (
-                  <SelectItem key={school} value={school}>
-                    {school}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedClass} onValueChange={setSelectedClass}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Class" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All Classes</SelectItem>
-                {optionCatalog.classes.map((cls) => (
-                  <SelectItem key={cls} value={cls}>
-                    {cls}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedCourseUnit} onValueChange={setSelectedCourseUnit}>
-              <SelectTrigger className="w-[240px]">
-                <SelectValue placeholder="Course unit" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All Course Units</SelectItem>
-                {optionCatalog.courseUnits.map((unit) => (
-                  <SelectItem key={unit} value={unit}>
-                    {unit}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedLecturer} onValueChange={setSelectedLecturer}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Lecturer" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All Lecturers</SelectItem>
-                {optionCatalog.lecturers.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              className="w-[220px]"
+              options={schoolComboboxOptions}
+              value={selectedSchool}
+              onValueChange={(v) => setSelectedSchool(v || ALL)}
+              placeholder="Filter by School"
+              searchPlaceholder="Search schools..."
+              emptyText="No school found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-[200px]"
+              options={classComboboxOptions}
+              value={selectedClass}
+              onValueChange={(v) => setSelectedClass(v || ALL)}
+              placeholder="Class"
+              searchPlaceholder="Search classes..."
+              emptyText="No class found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-[240px]"
+              options={courseUnitComboboxOptions}
+              value={selectedCourseUnit}
+              onValueChange={(v) => setSelectedCourseUnit(v || ALL)}
+              placeholder="Course unit"
+              searchPlaceholder="Search course units..."
+              emptyText="No course unit found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-[220px]"
+              options={lecturerComboboxOptions}
+              value={selectedLecturer}
+              onValueChange={(v) => setSelectedLecturer(v || ALL)}
+              placeholder="Lecturer"
+              searchPlaceholder="Search lecturers..."
+              emptyText="No lecturer found."
+              initialDisplayCount={50}
+            />
             {activeFilterCount > 0 && (
               <Button variant="ghost" size="sm" onClick={clearDetailFilters}>
                 Clear class / course / lecturer

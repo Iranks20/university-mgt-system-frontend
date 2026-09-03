@@ -656,45 +656,60 @@ export default function StudentRecords() {
               <Input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
             </div>
             <div className="flex flex-col md:flex-row gap-3 flex-wrap">
-              <Select value={selectedSchool} onValueChange={handleSchoolChange}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                  {schools.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedProgramId} onValueChange={handleProgramChange}>
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Program" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>
-                    {selectedSchool === ALL_VALUE ? 'All programs' : `All programs in school`}
-                  </SelectItem>
-                  {filteredPrograms.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.code} — {p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="w-[240px]">
-                  <SelectValue placeholder="Course" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>
-                    {selectedProgramId === ALL_VALUE && selectedSchool === ALL_VALUE
-                      ? 'All courses'
-                      : 'All courses in scope'}
-                  </SelectItem>
-                  {filteredCourses.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.code} – {c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: ALL_VALUE, label: 'All schools' },
+                  ...schools.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+                value={selectedSchool}
+                onValueChange={(v) => handleSchoolChange(v || ALL_VALUE)}
+                placeholder="School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[220px]"
+                options={[
+                  {
+                    value: ALL_VALUE,
+                    label: selectedSchool === ALL_VALUE ? 'All programs' : 'All programs in school',
+                  },
+                  ...filteredPrograms.map((p) => ({
+                    value: p.id,
+                    label: `${p.code} — ${p.name}`,
+                  })),
+                ]}
+                value={selectedProgramId}
+                onValueChange={(v) => handleProgramChange(v || ALL_VALUE)}
+                placeholder="Program"
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[240px]"
+                options={[
+                  {
+                    value: ALL_VALUE,
+                    label:
+                      selectedProgramId === ALL_VALUE && selectedSchool === ALL_VALUE
+                        ? 'All courses'
+                        : 'All courses in scope',
+                  },
+                  ...filteredCourses.map((c) => ({
+                    value: c.id,
+                    label: `${c.code} – ${c.name}`,
+                  })),
+                ]}
+                value={selectedCourseId}
+                onValueChange={(v) => setSelectedCourseId(v || ALL_VALUE)}
+                placeholder="Course"
+                searchPlaceholder="Search courses..."
+                emptyText="No course found."
+                initialDisplayCount={50}
+              />
               <Select value={selectedYear} onValueChange={handleYearChange}>
                 <SelectTrigger className="w-[130px]">
                   <SelectValue placeholder="Year" />
