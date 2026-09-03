@@ -3,7 +3,7 @@ import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
-  ChevronDown, AlertTriangle,
+  ChevronDown, AlertTriangle, Layers,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
@@ -69,6 +69,7 @@ const ADMIN_CLINICAL_CHILD_PATHS = [
   '/clinical/sites',
   '/clinical/site-team',
   '/clinical/instructors',
+  '/clinical/cohorts',
   '/clinical/rotations',
   '/clinical/policies',
   '/clinical/sessions',
@@ -144,6 +145,7 @@ const ADMIN_CLINICAL_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Clinical Sites', icon: MapPin, path: '/clinical/sites' },
   { label: 'Site Team', icon: UsersRound, path: '/clinical/site-team' },
   { label: 'Instructors', icon: UsersRound, path: '/clinical/instructors' },
+  { label: 'Cohorts', icon: Layers, path: '/clinical/cohorts' },
   { label: 'Rotations', icon: ClipboardList, path: '/clinical/rotations' },
   { label: 'Eligibility Policies', icon: UserCheck, path: '/clinical/policies' },
   { label: 'Sessions', icon: BookOpen, path: '/clinical/sessions' },
@@ -188,6 +190,7 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Performance', path: '/lecturer-performance', icon: BarChart },
   { label: 'My Appraisal', path: '/staff-appraisal', icon: ClipboardList },
   { label: 'My Classes', path: '/student-classes', icon: BookOpen },
+  { label: 'Course registration', path: '/student-registration', icon: ClipboardList },
   { label: 'Attendance History', path: '/student-history', icon: Clock },
   { label: 'University Overview', path: '/management-overview', icon: BarChart },
   { label: 'Department Stats', path: '/management-departments', icon: School },
@@ -956,8 +959,14 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50/50">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5 bg-gray-50/50">
+          <div
+            className={
+              location.pathname === '/timetable-builder'
+                ? 'w-full max-w-[1920px] mx-auto'
+                : 'max-w-7xl mx-auto'
+            }
+          >
             {children}
           </div>
         </main>

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Plus, CheckCircle } from 'lucide-react';
+import { Plus, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,7 +38,6 @@ const emptyForm = () => ({
   clinicalSiteId: '',
   clinicalRotationId: '',
   instructorPick: '',
-  instructorName: '',
   topic: '',
   date: '',
   startTime: '',
@@ -58,6 +57,8 @@ export function SessionsSection({
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SessionRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const instructorLabelsRef = useRef(new Map<string, string>());
 
   const openAdd = () => {
@@ -71,13 +72,9 @@ export function SessionsSection({
       toast.error('Site, topic, and date are required');
       return;
     }
-    const instructorPayload = instructorPickToSessionPayload(
-      form.instructorPick,
-      instructorLabelsRef.current,
-      form.instructorName
-    );
-    if (!instructorPayload.clinicalInstructorId && !instructorPayload.instructorName) {
-      toast.error('Select an instructor or enter a new name');
+    const instructorPayload = instructorPickToSessionPayload(form.instructorPick, instructorLabelsRef.current);
+    if (!instructorPayload.clinicalInstructorId) {
+      toast.error('Select an instructor');
       return;
     }
     setSaving(true);
@@ -85,9 +82,9 @@ export function SessionsSection({
       await clinicalService.createSession({
         clinicalSiteId: form.clinicalSiteId,
         clinicalRotationId: form.clinicalRotationId || null,
-        clinicalInstructorId: instructorPayload.clinicalInstructorId ?? null,
-        staffId: instructorPayload.staffId ?? null,
-        instructorName: instructorPayload.instructorName ?? null,
+        clinicalInstructorId: instructorPayload.clinicalInstructorId,
+        staffId: null,
+        instructorName: null,
         topic: form.topic.trim(),
         date: form.date,
         startTime: form.startTime || null,
@@ -111,6 +108,21 @@ export function SessionsSection({
       await onRefresh();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to verify session');
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await clinicalService.deleteSession(deleteTarget.id);
+      toast.success('Clinical session deleted');
+      setDeleteTarget(null);
+      await onRefresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete session');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -139,13 +151,13 @@ export function SessionsSection({
               <TableHead>Site</TableHead>
               <TableHead>Instructor</TableHead>
               <TableHead>Status</TableHead>
-              {canVerify && <TableHead className="text-right">Action</TableHead>}
+              {(canVerify || canRecord) && <TableHead className="text-right">Action</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canVerify ? 6 : 5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={canVerify || canRecord ? 6 : 5} className="py-10 text-center text-muted-foreground">
                   No sessions recorded.
                 </TableCell>
               </TableRow>
@@ -157,17 +169,30 @@ export function SessionsSection({
                   <TableCell>{s.clinicalSite?.name || '—'}</TableCell>
                   <TableCell>{s.instructorNameSnapshot || s.clinicalInstructor?.fullName || '—'}</TableCell>
                   <TableCell>{clinicalSessionStatusBadge(s.status)}</TableCell>
-                  {canVerify && (
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => verifySession(s.id)}
-                        disabled={s.status === 'Verified'}
-                      >
-                        <CheckCircle className="mr-1 h-4 w-4" />
-                        Verify
-                      </Button>
+                  {(canVerify || canRecord) && (
+                    <TableCell className="text-right space-x-1">
+                      {canVerify && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => verifySession(s.id)}
+                          disabled={s.status === 'Verified'}
+                        >
+                          <CheckCircle className="mr-1 h-4 w-4" />
+                          Verify
+                        </Button>
+                      )}
+                      {canRecord && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(s)}
+                          title="Delete session"
+                          aria-label="Delete session"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
@@ -190,9 +215,7 @@ export function SessionsSection({
                   <Label>Clinical site</Label>
                   <Select
                     value={form.clinicalSiteId}
-                    onValueChange={(v) =>
-                      setForm((f) => ({ ...f, clinicalSiteId: v, instructorPick: '' }))
-                    }
+                    onValueChange={(v) => setForm((f) => ({ ...f, clinicalSiteId: v }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select site" />
@@ -236,35 +259,18 @@ export function SessionsSection({
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Existing instructor (optional)</Label>
-                  <ClinicalInstructorPicker
-                    value={form.instructorPick}
-                    clinicalSiteId={form.clinicalSiteId || undefined}
-                    onValueChange={(pick, label) => {
-                      if (label) instructorLabelsRef.current.set(pick, label);
-                      setForm((f) => ({ ...f, instructorPick: pick, instructorName: '' }));
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Only instructors registered under Clinical → Instructors. To add someone new, register them there first.
-                  </p>
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Or new instructor name</Label>
-                  <Input
-                    value={form.instructorName}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        instructorName: e.target.value,
-                        instructorPick: '',
-                      }))
-                    }
-                    placeholder="If not in list above"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>Instructor</Label>
+                <ClinicalInstructorPicker
+                  value={form.instructorPick}
+                  onValueChange={(pick, label) => {
+                    if (label) instructorLabelsRef.current.set(pick, label);
+                    setForm((f) => ({ ...f, instructorPick: pick }));
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Instructors come from Clinicals → Instructors. Add new ones there first.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Session topic</Label>
@@ -297,6 +303,41 @@ export function SessionsSection({
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canRecord && (
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <DialogContent className="w-[96vw] max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete clinical session?</DialogTitle>
+              <DialogDescription>
+                {deleteTarget ? (
+                  <>
+                    Delete the <span className="font-medium text-foreground">{deleteTarget.topic}</span> session on{' '}
+                    {String(deleteTarget.date).slice(0, 10)}? Any attendance recorded for it will also be removed.
+                    {deleteTarget.status === 'Verified' ? (
+                      <>
+                        {' '}
+                        <span className="font-medium text-destructive">
+                          This session has already been verified — deleting it removes the verified record
+                          permanently.
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete session'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

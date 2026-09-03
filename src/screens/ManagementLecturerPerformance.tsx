@@ -13,18 +13,24 @@ import {
   UserCheck, BookOpen, Clock, Award, Users
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { reportService } from '@/services/report.service';
 import { toast } from 'sonner';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 export default function ManagementLecturerPerformance() {
+  const { termFilter, academicTermId, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('All');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
@@ -52,12 +58,18 @@ export default function ManagementLecturerPerformance() {
         if (departmentFilter !== 'All') params.department = departmentFilter;
         if (searchTerm) params.search = searchTerm;
 
+        const termParams = {
+          ...(termStartDate ? { startDate: termStartDate } : {}),
+          ...(termEndDate ? { endDate: termEndDate } : {}),
+          ...termScopeQueryParam(academicTermId),
+        };
+
         const [lecturersResult, allLectureRecords] = await Promise.all([
           staffService.getLecturers(params),
-          qaService.getLectureRecords(),
+          qaService.getLectureRecords(termParams as any),
         ]);
         const lecturers = Array.isArray(lecturersResult) ? lecturersResult : lecturersResult.data || [];
-        const records = Array.isArray(allLectureRecords) ? allLectureRecords : [];
+        const records = Array.isArray(allLectureRecords) ? allLectureRecords : (allLectureRecords as any)?.data || [];
 
         const recordsByLecturerId: Record<string, any[]> = {};
         const recordsByLecturerName: Record<string, any[]> = {};
@@ -77,7 +89,12 @@ export default function ManagementLecturerPerformance() {
         const performanceData = await Promise.all(
           lecturers.map(async (lecturer: any) => {
             const [perf, rating] = await Promise.all([
-              analyticsService.getLecturerPerformance(lecturer.id) as any,
+              analyticsService.getLecturerPerformance(
+                lecturer.id,
+                termStartDate,
+                termEndDate,
+                academicTermId === 'all' ? 'all' : academicTermId
+              ) as any,
               staffService.getStaffStudentRating(lecturer.id).catch(() => null),
             ]);
             const attendanceRate = perf?.attendanceRate ?? 0;
@@ -152,7 +169,7 @@ export default function ManagementLecturerPerformance() {
       }
     };
     fetchData();
-  }, [departmentFilter, searchTerm]);
+  }, [departmentFilter, searchTerm, termFilter, termStartDate, termEndDate]);
 
   const filteredLecturers = lecturerPerformance.filter(lecturer => {
     const matchesSearch = 
@@ -329,6 +346,11 @@ export default function ManagementLecturerPerformance() {
         <CardContent className="p-4">
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
+              <AcademicTermFilter
+                value={termFilter}
+                onChange={onTermChange}
+                triggerClassName="w-full md:w-[240px]"
+              />
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -338,30 +360,35 @@ export default function ManagementLecturerPerformance() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Departments</SelectItem>
-                  {uniqueDepartments.map(([deptId, deptName]) => (
-                    <SelectItem key={deptId} value={deptId}>
-                      {deptName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Schools</SelectItem>
-                  {Array.from(new Set(lecturerPerformance.map(l => l.school))).map(school => (
-                    <SelectItem key={school} value={school}>{school}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Departments' },
+                  ...uniqueDepartments.map(([deptId, deptName]) => ({ value: deptId, label: deptName })),
+                ]}
+                value={departmentFilter}
+                onValueChange={(v) => setDepartmentFilter(v || 'All')}
+                placeholder="Department"
+                searchPlaceholder="Search departments..."
+                emptyText="No department found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Schools' },
+                  ...Array.from(new Set(lecturerPerformance.map((l) => l.school))).map((school) => ({
+                    value: school,
+                    label: school,
+                  })),
+                ]}
+                value={schoolFilter}
+                onValueChange={(v) => setSchoolFilter(v || 'All')}
+                placeholder="School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
             </div>
             <div className="flex flex-col md:flex-row gap-4">
               <Select value={performanceFilter} onValueChange={setPerformanceFilter}>
@@ -388,9 +415,7 @@ export default function ManagementLecturerPerformance() {
                   <SelectItem value="Poor">Poor (Below 70%)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={clearFilters} className="gap-2">
-                <Filter className="h-4 w-4" /> Clear Filters
-              </Button>
+              <ResetFiltersButton onClick={clearFilters} />
             </div>
           </div>
         </CardContent>

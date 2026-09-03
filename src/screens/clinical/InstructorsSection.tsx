@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Edit, UserPlus, Eye } from 'lucide-react';
+import { Plus, Edit, UserPlus, Eye, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -85,6 +85,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState<'all' | 'university' | 'external' | 'teaching'>('all');
   const [siteFilter, setSiteFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   const [detailRow, setDetailRow] = useState<InstructorDirectoryRow | null>(null);
   const [externalModalOpen, setExternalModalOpen] = useState(false);
@@ -98,6 +99,8 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
   >([]);
   const [linkLecturersLoading, setLinkLecturersLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<InstructorDirectoryRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +111,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
         search: search.trim() || undefined,
         clinicalSiteId: siteFilter || undefined,
         scope,
+        status: statusFilter,
       });
       setRows((res.data || []) as InstructorDirectoryRow[]);
     } catch (e: any) {
@@ -116,7 +120,7 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
     } finally {
       setLoading(false);
     }
-  }, [search, scope, siteFilter]);
+  }, [search, scope, siteFilter, statusFilter]);
 
   useEffect(() => {
     const t = setTimeout(() => load(), 300);
@@ -225,6 +229,32 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget?.clinicalInstructorId) return;
+    setDeleting(true);
+    try {
+      const result = await clinicalService.deleteInstructor(deleteTarget.clinicalInstructorId);
+      setDeleteTarget(null);
+      if (result.outcome === 'deactivated') {
+        toast.success(
+          `Instructor deactivated (${result.sessionCount} recorded session${result.sessionCount === 1 ? '' : 's'}).`
+        );
+        if (statusFilter === 'active') {
+          setStatusFilter('inactive');
+        } else {
+          await load();
+        }
+      } else {
+        toast.success('Instructor removed');
+        await load();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to remove instructor');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <ClinicalTableCard
@@ -281,6 +311,16 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
               Clear site filter
             </Button>
           ) : null}
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+            <SelectTrigger className="sm:w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active only</SelectItem>
+              <SelectItem value="inactive">Inactive only</SelectItem>
+              <SelectItem value="all">All instructors</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <Table>
@@ -299,7 +339,9 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No registered instructors yet. Use Register university lecturer or Add external instructor.
+                  {statusFilter === 'inactive'
+                    ? 'No inactive instructors.'
+                    : 'No registered instructors yet. Use Register university lecturer or Add external instructor.'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -327,9 +369,19 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
                       <Eye className="h-4 w-4" />
                     </Button>
                     {canManage && (
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(row)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteTarget(row)}
+                          aria-label="Remove instructor"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>
@@ -570,6 +622,31 @@ export function InstructorsSection({ sites, canManage }: InstructorsSectionProps
                   </Button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+            <DialogContent className="w-[96vw] max-w-md">
+              <DialogHeader>
+                <DialogTitle>Remove clinical instructor?</DialogTitle>
+                <DialogDescription>
+                  {deleteTarget ? (
+                    <>
+                      Remove <span className="font-medium text-foreground">{deleteTarget.fullName}</span> from the
+                      clinical registry? If they have recorded sessions, they will be marked inactive instead of
+                      removed.
+                    </>
+                  ) : null}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                  {deleting ? 'Removing…' : 'Remove instructor'}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </>

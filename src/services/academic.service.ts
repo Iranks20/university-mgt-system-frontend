@@ -1,6 +1,157 @@
 import api from '@/lib/api';
 import type { School, Level, Department, Course, Class, Venue } from '@/types';
 
+export type AcademicTerm = {
+  id: string;
+  name: string;
+  academicYear: number;
+  semester: number;
+  startDate: string;
+  endDate: string;
+  status: 'Draft' | 'Active' | 'Closed';
+  registrationStatus?: 'Closed' | 'Open' | 'AddDropOnly';
+  registrationOpensAt?: string | null;
+  registrationClosesAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type PromoteStudentsResult = {
+  dryRun: boolean;
+  scope?: {
+    programId: string | null;
+    year: number | null;
+    semester: number | null;
+  };
+  holdbackGroups?: Array<{
+    programId: string;
+    year: number;
+    semester: number;
+    reason: string;
+  }>;
+  totalActiveStudents: number;
+  toPromote: number;
+  heldBack: number;
+  heldBackExisting?: number;
+  heldBackByGroup?: number;
+  heldBackIndividual?: number;
+  completedCandidates: number;
+  skippedNoProgram: number;
+  skippedAlreadyPromoted: number;
+  skippedWrongCohort?: number;
+  promoted: number;
+  activeTermId?: string;
+  errors: string[];
+  samples: {
+    promote: Array<{ id: string; studentNumber: string; from: string; to: string }>;
+    holdback: Array<{
+      id: string;
+      studentNumber: string;
+      at: string;
+      reason?: string | null;
+      source?: 'existing' | 'group' | 'individual';
+    }>;
+    completed: Array<{ id: string; studentNumber: string; at: string }>;
+    skippedAlreadyPromoted?: Array<{ id: string; studentNumber: string; at: string }>;
+  };
+};
+
+export type HoldbackGroupPayload = {
+  programId: string;
+  year: number;
+  semester: number;
+  reason: string;
+};
+
+export type GenerateClassListsResult = {
+  dryRun: boolean;
+  mode: 'clone-from-term' | 'from-curriculum';
+  activeTermId: string;
+  sourceTermId: string | null;
+  sourceClassCount: number;
+  created: number;
+  skippedExisting: number;
+  errors: string[];
+  samples: Array<{ courseId: string; name: string; action: string }>;
+};
+
+export type RegisterStudentsResult = {
+  dryRun: boolean;
+  policy: 'auto' | 'hybrid' | 'self' | 'none';
+  activeTermId: string;
+  studentsConsidered: number;
+  studentsRegistered: number;
+  enrolled: number;
+  skipped: number;
+  dropped: number;
+  skippedIneligible: number;
+  registrationOpened: boolean;
+  errors: string[];
+};
+
+export type ReassignCohortStandingResult = {
+  dryRun: boolean;
+  mode: 'reactivate' | 'reassign';
+  selectionMode?: 'selected' | 'cohort';
+  selectedCount?: number | null;
+  program: { id: string; name: string; code: string | null };
+  source: { year: number; semester: number };
+  target: { year: number; semester: number };
+  reEnroll: boolean;
+  includeCompleted: boolean;
+  activeInSourceCohort: number;
+  completedInSourceCohort: number;
+  totalInSourceCohort: number;
+  toReassign: number;
+  reassigned: number;
+  reactivated: number;
+  enrolled: number;
+  dropped: number;
+  skipped: number;
+  errors: string[];
+  completedCohortsInProgram: Array<{ year: number; semester: number; count: number }>;
+  samples: Array<{
+    id: string;
+    studentNumber: string;
+    from: string;
+    to: string;
+    priorStatus: string;
+  }>;
+};
+
+export type CohortStandingStudent = {
+  id: string;
+  studentNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  status: string;
+  year: number;
+  semester: number;
+};
+
+export type CohortStandingStudentsResult = {
+  program: { id: string; name: string; code: string | null };
+  year: number;
+  semester: number;
+  includeCompleted: boolean;
+  total: number;
+  students: CohortStandingStudent[];
+};
+
+export type CohortPromotionStatusResult = {
+  status: 'promoted' | 'partial' | 'pending' | 'empty' | 'not_applicable' | 'no_active_term';
+  programId: string;
+  year: number;
+  semester: number;
+  sourceYear: number | null;
+  sourceSemester: number | null;
+  activeTermId: string | null;
+  activeTermName: string | null;
+  promotedCount: number;
+  pendingAtSource: number;
+};
+
 type ClassUpsertPayload = {
   name: string;
   courseId: string;
@@ -304,10 +455,37 @@ export const academicService = {
     }
   },
 
+  addCourseToNode: async (payload: {
+    code: string;
+    name: string;
+    departmentId: string;
+    programId: string;
+    year: number;
+    semester: number;
+    credits: number;
+    enrollmentPolicy?: 'Auto' | 'Self' | 'StaffOnly';
+  }): Promise<Course & { linked: boolean }> => {
+    try {
+      const res = await api.post<{ data: Course & { linked: boolean } }>('/academic/courses/add-to-node', payload);
+      return (res as any)?.data ?? res;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  unlinkCourseFromProgram: async (courseId: string, programId: string): Promise<void> => {
+    try {
+      await api.delete(`/academic/courses/${courseId}/unlink-program/${programId}`);
+    } catch (error) {
+      throw error;
+    }
+  },
+
   getClasses: async (params?: {
     courseId?: string;
     schoolId?: string;
     programIntakeId?: string;
+    academicTermId?: string;
     page?: number;
     limit?: number;
     search?: string;
@@ -318,6 +496,7 @@ export const academicService = {
       if (params?.courseId) query.set('courseId', params.courseId);
       if (params?.schoolId) query.set('schoolId', params.schoolId);
       if (params?.programIntakeId) query.set('programIntakeId', params.programIntakeId);
+      if (params?.academicTermId) query.set('academicTermId', params.academicTermId);
       if (params?.page != null) query.set('page', String(params.page));
       if (params?.limit != null) query.set('limit', String(params.limit));
       if (params?.search?.trim()) query.set('search', params.search.trim());
@@ -368,7 +547,7 @@ export const academicService = {
     courses: Array<{ id: string; code: string; name: string; source: 'program' | 'combined' }>;
     classesByCourseId: Record<
       string,
-      {
+      Array<{
         classId: string;
         className: string;
         lecturerId: string | null;
@@ -381,7 +560,7 @@ export const academicService = {
         capacity: number;
         isSharedSchedule: boolean;
         cohortProgramIntakeIds: string[];
-      }
+      }>
     >;
   }> => {
     const res = await api.get<{ data: any }>(
@@ -456,6 +635,25 @@ export const academicService = {
     }
   },
 
+  getClassLecturerPool: async (
+    classId: string
+  ): Promise<Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }>> => {
+    try {
+      const response = await api.get<
+        | { classId: string; lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> }
+        | { data: { classId: string; lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> } }
+      >(`/academic/classes/${classId}/lecturer-pool`);
+      if (Array.isArray((response as { lecturers?: unknown[] })?.lecturers)) {
+        return (response as { lecturers: Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }> }).lecturers;
+      }
+      const nested = (response as { data?: { lecturers?: unknown[] } })?.data?.lecturers;
+      return (nested ?? []) as Array<{ id: string; name: string; departmentName: string | null; isPrimary: boolean }>;
+    } catch (error) {
+      console.error('Error fetching class lecturer pool:', error);
+      return [];
+    }
+  },
+
   createClass: async (classData: ClassUpsertPayload): Promise<Class> => {
     try {
       return await api.post<Class>('/academic/classes', classData);
@@ -496,9 +694,18 @@ export const academicService = {
     }
   },
 
-  getTimetable: async (): Promise<any[]> => {
+  getTimetable: async (params?: {
+    academicTermId?: string;
+    classStatus?: 'active' | 'inactive' | 'all';
+  }): Promise<any[]> => {
     try {
-      const response = await api.get<{ data: any[] }>('/academic/timetable');
+      const query = new URLSearchParams();
+      if (params?.academicTermId) query.set('academicTermId', params.academicTermId);
+      if (params?.classStatus) query.set('classStatus', params.classStatus);
+      const qs = query.toString();
+      const response = await api.get<{ data: any[] }>(
+        '/academic/timetable' + (qs ? `?${qs}` : '')
+      );
       return Array.isArray(response) ? response : response?.data ?? [];
     } catch (error) {
       console.error('Error fetching timetable:', error);
@@ -596,6 +803,381 @@ export const academicService = {
       console.error('Error deleting calendar event:', error);
       throw error;
     }
+  },
+
+  getAcademicTerms: async (): Promise<AcademicTerm[]> => {
+    const response = await api.get<{ data: AcademicTerm[] } | AcademicTerm[]>('/academic/terms');
+    return Array.isArray(response) ? response : response?.data ?? [];
+  },
+
+  getActiveAcademicTerm: async (): Promise<AcademicTerm | null> => {
+    const response = await api.get<{ data: AcademicTerm | null } | AcademicTerm | null>(
+      '/academic/terms/active'
+    );
+    if (!response) return null;
+    if (typeof response === 'object' && 'data' in response) return response.data ?? null;
+    return response as AcademicTerm;
+  },
+
+  getRolloverReadiness: async (): Promise<{
+    hasActiveTerm: boolean;
+    activeTerm: AcademicTerm | null;
+    unscopedActiveClassCount: number;
+    activeClassCount: number;
+    activeStudentCount: number;
+  }> => {
+    const response = await api.get<
+      | {
+          data: {
+            hasActiveTerm: boolean;
+            activeTerm: AcademicTerm | null;
+            unscopedActiveClassCount: number;
+            activeClassCount: number;
+            activeStudentCount: number;
+          };
+        }
+      | {
+          hasActiveTerm: boolean;
+          activeTerm: AcademicTerm | null;
+          unscopedActiveClassCount: number;
+          activeClassCount: number;
+          activeStudentCount: number;
+        }
+    >('/academic/terms/rollover-readiness');
+    return (response as any)?.data ?? response;
+  },
+
+  createAcademicTerm: async (payload: {
+    name: string;
+    academicYear: number;
+    semester: 0 | 1 | 2;
+    startDate: string;
+    endDate: string;
+    activate?: boolean;
+    asClosed?: boolean;
+  }): Promise<AcademicTerm> => {
+    const response = await api.post<{ data: AcademicTerm } | AcademicTerm>('/academic/terms', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  updateAcademicTerm: async (
+    id: string,
+    payload: Partial<{ name: string; startDate: string; endDate: string; status: 'Draft' }>
+  ): Promise<AcademicTerm> => {
+    const response = await api.patch<{ data: AcademicTerm } | AcademicTerm>(
+      `/academic/terms/${id}`,
+      payload
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  activateAcademicTerm: async (id: string): Promise<AcademicTerm> => {
+    const response = await api.post<{ data: AcademicTerm } | AcademicTerm>(
+      `/academic/terms/${id}/activate`,
+      {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  openTermRegistration: async (
+    id: string,
+    payload?: {
+      status?: 'Open' | 'AddDropOnly';
+      registrationOpensAt?: string | null;
+      registrationClosesAt?: string | null;
+    }
+  ): Promise<AcademicTerm> => {
+    const response = await api.post<{ data: AcademicTerm } | AcademicTerm>(
+      `/academic/terms/${id}/registration/open`,
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  closeTermRegistration: async (id: string): Promise<AcademicTerm> => {
+    const response = await api.post<{ data: AcademicTerm } | AcademicTerm>(
+      `/academic/terms/${id}/registration/close`,
+      {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  closeAcademicTerm: async (
+    id: string,
+    options?: { includeUnscopedActiveClasses?: boolean }
+  ): Promise<AcademicTerm & { deactivatedClassCount?: number }> => {
+    const response = await api.post<
+      { data: AcademicTerm & { deactivatedClassCount?: number } } | (AcademicTerm & { deactivatedClassCount?: number })
+    >(`/academic/terms/${id}/close`, options ?? {});
+    return (response as any)?.data ?? response;
+  },
+
+  previewAttachUnscopedClasses: async (
+    id: string
+  ): Promise<{
+    term: AcademicTerm;
+    unscopedClassCount: number;
+    linkedClassCount: number;
+  }> => {
+    const response = await api.get<
+      | { data: { term: AcademicTerm; unscopedClassCount: number; linkedClassCount: number } }
+      | { term: AcademicTerm; unscopedClassCount: number; linkedClassCount: number }
+    >(`/academic/terms/${id}/attach-unscoped/preview`);
+    return (response as any)?.data ?? response;
+  },
+
+  attachUnscopedClasses: async (
+    id: string,
+    payload?: { deactivate?: boolean }
+  ): Promise<AcademicTerm & { attachedClassCount: number; deactivated: boolean }> => {
+    const response = await api.post<
+      | { data: AcademicTerm & { attachedClassCount: number; deactivated: boolean } }
+      | (AcademicTerm & { attachedClassCount: number; deactivated: boolean })
+    >(`/academic/terms/${id}/attach-unscoped`, payload ?? {});
+    return (response as any)?.data ?? response;
+  },
+
+  getAcademicTermClosePreview: async (
+    id: string
+  ): Promise<{
+    term: AcademicTerm;
+    includeUnscopedActiveClasses: boolean;
+    linkedActiveClassCount: number;
+    unscopedActiveClassCount: number;
+    classesToDeactivate: number;
+  }> => {
+    const response = await api.get<any>(`/academic/terms/${id}/close-preview`);
+    return (response as any)?.data ?? response;
+  },
+
+  getResetOfferingsPreview: async (
+    id: string
+  ): Promise<{
+    term: AcademicTerm;
+    classCount: number;
+    activeEnrollmentCount: number;
+    totalEnrollmentCount: number;
+    timetableSlotCount: number;
+    requiresForce: boolean;
+  }> => {
+    const response = await api.get<any>(`/academic/terms/${id}/reset-offerings/preview`);
+    return (response as any)?.data ?? response;
+  },
+
+  resetTermOfferings: async (
+    id: string,
+    payload: { force: boolean; confirmName: string }
+  ): Promise<{
+    termId: string;
+    termName: string;
+    classesDeleted: number;
+    enrollmentsDeleted: number;
+    timetableSlotsDeleted: number;
+    force: boolean;
+    classNames: string[];
+  }> => {
+    const response = await api.post<any>(`/academic/terms/${id}/reset-offerings`, payload);
+    return (response as any)?.data ?? response;
+  },
+
+  previewPromoteStudents: async (payload?: {
+    holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
+    programId?: string;
+    year?: number;
+    semester?: number;
+  }): Promise<PromoteStudentsResult> => {
+    const response = await api.post<{ data: PromoteStudentsResult } | PromoteStudentsResult>(
+      '/academic/terms/promote/preview',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  promoteStudents: async (payload?: {
+    holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
+    programId?: string;
+    year?: number;
+    semester?: number;
+  }): Promise<PromoteStudentsResult> => {
+    const response = await api.post<{ data: PromoteStudentsResult } | PromoteStudentsResult>(
+      '/academic/terms/promote',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  previewReassignCohortStanding: async (payload: {
+    programId: string;
+    sourceYear: number;
+    sourceSemester: number;
+    targetYear: number;
+    targetSemester: number;
+    reEnroll?: boolean;
+    includeCompleted?: boolean;
+    studentIds?: string[];
+  }): Promise<ReassignCohortStandingResult> => {
+    const response = await api.post<
+      { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
+    >('/academic/terms/cohort-standing/preview', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  reassignCohortStanding: async (payload: {
+    programId: string;
+    sourceYear: number;
+    sourceSemester: number;
+    targetYear: number;
+    targetSemester: number;
+    reEnroll?: boolean;
+    includeCompleted?: boolean;
+    studentIds?: string[];
+  }): Promise<ReassignCohortStandingResult> => {
+    const response = await api.post<
+      { data: ReassignCohortStandingResult } | ReassignCohortStandingResult
+    >('/academic/terms/cohort-standing/reassign', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  listCohortStandingStudents: async (params: {
+    programId: string;
+    year: number;
+    semester: number;
+    includeCompleted?: boolean;
+    search?: string;
+  }): Promise<CohortStandingStudentsResult> => {
+    const query = new URLSearchParams();
+    query.set('programId', params.programId);
+    query.set('year', String(params.year));
+    query.set('semester', String(params.semester));
+    if (params.includeCompleted != null) query.set('includeCompleted', String(params.includeCompleted));
+    if (params.search?.trim()) query.set('search', params.search.trim());
+    const response = await api.get<{ data: CohortStandingStudentsResult } | CohortStandingStudentsResult>(
+      `/academic/terms/cohort-standing/students?${query.toString()}`
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  getCohortPromotionStatus: async (params: {
+    programId: string;
+    year: number;
+    semester: number;
+    intakeType?: 'Day' | 'Evening' | 'Weekend';
+  }): Promise<CohortPromotionStatusResult> => {
+    const query = new URLSearchParams();
+    query.set('programId', params.programId);
+    query.set('year', String(params.year));
+    query.set('semester', String(params.semester));
+    if (params.intakeType) query.set('intakeType', params.intakeType);
+    const response = await api.get<{ data: CohortPromotionStatusResult } | CohortPromotionStatusResult>(
+      `/academic/terms/cohort-promotion-status?${query.toString()}`
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  previewClassLists: async (payload?: {
+    sourceTermId?: string;
+    programId?: string;
+    mode?: 'clone-from-term' | 'from-curriculum';
+  }): Promise<GenerateClassListsResult> => {
+    const response = await api.post<{ data: GenerateClassListsResult } | GenerateClassListsResult>(
+      '/academic/terms/class-lists/preview',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  generateClassLists: async (payload?: {
+    sourceTermId?: string;
+    programId?: string;
+    mode?: 'clone-from-term' | 'from-curriculum';
+    autoEnrollOnCreate?: boolean;
+  }): Promise<GenerateClassListsResult> => {
+    const response = await api.post<{ data: GenerateClassListsResult } | GenerateClassListsResult>(
+      '/academic/terms/class-lists/generate',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  previewRegisterStudents: async (payload?: {
+    programId?: string;
+    policy?: 'auto' | 'hybrid' | 'self' | 'none';
+    openRegistration?: boolean;
+  }): Promise<RegisterStudentsResult> => {
+    const response = await api.post<{ data: RegisterStudentsResult } | RegisterStudentsResult>(
+      '/academic/terms/register/preview',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  registerStudents: async (payload?: {
+    programId?: string;
+    policy?: 'auto' | 'hybrid' | 'self' | 'none';
+    openRegistration?: boolean;
+    dropOutOfScope?: boolean;
+  }): Promise<RegisterStudentsResult> => {
+    const response = await api.post<{ data: RegisterStudentsResult } | RegisterStudentsResult>(
+      '/academic/terms/register',
+      payload ?? {}
+    );
+    return (response as any)?.data ?? response;
+  },
+
+  previewRolloverWizard: async (payload: {
+    closeTermId?: string;
+    includeUnscopedActiveClasses?: boolean;
+    nextTerm: {
+      name: string;
+      academicYear: number;
+      semester: 0 | 1 | 2;
+      startDate: string;
+      endDate: string;
+    };
+    holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
+    programId?: string;
+    year?: number;
+    semester?: number;
+    classListMode?: 'clone-from-term' | 'from-curriculum';
+    sourceTermId?: string;
+    skipPromote?: boolean;
+    skipClassLists?: boolean;
+    skipRegister?: boolean;
+    registrationPolicy?: 'auto' | 'hybrid' | 'self' | 'none';
+    openRegistration?: boolean;
+  }): Promise<any> => {
+    const response = await api.post<{ data: any } | any>('/academic/terms/rollover/preview', payload);
+    return (response as any)?.data ?? response;
+  },
+
+  executeRolloverWizard: async (payload: {
+    closeTermId?: string;
+    includeUnscopedActiveClasses?: boolean;
+    nextTerm: {
+      name: string;
+      academicYear: number;
+      semester: 0 | 1 | 2;
+      startDate: string;
+      endDate: string;
+    };
+    holdbackStudentIds?: string[];
+    holdbackGroups?: HoldbackGroupPayload[];
+    programId?: string;
+    year?: number;
+    semester?: number;
+    classListMode?: 'clone-from-term' | 'from-curriculum';
+    sourceTermId?: string;
+    skipPromote?: boolean;
+    skipClassLists?: boolean;
+    skipRegister?: boolean;
+    registrationPolicy?: 'auto' | 'hybrid' | 'self' | 'none';
+    openRegistration?: boolean;
+  }): Promise<any> => {
+    const response = await api.post<{ data: any } | any>('/academic/terms/rollover', payload);
+    return (response as any)?.data ?? response;
   },
 
   getDepartmentStats: async (id: string): Promise<{ headOfDepartment: { id: string; name: string } | null; staffCount: number; studentCount: number; attendanceRate: number; status: string }> => {

@@ -95,6 +95,7 @@ export interface Course {
   credits: number;
   level: number;
   semester: number;
+  enrollmentPolicy?: 'Auto' | 'Self' | 'StaffOnly';
 }
 
 export interface Class {
@@ -103,11 +104,13 @@ export interface Class {
   courseId: string;
   lecturerId: string;
   venueId: string;
-  dayOfWeek: number; // 0-6 (Sunday-Saturday)
-  startTime: string; // HH:mm format
+  dayOfWeek: number;
+  startTime: string;
   endTime: string;
   capacity: number;
   enrolledCount: number;
+  isActive?: boolean;
+  academicTermId?: string | null;
 }
 
 export interface Timetable {

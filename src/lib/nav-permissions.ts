@@ -89,6 +89,11 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['clinical.sessions.record'],
     ['clinical.sessions.verify'],
   ],
+  '/clinical/cohorts': [
+    ['clinical.rotations.manage'],
+    ['clinical.sessions.record'],
+    ['clinical.sessions.verify'],
+  ],
   '/clinical/rotations': [
     ['clinical.rotations.manage'],
     ['clinical.sessions.record'],
@@ -147,6 +152,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   ],
   '/lecturer-performance': [['analytics.lecturer_private', 'staff.lecturer_me']],
   '/student-classes': [['students.self', 'enrollment.self', 'settings.read', 'students.attendance_self']],
+  '/student-registration': [['students.self', 'enrollment.self']],
   '/student-history': [
     ['students.self', 'enrollment.self', 'students.attendance_self'],
     ['staff.timeclock'],
@@ -205,6 +211,7 @@ const HOME_PATH_CANDIDATES = [
   '/admin-settings',
   '/presence',
   '/student-classes',
+  '/student-registration',
 ] as const;
 
 export function permissionRequirementForRoute(path: string): PermissionRequirement | undefined {
@@ -264,6 +271,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/lecturer-course-attendance', label: 'Course Attendance', permissions: NAV_PERMISSION['/lecturer-course-attendance'] },
   { path: '/lecturer-performance', label: 'Performance (Lecturer)', permissions: NAV_PERMISSION['/lecturer-performance'] },
   { path: '/student-classes', label: 'My Classes', permissions: NAV_PERMISSION['/student-classes'] },
+  { path: '/student-registration', label: 'Course registration', permissions: NAV_PERMISSION['/student-registration'] },
   { path: '/student-history', label: 'Attendance History', permissions: NAV_PERMISSION['/student-history'] },
   { path: '/management-overview', label: 'University Overview', permissions: NAV_PERMISSION['/management-overview'] },
   { path: '/management-risk', label: 'Risk Register', permissions: NAV_PERMISSION['/management-risk'] },
@@ -295,6 +303,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/clinical/sites', label: 'Clinical Sites', permissions: NAV_PERMISSION['/clinical/sites'] },
   { path: '/clinical/site-team', label: 'Site Team', permissions: NAV_PERMISSION['/clinical/site-team'] },
   { path: '/clinical/instructors', label: 'Clinical Instructors', permissions: NAV_PERMISSION['/clinical/instructors'] },
+  { path: '/clinical/cohorts', label: 'Clinical Cohorts', permissions: NAV_PERMISSION['/clinical/cohorts'] },
   { path: '/clinical/rotations', label: 'Clinical Rotations', permissions: NAV_PERMISSION['/clinical/rotations'] },
   { path: '/clinical/policies', label: 'Eligibility Policies', permissions: NAV_PERMISSION['/clinical/policies'] },
   { path: '/clinical/sessions', label: 'Clinical Sessions', permissions: NAV_PERMISSION['/clinical/sessions'] },

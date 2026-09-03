@@ -22,6 +22,20 @@ import { qaService, academicService, timetableService, staffService } from '@/se
 import type { TimetableClass } from '@/services/timetable.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+  type AcademicTermFilterValue,
+} from '@/components/AcademicTermFilter';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
+
+const DEFAULT_QA_FILTERS = {
+  day: 'all',
+  search: '',
+  classStatus: 'active' as 'active' | 'inactive' | 'all',
+  academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
+  academicTermId: undefined as string | undefined,
+};
 
 const PRESENCE_GRACE_MINUTES = 15;
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -96,11 +110,7 @@ export default function Timetable() {
   const [activeCheckIns, setActiveCheckIns] = useState<Record<string, { checkIn: string; checkOut?: string }>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TimetableItem | null>(null);
-  const [qaFilters, setQaFilters] = useState({
-    day: 'all',
-    search: '',
-    classStatus: 'active' as 'active' | 'inactive' | 'all',
-  });
+  const [qaFilters, setQaFilters] = useState({ ...DEFAULT_QA_FILTERS });
   const [qaRawClasses, setQaRawClasses] = useState<Record<string, TimetableClass>>({});
   const [qaEditOpen, setQaEditOpen] = useState(false);
   const [qaEditingClass, setQaEditingClass] = useState<TimetableClass | null>(null);
@@ -120,6 +130,9 @@ export default function Timetable() {
   const [qaDeactivating, setQaDeactivating] = useState(false);
   const [qaVenues, setQaVenues] = useState<{ id: string; name: string }[]>([]);
   const [qaLecturers, setQaLecturers] = useState<{ id: string; name: string }[]>([]);
+  const [personalTermFilter, setPersonalTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
+  const [personalTermId, setPersonalTermId] = useState<string | undefined>(undefined);
+  const [personalClassStatus, setPersonalClassStatus] = useState<'active' | 'all'>('active');
 
   const refreshCheckInState = async () => {
     if (role === 'Lecturer') {
@@ -187,7 +200,10 @@ export default function Timetable() {
       setLoading(true);
       let data: any[] = [];
       if (role === 'Student' || role === 'Lecturer') {
-        data = await academicService.getTimetable();
+        data = await academicService.getTimetable({
+          ...(personalTermId ? { academicTermId: personalTermId } : {}),
+          classStatus: personalClassStatus,
+        });
       } else if (role === 'QA') {
         const query: {
           page: number;
@@ -196,9 +212,15 @@ export default function Timetable() {
           sortOrder: 'asc';
           day?: string;
           classStatus?: 'active' | 'inactive' | 'all';
+          academicTermId?: string;
         } = { page: qaPage, limit: qaPageSize, sortBy: 'day', sortOrder: 'asc', classStatus: qaFilters.classStatus };
         if (qaFilters.day !== 'all') {
           query.day = qaFilters.day.toLowerCase();
+        }
+        if (qaFilters.academicTermId) {
+          query.academicTermId = qaFilters.academicTermId;
+        } else if (qaFilters.classStatus === 'inactive' || qaFilters.classStatus === 'all') {
+          query.academicTermId = 'all';
         }
         const result = await timetableService.getTimetable(query);
         data = result.data || [];
@@ -266,7 +288,7 @@ export default function Timetable() {
 
   useEffect(() => {
     loadTimetable();
-  }, [user, role, qaPage, qaFilters.day, qaFilters.classStatus]);
+  }, [user, role, qaPage, qaFilters.day, qaFilters.classStatus, qaFilters.academicTermId, qaFilters.academicTermFilter, personalTermId, personalClassStatus, personalTermFilter]);
 
   useEffect(() => {
     const tick = setInterval(() => setNowTick(Date.now()), 30000);
@@ -296,7 +318,7 @@ export default function Timetable() {
       window.removeEventListener('class-updated', reload);
       window.removeEventListener('focus', reload);
     };
-  }, [role, user, qaPage, qaFilters.day, qaFilters.classStatus]);
+  }, [role, user, qaPage, qaFilters.day, qaFilters.classStatus, qaFilters.academicTermId, qaFilters.academicTermFilter, personalTermId, personalClassStatus, personalTermFilter]);
 
   useEffect(() => {
     if (role === 'QA') {
@@ -521,6 +543,17 @@ export default function Timetable() {
     navigate('/presence');
   };
 
+  const resetQaFilters = () => {
+    setQaFilters({ ...DEFAULT_QA_FILTERS });
+    setQaPage(1);
+  };
+
+  const hasQaFiltersApplied =
+    qaFilters.day !== DEFAULT_QA_FILTERS.day ||
+    qaFilters.search.trim() !== '' ||
+    qaFilters.classStatus !== DEFAULT_QA_FILTERS.classStatus ||
+    qaFilters.academicTermFilter !== DEFAULT_QA_FILTERS.academicTermFilter;
+
   const filteredTimetable = viewMode === 'list'
     ? timetableData.filter(t => t.day === selectedDay)
     : timetableData;
@@ -615,6 +648,23 @@ export default function Timetable() {
                       <SelectItem value="all">All</SelectItem>
                     </SelectContent>
                   </Select>
+                  <AcademicTermFilter
+                    value={qaFilters.academicTermFilter}
+                    showLabel={false}
+                    triggerClassName="w-[200px]"
+                    onChange={(sel) => {
+                      setQaPage(1);
+                      setQaFilters((f) => ({
+                        ...f,
+                        academicTermFilter: sel.value,
+                        academicTermId: sel.academicTermId,
+                        classStatus:
+                          sel.classStatusHint === 'all' && f.classStatus === 'active'
+                            ? 'all'
+                            : f.classStatus,
+                      }));
+                    }}
+                  />
                 </div>
                 <div className="flex-1">
                   <Input
@@ -624,6 +674,7 @@ export default function Timetable() {
                     className="w-full"
                   />
                 </div>
+                <ResetFiltersButton onClick={resetQaFilters} disabled={!hasQaFiltersApplied} />
               </div>
             </div>
           </CardHeader>
@@ -663,7 +714,13 @@ export default function Timetable() {
                               variant="ghost"
                               size="sm"
                               onClick={() => openQaEdit(t.id)}
+                              disabled={qaRawClasses[t.id]?.isActive === false}
                               aria-label={`Edit ${t.course}`}
+                              title={
+                                qaRawClasses[t.id]?.isActive === false
+                                  ? 'Inactive timetable is read-only'
+                                  : 'Edit session'
+                              }
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -886,6 +943,17 @@ export default function Timetable() {
                   : 'View your weekly class schedule and venues.'}
             </p>
           </div>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <AcademicTermFilter
+              value={personalTermFilter}
+              showLabel={false}
+              triggerClassName="w-[220px]"
+              onChange={(sel) => {
+                setPersonalTermFilter(sel.value);
+                setPersonalTermId(sel.academicTermId);
+                setPersonalClassStatus(sel.classStatusHint);
+              }}
+            />
           <div className="flex bg-gray-100 p-1 rounded-lg">
             <Button 
               variant={viewMode === 'week' ? 'default' : 'ghost'} 
@@ -903,6 +971,7 @@ export default function Timetable() {
             >
               Daily List
             </Button>
+          </div>
           </div>
         </div>
 

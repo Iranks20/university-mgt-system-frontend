@@ -9,12 +9,14 @@ import {
   Search, Filter, Download, TrendingDown, TrendingUp, AlertCircle,
   GraduationCap, BarChart, Users, Target, Award, FileText, School
 } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,8 +26,12 @@ import { exportStudentAttendanceReport } from '@/utils/excel';
 import { reportService } from '@/services/report.service';
 import { toast } from 'sonner';
 import type { StudentAttendanceReport } from '@/types/student';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 export default function ManagementStudentPerformance() {
+  const { termFilter, academicTermId, termStartDate, termEndDate, onTermChange } = useAcademicTermFilterState();
   const [searchTerm, setSearchTerm] = useState('');
   const [performanceFilter, setPerformanceFilter] = useState<string>('All');
   const [programFilter, setProgramFilter] = useState<string>('All');
@@ -58,7 +64,12 @@ export default function ManagementStudentPerformance() {
         const performanceData = await Promise.all(
           students.slice(0, 100).map(async (student: any) => {
             const [perfData, academicData] = await Promise.all([
-              analyticsService.getStudentPerformance(student.id) as any,
+              analyticsService.getStudentPerformance(
+                student.id,
+                termStartDate,
+                termEndDate,
+                academicTermId === 'all' ? 'all' : academicTermId
+              ) as any,
               analyticsService.getStudentAcademicPerformance(student.id).catch(() => null),
             ]);
             const attendanceRate = perfData?.attendanceRate ?? 0;
@@ -101,7 +112,7 @@ export default function ManagementStudentPerformance() {
       }
     };
     fetchData();
-  }, [programFilter, yearFilter, searchTerm]);
+  }, [programFilter, yearFilter, searchTerm, termFilter, termStartDate, termEndDate]);
 
   const filteredStudents = studentPerformance.filter(student => {
     const matchesSearch = 
@@ -301,6 +312,11 @@ export default function ManagementStudentPerformance() {
         <CardContent className="p-4">
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
+              <AcademicTermFilter
+                value={termFilter}
+                onChange={onTermChange}
+                triggerClassName="w-full md:w-[240px]"
+              />
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input 
@@ -322,17 +338,22 @@ export default function ManagementStudentPerformance() {
                   <SelectItem value="Critical">Critical</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={programFilter} onValueChange={setProgramFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Program" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Programs</SelectItem>
-                  {Array.from(new Set(studentPerformance.map(s => s.program))).map(prog => (
-                    <SelectItem key={prog} value={prog}>{prog}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Programs' },
+                  ...Array.from(new Set(studentPerformance.map((s) => s.program))).map((prog) => ({
+                    value: prog,
+                    label: prog,
+                  })),
+                ]}
+                value={programFilter}
+                onValueChange={(v) => setProgramFilter(v || 'All')}
+                placeholder="Program"
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
             </div>
             <div className="flex flex-col md:flex-row gap-4">
               <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -359,9 +380,7 @@ export default function ManagementStudentPerformance() {
                   <SelectItem value="Poor">Poor (Below 70%)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={clearFilters} className="gap-2">
-                <Filter className="h-4 w-4" /> Clear Filters
-              </Button>
+              <ResetFiltersButton onClick={clearFilters} />
             </div>
           </div>
         </CardContent>

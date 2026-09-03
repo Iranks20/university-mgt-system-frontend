@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +23,13 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { timetableService } from '@/services/timetable.service';
 import { studentService } from '@/services/student.service';
-import { exportClassAttendanceSummaryReport, exportCourseWiseAttendanceSummaryReport } from '@/utils/excel';
+import {
+  exportClassAttendanceSummaryReport,
+  exportCourseWiseAttendanceSummaryReport,
+  exportLecturerPerformanceTable,
+  exportLecturerStatsDetailReport,
+} from '@/utils/excel';
+import { printLecturerStatsDetailReport } from '@/lib/lecturer-stats-print';
 import WeeklyAttendanceMatrixPanel from '@/features/student/components/WeeklyAttendanceMatrixPanel';
 import {
   formatWeightedAttendedCount,
@@ -35,6 +42,15 @@ import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } 
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+  resolveAcademicTermFilter,
+  type AcademicTermFilterSelection,
+} from '@/components/AcademicTermFilter';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
+import { resolveReportsScopedDates } from '@/lib/reports-term-scope';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const REPORT_TABLE_PAGE_SIZE = 20;
@@ -70,7 +86,14 @@ function ReportTablePagination({
 
 export default function Reports() {
   const { user } = useAuth();
-  const [dateRange, setDateRange] = useState('week');
+  const {
+    termFilter,
+    academicTermId,
+    classStatusHint,
+    termStartDate,
+    termEndDate,
+    onTermChange,
+  } = useAcademicTermFilterState();
   const [reportType, setReportType] = useState('school');
   const [overviewStats, setOverviewStats] = useState<{ teachingRatePercent?: number; studentAttendancePercent?: number; recentQARecords?: number; untaughtLectures?: number; scheduledCountLast30?: number; teachingRateVsScheduledPercent?: number } | null>(null);
   const [attendanceTrends, setAttendanceTrends] = useState<{ day: string; present: number; absent: number }[]>([]);
@@ -132,12 +155,21 @@ export default function Reports() {
   const [attendSelectedSemester, setAttendSelectedSemester] = useState(ALL_VALUE);
   const [attendDateFrom, setAttendDateFrom] = useState('');
   const [attendDateTo, setAttendDateTo] = useState('');
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
+  const reportsScopedDates = useMemo(
+    () => resolveReportsScopedDates(termFilter, termStartDate, termEndDate),
+    [termFilter, termStartDate, termEndDate]
+  );
+  const reportsTermScoped = reportsScopedDates != null;
   const [classAttendReport, setClassAttendReport] = useState<ClassAttendanceSummaryReport | null>(null);
   const [classAttendLoading, setClassAttendLoading] = useState(false);
   const [classAttendExporting, setClassAttendExporting] = useState(false);
   const [courseWiseReport, setCourseWiseReport] = useState<CourseWiseAttendanceSummaryReport | null>(null);
   const [courseWiseLoading, setCourseWiseLoading] = useState(false);
   const [courseWiseExporting, setCourseWiseExporting] = useState(false);
+  const [lecturerExporting, setLecturerExporting] = useState(false);
+  const [lecturerDetailExporting, setLecturerDetailExporting] = useState(false);
+  const [lecturerDetailPdfExporting, setLecturerDetailPdfExporting] = useState(false);
   const [exportAllLoading, setExportAllLoading] = useState(false);
   const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
@@ -166,6 +198,7 @@ export default function Reports() {
   const [compReportLoading, setCompReportLoading] = useState(false);
 
   const getSchoolPerfDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (schoolPerfDateRange === 'all') return undefined;
     if (schoolPerfDateRange === 'last_30_days') {
@@ -182,6 +215,7 @@ export default function Reports() {
   };
 
   const getLecturerDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (lecturerDateRange === 'all') return undefined;
     if (lecturerDateRange === 'last_30_days') {
@@ -198,6 +232,7 @@ export default function Reports() {
   };
 
   const getStudentAttendDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
+    if (reportsScopedDates) return reportsScopedDates;
     const now = new Date();
     if (studentAttendDateRange === 'all') return undefined;
     if (studentAttendDateRange === 'last_30_days') {
@@ -213,13 +248,53 @@ export default function Reports() {
     return undefined;
   };
 
+  const handleReportsTermChange = useCallback(
+    (sel: AcademicTermFilterSelection) => {
+      onTermChange(sel);
+      setActiveTermLabel(sel.term?.name ?? null);
+      if (sel.dateFrom) {
+        setAttendDateFrom(sel.dateFrom);
+        setReconDateFrom(sel.dateFrom);
+        setCompDateFrom(sel.dateFrom);
+      }
+      if (sel.dateTo) {
+        setAttendDateTo(sel.dateTo);
+        setReconDateTo(sel.dateTo);
+        setCompDateTo(sel.dateTo);
+      }
+      setAttendSelectedClassId(ALL_VALUE);
+    },
+    [onTermChange]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    academicService
+      .getAcademicTerms()
+      .then((terms) => {
+        if (cancelled) return;
+        handleReportsTermChange(resolveAcademicTermFilter(TERM_FILTER_ACTIVE, terms));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [handleReportsTermChange]);
+
   useEffect(() => {
     const load = async () => {
       setOverviewLoading(true);
       try {
         const now = new Date();
-        const last30To = now.toISOString().slice(0, 10);
-        const last30From = (() => { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+        const scoped = reportsScopedDates;
+        const last30To = scoped?.dateTo ?? now.toISOString().slice(0, 10);
+        const last30From =
+          scoped?.dateFrom ??
+          (() => {
+            const d = new Date(now);
+            d.setDate(d.getDate() - 30);
+            return d.toISOString().slice(0, 10);
+          })();
         const [stats, trends, dist, reports, schoolSummaryLast30, scheduledBySchool] = await Promise.all([
           analyticsService.getDashboardStats(),
           analyticsService.getAttendanceTrends(7),
@@ -260,7 +335,7 @@ export default function Reports() {
       }
     };
     load();
-  }, [retryCount]);
+  }, [retryCount, reportsScopedDates]);
 
   useEffect(() => {
     setSchoolsLoading(true);
@@ -298,7 +373,7 @@ export default function Reports() {
       }
     };
     load();
-  }, [schoolPerfDateRange]);
+  }, [schoolPerfDateRange, reportsScopedDates]);
 
   useEffect(() => {
     setLecturersLoading(true);
@@ -320,7 +395,7 @@ export default function Reports() {
       }));
       setLecturersLoading(false);
     }).catch(() => setLecturersLoading(false));
-  }, [lecturerDateRange, schoolFilter]);
+  }, [lecturerDateRange, schoolFilter, reportsScopedDates]);
 
   useEffect(() => {
     setLecturerDeptFilter('all');
@@ -432,10 +507,15 @@ export default function Reports() {
       return;
     }
     academicService
-      .getClasses({ courseId: attendSelectedCourseId, limit: 200 })
+      .getClasses({
+        courseId: attendSelectedCourseId,
+        limit: 200,
+        ...(academicTermId ? { academicTermId } : {}),
+        classStatus: classStatusHint,
+      })
       .then((r) => setAttendClasses(r.data || []))
       .catch(() => setAttendClasses([]));
-  }, [attendSelectedCourseId]);
+  }, [attendSelectedCourseId, academicTermId, classStatusHint]);
 
   useEffect(() => {
     if (attendSelectedProgramId === ALL_VALUE) {
@@ -466,6 +546,7 @@ export default function Reports() {
     if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
     if (attendDateFrom) params.startDate = attendDateFrom;
     if (attendDateTo) params.endDate = attendDateTo;
+    Object.assign(params, termScopeQueryParam(academicTermId));
     return params;
   }, [
     attendSelectedSchool,
@@ -477,6 +558,7 @@ export default function Reports() {
     attendSelectedSemester,
     attendDateFrom,
     attendDateTo,
+    academicTermId,
   ]);
 
   const canLoadClassAttendReport =
@@ -518,6 +600,62 @@ export default function Reports() {
     ).sort();
   }, [lecturerTableData]);
 
+  const lecturerSchoolComboboxOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Schools' },
+      ...lecturerSchoolOptions.map((name) => ({ value: name, label: name })),
+    ],
+    [lecturerSchoolOptions]
+  );
+
+  const lecturerDeptComboboxOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Departments' },
+      ...lecturerDeptOptions.map((name) => ({ value: name, label: name })),
+    ],
+    [lecturerDeptOptions]
+  );
+
+  const attendSchoolComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All schools' },
+      ...attendSchools.map((s) => ({ value: s.id, label: s.name || s.id })),
+    ],
+    [attendSchools]
+  );
+
+  const attendProgramComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All programs' },
+      ...attendFilteredPrograms.map((p) => ({ value: p.id, label: p.name || p.code || p.id })),
+    ],
+    [attendFilteredPrograms]
+  );
+
+  const attendProgrammeComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All programmes' },
+      ...attendFilteredPrograms.map((p) => ({ value: p.id, label: p.name || p.code || p.id })),
+    ],
+    [attendFilteredPrograms]
+  );
+
+  const attendCourseComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All courses' },
+      ...attendFilteredCourses.map((c) => ({ value: c.id, label: c.name || c.code || c.id })),
+    ],
+    [attendFilteredCourses]
+  );
+
+  const attendClassComboboxOptions = useMemo(
+    () => [
+      { value: ALL_VALUE, label: 'All classes in course' },
+      ...attendClasses.map((c) => ({ value: c.id, label: String(c.name || c.id) })),
+    ],
+    [attendClasses]
+  );
+
   const paginatedLecturers = useMemo(() => {
     const start = (lecturerPage - 1) * REPORT_TABLE_PAGE_SIZE;
     return filteredLecturers.slice(start, start + REPORT_TABLE_PAGE_SIZE);
@@ -533,6 +671,74 @@ export default function Reports() {
     const start = (classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE;
     return rows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
   }, [classAttendReport, classAttendPage]);
+
+  const getLecturerDateRangeLabel = (): string => {
+    if (reportsScopedDates?.dateFrom || reportsScopedDates?.dateTo) {
+      const from = reportsScopedDates.dateFrom ?? '';
+      const to = reportsScopedDates.dateTo ?? '';
+      return from && to ? `${from} to ${to}` : from || to || 'Selected term';
+    }
+    if (lecturerDateRange === 'all') return 'All time';
+    if (lecturerDateRange === 'last_30_days') return 'Last 30 days';
+    return 'Last 3 months';
+  };
+
+  const handleExportLecturerPerformanceTable = () => {
+    if (filteredLecturers.length === 0) {
+      toast.warning('No lecturer data to export for the selected filters.');
+      return;
+    }
+    setLecturerExporting(true);
+    try {
+      const params = getLecturerDateParams();
+      exportLecturerPerformanceTable(filteredLecturers, {
+        dateFrom: params?.dateFrom ?? null,
+        dateTo: params?.dateTo ?? null,
+        dateRangeLabel: getLecturerDateRangeLabel(),
+        schoolFilter,
+        departmentFilter: lecturerDeptFilter,
+        rateFilter: lecturerRateFilter,
+        searchQuery: lecturerSearch,
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setLecturerExporting(false);
+    }
+  };
+
+  const handleExportLecturerDetailExcel = () => {
+    if (!lecturerDetail) {
+      toast.warning('Lecturer details are still loading.');
+      return;
+    }
+    setLecturerDetailExporting(true);
+    try {
+      exportLecturerStatsDetailReport(lecturerDetail, lectureCommentLabel);
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setLecturerDetailExporting(false);
+    }
+  };
+
+  const handleExportLecturerDetailPdf = () => {
+    if (!lecturerDetail) {
+      toast.warning('Lecturer details are still loading.');
+      return;
+    }
+    setLecturerDetailPdfExporting(true);
+    try {
+      printLecturerStatsDetailReport(lecturerDetail, lectureCommentLabel);
+      toast.success('Print dialog opened — choose Save as PDF to download');
+    } catch {
+      toast.error('Could not open the print dialog. Please try again.');
+    } finally {
+      setLecturerDetailPdfExporting(false);
+    }
+  };
 
   const openLecturerDetails = async (lecturer: {
     id: string;
@@ -855,18 +1061,12 @@ export default function Reports() {
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">Reports & Analytics</h1>
             <p className="text-gray-500">Generate and view detailed attendance and performance reports.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Select period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="semester">This Semester</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap gap-2 items-center">
+            <AcademicTermFilter
+              value={termFilter}
+              triggerClassName="w-[240px]"
+              onChange={handleReportsTermChange}
+            />
             <Button
               variant="outline"
               className="gap-2 min-w-[130px]"
@@ -928,17 +1128,23 @@ export default function Reports() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 block mb-1">School</label>
-                    <Select value={reconSchoolId || 'all'} onValueChange={(v) => { setReconSchoolId(v === 'all' ? '' : v); setReconCourseId(''); }}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="All schools" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All schools</SelectItem>
-                        {schoolsList.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={[
+                        { value: 'all', label: 'All schools' },
+                        ...schoolsList.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      value={reconSchoolId || 'all'}
+                      onValueChange={(v) => {
+                        const next = v || 'all';
+                        setReconSchoolId(next === 'all' ? '' : next);
+                        setReconCourseId('');
+                      }}
+                      placeholder="All schools"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <Button onClick={loadReconciliationReport} disabled={reconciliationLoading}>
                     {reconciliationLoading ? 'Loading...' : 'Apply'}
@@ -991,12 +1197,12 @@ export default function Reports() {
 
           {/* SCHOOL SUMMARY TAB - Matches 1.csv format */}
           <TabsContent value="school-summary" className="space-y-4">
-            <QASchoolSummary />
+            <QASchoolSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* LECTURER SUMMARY TAB - Matches 2.csv format */}
           <TabsContent value="lecturer-summary" className="space-y-4">
-            <QALecturerSummary />
+            <QALecturerSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* OVERVIEW TAB */}
@@ -1213,18 +1419,20 @@ export default function Reports() {
 
           {/* SCHOOLS TAB */}
           <TabsContent value="schools" className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={schoolPerfDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setSchoolPerfDateRange(v)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Date range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All time</SelectItem>
-                  <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                  <SelectItem value="this_term">Last 3 months</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!reportsTermScoped ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={schoolPerfDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setSchoolPerfDateRange(v)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Date range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All time</SelectItem>
+                    <SelectItem value="last_30_days">Last 30 days</SelectItem>
+                    <SelectItem value="this_term">Last 3 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <Card>
               <CardHeader>
                 <CardTitle>School Performance Comparison</CardTitle>
@@ -1311,6 +1519,7 @@ export default function Reports() {
                </CardHeader>
                <CardContent>
                  <div className="flex flex-wrap gap-2 items-center mb-6">
+                   {!reportsTermScoped ? (
                    <Select value={lecturerDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setLecturerDateRange(v)}>
                      <SelectTrigger className="w-[180px]">
                        <SelectValue placeholder="Date range" />
@@ -1321,28 +1530,27 @@ export default function Reports() {
                        <SelectItem value="this_term">Last 3 months</SelectItem>
                      </SelectContent>
                    </Select>
-                   <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Filter School" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Schools</SelectItem>
-                        {lecturerSchoolOptions.map(name => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                   </Select>
-                   <Select value={lecturerDeptFilter} onValueChange={setLecturerDeptFilter}>
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Departments</SelectItem>
-                        {lecturerDeptOptions.map(name => (
-                          <SelectItem key={name} value={name}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                   </Select>
+                   ) : null}
+                   <Combobox
+                      className="w-[200px]"
+                      options={lecturerSchoolComboboxOptions}
+                      value={schoolFilter}
+                      onValueChange={(v) => setSchoolFilter(v || 'all')}
+                      placeholder="Filter School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                   />
+                   <Combobox
+                      className="w-[200px]"
+                      options={lecturerDeptComboboxOptions}
+                      value={lecturerDeptFilter}
+                      onValueChange={(v) => setLecturerDeptFilter(v || 'all')}
+                      placeholder="Department"
+                      searchPlaceholder="Search departments..."
+                      emptyText="No department found."
+                      initialDisplayCount={50}
+                   />
                    <Select value={lecturerRateFilter} onValueChange={(v: 'all' | 'below_90' | '90_plus') => setLecturerRateFilter(v)}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Teaching rate" />
@@ -1371,6 +1579,14 @@ export default function Reports() {
                        Clear filters
                      </Button>
                    )}
+                   <Button
+                     variant="outline"
+                     onClick={handleExportLecturerPerformanceTable}
+                     disabled={lecturerExporting || lecturersLoading || filteredLecturers.length === 0}
+                   >
+                     <Download className="mr-2 h-4 w-4" />
+                     {lecturerExporting ? 'Exporting…' : 'Export Excel'}
+                   </Button>
                  </div>
                  <div className="rounded-md border">
                  <Table>
@@ -1441,43 +1657,71 @@ export default function Reports() {
                     <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">School</label>
-                      <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                          {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[180px]"
+                        options={attendSchoolComboboxOptions}
+                        value={attendSelectedSchool}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedSchool(next);
+                          setAttendSelectedProgramId(ALL_VALUE);
+                          setAttendSelectedCourseId(ALL_VALUE);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="School"
+                        searchPlaceholder="Search schools..."
+                        emptyText="No school found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Program</label>
-                      <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All programs</SelectItem>
-                          {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[200px]"
+                        options={attendProgramComboboxOptions}
+                        value={attendSelectedProgramId}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedProgramId(next);
+                          setAttendSelectedCourseId(ALL_VALUE);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="Program"
+                        searchPlaceholder="Search programs..."
+                        emptyText="No program found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Course</label>
-                      <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                          {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[220px]"
+                        options={attendCourseComboboxOptions}
+                        value={attendSelectedCourseId}
+                        onValueChange={(v) => {
+                          const next = v || ALL_VALUE;
+                          setAttendSelectedCourseId(next);
+                          setAttendSelectedClassId(ALL_VALUE);
+                        }}
+                        placeholder="Course"
+                        searchPlaceholder="Search courses..."
+                        emptyText="No course found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Class</label>
-                      <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                        <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                          {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Combobox
+                        className="w-[200px]"
+                        options={attendClassComboboxOptions}
+                        value={attendSelectedClassId}
+                        onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                        disabled={attendSelectedCourseId === ALL_VALUE}
+                        placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                        searchPlaceholder="Search classes..."
+                        emptyText="No class found."
+                        initialDisplayCount={50}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Year</label>
@@ -1525,7 +1769,9 @@ export default function Reports() {
                       <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Date to</label>
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Date to{activeTermLabel ? ` · ${activeTermLabel}` : ''}
+                      </label>
                       <Input type="date" className="w-[150px]" value={attendDateTo} onChange={(e) => setAttendDateTo(e.target.value)} />
                     </div>
                     <Button variant="outline" onClick={resetClassAttendanceFilters}>
@@ -1628,23 +1874,42 @@ export default function Reports() {
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
-                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[180px]"
+                      options={attendSchoolComboboxOptions}
+                      value={attendSelectedSchool}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedSchool(next);
+                        setAttendSelectedProgramId(ALL_VALUE);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                        setAttendSelectedProgramIntakeId(ALL_VALUE);
+                      }}
+                      placeholder="School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Programme</label>
-                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); setAttendSelectedProgramIntakeId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Programme" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All programmes</SelectItem>
-                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendProgrammeComboboxOptions}
+                      value={attendSelectedProgramId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedProgramId(next);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                        setAttendSelectedProgramIntakeId(ALL_VALUE);
+                      }}
+                      placeholder="Programme"
+                      searchPlaceholder="Search programmes..."
+                      emptyText="No programme found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class / year</label>
@@ -1689,23 +1954,34 @@ export default function Reports() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Course</label>
-                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[220px]"
+                      options={attendCourseComboboxOptions}
+                      value={attendSelectedCourseId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedCourseId(next);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Course"
+                      searchPlaceholder="Search courses..."
+                      emptyText="No course found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class</label>
-                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendClassComboboxOptions}
+                      value={attendSelectedClassId}
+                      onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                      disabled={attendSelectedCourseId === ALL_VALUE}
+                      placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                      searchPlaceholder="Search classes..."
+                      emptyText="No class found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Date from</label>
@@ -1825,6 +2101,8 @@ export default function Reports() {
               programs={attendPrograms}
               programToSchoolMap={attendProgramToSchoolMap}
               generatedBy={user?.name || user?.email}
+              dateFrom={attendDateFrom || undefined}
+              dateTo={attendDateTo || undefined}
             />
           </TabsContent>
 
@@ -1841,6 +2119,7 @@ export default function Reports() {
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-end gap-3 rounded-md border p-3 bg-muted/30">
                   <Filter className="h-4 w-4 text-muted-foreground shrink-0 mb-2" />
+                  {!reportsTermScoped ? (
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Period</label>
                     <Select value={studentAttendDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setStudentAttendDateRange(v)}>
@@ -1852,45 +2131,74 @@ export default function Reports() {
                       </SelectContent>
                     </Select>
                   </div>
+                  ) : null}
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">School</label>
-                    <Select value={attendSelectedSchool} onValueChange={(v) => { setAttendSelectedSchool(v); setAttendSelectedProgramId(ALL_VALUE); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="School" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                        {attendSchools.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[180px]"
+                      options={attendSchoolComboboxOptions}
+                      value={attendSelectedSchool}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedSchool(next);
+                        setAttendSelectedProgramId(ALL_VALUE);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="School"
+                      searchPlaceholder="Search schools..."
+                      emptyText="No school found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Program</label>
-                    <Select value={attendSelectedProgramId} onValueChange={(v) => { setAttendSelectedProgramId(v); setAttendSelectedCourseId(ALL_VALUE); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All programs</SelectItem>
-                        {attendFilteredPrograms.map((p) => <SelectItem key={p.id} value={p.id}>{p.name || p.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendProgramComboboxOptions}
+                      value={attendSelectedProgramId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedProgramId(next);
+                        setAttendSelectedCourseId(ALL_VALUE);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Program"
+                      searchPlaceholder="Search programs..."
+                      emptyText="No program found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Course</label>
-                    <Select value={attendSelectedCourseId} onValueChange={(v) => { setAttendSelectedCourseId(v); setAttendSelectedClassId(ALL_VALUE); }}>
-                      <SelectTrigger className="w-[220px]"><SelectValue placeholder="Course" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All courses</SelectItem>
-                        {attendFilteredCourses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name || c.code}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[220px]"
+                      options={attendCourseComboboxOptions}
+                      value={attendSelectedCourseId}
+                      onValueChange={(v) => {
+                        const next = v || ALL_VALUE;
+                        setAttendSelectedCourseId(next);
+                        setAttendSelectedClassId(ALL_VALUE);
+                      }}
+                      placeholder="Course"
+                      searchPlaceholder="Search courses..."
+                      emptyText="No course found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Class</label>
-                    <Select value={attendSelectedClassId} onValueChange={setAttendSelectedClassId} disabled={attendSelectedCourseId === ALL_VALUE}>
-                      <SelectTrigger className="w-[200px]"><SelectValue placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL_VALUE}>All classes in course</SelectItem>
-                        {attendClasses.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      className="w-[200px]"
+                      options={attendClassComboboxOptions}
+                      value={attendSelectedClassId}
+                      onValueChange={(v) => setAttendSelectedClassId(v || ALL_VALUE)}
+                      disabled={attendSelectedCourseId === ALL_VALUE}
+                      placeholder={attendSelectedCourseId === ALL_VALUE ? 'Select course first' : 'Class'}
+                      searchPlaceholder="Search classes..."
+                      emptyText="No class found."
+                      initialDisplayCount={50}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Year</label>
@@ -2124,15 +2432,39 @@ export default function Reports() {
         >
           <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Lecturer Performance Details</DialogTitle>
-              <DialogDescription>
-                Full lecture evidence for {selectedLecturer?.name}
-                {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
-                  ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
-                  : lecturerDateRange === 'all'
-                    ? ' · all time'
-                    : ''}
-              </DialogDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
+                <div>
+                  <DialogTitle>Lecturer Performance Details</DialogTitle>
+                  <DialogDescription>
+                    Full lecture evidence for {selectedLecturer?.name}
+                    {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
+                      ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
+                      : lecturerDateRange === 'all'
+                        ? ' · all time'
+                        : ''}
+                  </DialogDescription>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportLecturerDetailExcel}
+                    disabled={lecturerDetailLoading || lecturerDetailExporting || !lecturerDetail}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {lecturerDetailExporting ? 'Exporting…' : 'Export Excel'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportLecturerDetailPdf}
+                    disabled={lecturerDetailLoading || lecturerDetailPdfExporting || !lecturerDetail}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    {lecturerDetailPdfExporting ? 'Opening…' : 'Save as PDF'}
+                  </Button>
+                </div>
+              </div>
             </DialogHeader>
             {selectedLecturer && (
               <div className="space-y-6 py-2">

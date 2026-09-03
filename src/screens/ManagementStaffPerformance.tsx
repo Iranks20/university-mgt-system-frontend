@@ -4,8 +4,10 @@ import { staffService } from '@/services/staff.service';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from '@/components/ui/combobox';
 import { 
   Search, Filter, Download, UserCheck, UserX, Clock, 
   MoreHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Loader2
@@ -187,13 +189,11 @@ export default function ManagementStaffPerformance() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                  <SelectTrigger className="w-full md:w-[200px]">
-                    <SelectValue placeholder="Department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Departments</SelectItem>
-                    {Array.from(
+                <Combobox
+                  className="w-full md:w-[200px]"
+                  options={[
+                    { value: 'All', label: 'All Departments' },
+                    ...Array.from(
                       staffData.reduce((map: Map<string, string>, s: any) => {
                         if (s.departmentId) {
                           map.set(s.departmentId, s.departmentName || s.dept || 'Department');
@@ -202,13 +202,15 @@ export default function ManagementStaffPerformance() {
                       }, new Map<string, string>())
                     )
                       .sort((a, b) => a[1].localeCompare(b[1]))
-                      .map(([deptId, deptName]) => (
-                        <SelectItem key={deptId} value={deptId}>
-                          {deptName}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                      .map(([deptId, deptName]) => ({ value: deptId, label: deptName })),
+                  ]}
+                  value={departmentFilter}
+                  onValueChange={(v) => setDepartmentFilter(v || 'All')}
+                  placeholder="Department"
+                  searchPlaceholder="Search departments..."
+                  emptyText="No department found."
+                  initialDisplayCount={50}
+                />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full md:w-[200px]">
                     <SelectValue placeholder="Status" />
@@ -224,9 +226,7 @@ export default function ManagementStaffPerformance() {
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={clearFilters} className="gap-2">
-                  <Filter className="h-4 w-4" /> Clear Filters
-                </Button>
+                <ResetFiltersButton onClick={clearFilters} />
               </div>
             </div>
           </CardContent>

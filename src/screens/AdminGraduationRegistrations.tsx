@@ -9,6 +9,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,6 +79,25 @@ export default function AdminGraduationRegistrations({ embedded = false }: { emb
   const [deleting, setDeleting] = useState(false);
 
   const pageSize = 20;
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setSearch('');
+    setCohort(ALL);
+    setSchool(ALL);
+    setProgram(ALL);
+    setRsvp(ALL);
+    setClearance(ALL);
+    setPage(1);
+  };
+
+  const hasFiltersApplied =
+    search.trim() !== '' ||
+    cohort !== ALL ||
+    school !== ALL ||
+    program !== ALL ||
+    rsvp !== ALL ||
+    clearance !== ALL;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,33 +235,45 @@ export default function AdminGraduationRegistrations({ embedded = false }: { emb
             <Button variant="outline" onClick={() => { setPage(1); setSearch(searchInput.trim()); }}>
               Search
             </Button>
-            <Select value={cohort} onValueChange={(v) => { setCohort(v); setPage(1); }}>
-              <SelectTrigger className="w-full lg:w-[180px]"><SelectValue placeholder="Cohort" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All cohorts</SelectItem>
-                {filterOptions.graduationCohorts.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={school} onValueChange={(v) => { setSchool(v); setPage(1); }}>
-              <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="School" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All schools</SelectItem>
-                {filterOptions.facultySchools.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={program} onValueChange={(v) => { setProgram(v); setPage(1); }}>
-              <SelectTrigger className="w-full lg:w-[200px]"><SelectValue placeholder="Program" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All programs</SelectItem>
-                {filterOptions.programNames.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              className="w-full lg:w-[180px]"
+              options={[
+                { value: ALL, label: 'All cohorts' },
+                ...filterOptions.graduationCohorts.map((c) => ({ value: c, label: c })),
+              ]}
+              value={cohort}
+              onValueChange={(v) => { setCohort(v || ALL); setPage(1); }}
+              placeholder="Cohort"
+              searchPlaceholder="Search cohorts..."
+              emptyText="No cohort found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-full lg:w-[200px]"
+              options={[
+                { value: ALL, label: 'All schools' },
+                ...filterOptions.facultySchools.map((s) => ({ value: s, label: s })),
+              ]}
+              value={school}
+              onValueChange={(v) => { setSchool(v || ALL); setPage(1); }}
+              placeholder="School"
+              searchPlaceholder="Search schools..."
+              emptyText="No school found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-full lg:w-[200px]"
+              options={[
+                { value: ALL, label: 'All programs' },
+                ...filterOptions.programNames.map((p) => ({ value: p, label: p })),
+              ]}
+              value={program}
+              onValueChange={(v) => { setProgram(v || ALL); setPage(1); }}
+              placeholder="Program"
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
             <Select value={rsvp} onValueChange={(v) => { setRsvp(v); setPage(1); }}>
               <SelectTrigger className="w-full lg:w-[160px]"><SelectValue placeholder="RSVP" /></SelectTrigger>
               <SelectContent>
@@ -257,6 +290,7 @@ export default function AdminGraduationRegistrations({ embedded = false }: { emb
                 <SelectItem value="FullyCleared">Fully cleared</SelectItem>
               </SelectContent>
             </Select>
+            <ResetFiltersButton onClick={resetFilters} disabled={!hasFiltersApplied} />
           </div>
 
           <div className="rounded-md border bg-white">

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Download, Search } from 'lucide-react';
@@ -164,19 +165,19 @@ export default function HrAttendancePage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={deptId} onValueChange={setDeptId}>
-            <SelectTrigger className="sm:w-48">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {departments.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Combobox
+            className="sm:w-48"
+            options={[
+              { value: 'all', label: 'All departments' },
+              ...departments.map((d) => ({ value: d.id, label: d.name })),
+            ]}
+            value={deptId}
+            onValueChange={(v) => setDeptId(v || 'all')}
+            placeholder="Department"
+            searchPlaceholder="Search departments..."
+            emptyText="No department found."
+            initialDisplayCount={50}
+          />
         </CardContent>
       </Card>
 

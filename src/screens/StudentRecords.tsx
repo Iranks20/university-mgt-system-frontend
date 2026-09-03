@@ -6,6 +6,7 @@ import {
   Trash2, Edit, ChevronLeft, ChevronRight, Plus, GraduationCap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +33,10 @@ import type { School, Department, Level } from '@/types';
 import type { Course } from '@/types';
 import type { Student } from '@/types';
 import { toast } from 'sonner';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { AcademicTermArchivedBanner } from '@/components/AcademicTermArchivedBanner';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
 
 interface EnrollmentClassOption {
   enrollmentId: string;
@@ -67,6 +72,13 @@ function resolveInitialTab(
 export default function StudentRecords() {
   const { role } = useRole();
   const [searchParams] = useSearchParams();
+  const {
+    termFilter,
+    academicTermId,
+    termStartDate,
+    onTermChange,
+    applyTermDatesTo,
+  } = useAcademicTermFilterState();
   const defaultTab = role === 'QA' ? 'coverage' : 'log';
   const [activeTab, setActiveTab] = useState<'log' | 'coverage' | 'daily-bulk'>(() =>
     resolveInitialTab(searchParams.get('tab'), defaultTab)
@@ -214,8 +226,9 @@ export default function StudentRecords() {
     if (dateTo) params.endDate = dateTo;
     if (statusFilter !== 'All') params.status = statusFilter;
     if (searchTerm.trim()) params.search = searchTerm.trim();
+    Object.assign(params, termScopeQueryParam(academicTermId));
     return params;
-  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm]);
+  }, [selectedSchool, selectedProgramId, selectedCourseId, selectedYear, selectedSemester, dateFrom, dateTo, statusFilter, searchTerm, academicTermId]);
 
   const buildFilterParams = useCallback((opts?: { limit?: number; page?: number }) => {
     return {
@@ -412,6 +425,17 @@ export default function StudentRecords() {
     setDateTo('');
   };
 
+  const hasLogFiltersApplied =
+    searchTerm.trim() !== '' ||
+    statusFilter !== 'All' ||
+    selectedSchool !== ALL_VALUE ||
+    selectedProgramId !== ALL_VALUE ||
+    selectedCourseId !== ALL_VALUE ||
+    selectedYear !== ALL_VALUE ||
+    selectedSemester !== ALL_VALUE ||
+    dateFrom !== '' ||
+    dateTo !== '';
+
   const handleExportExcel = async () => {
     setExporting(true);
     try {
@@ -503,6 +527,16 @@ export default function StudentRecords() {
         </div>
       </div>
 
+      <AcademicTermFilter
+        value={termFilter}
+        triggerClassName="w-[260px]"
+        onChange={(sel) => {
+          onTermChange(sel);
+          if (sel.term?.startDate) setDateFrom(sel.term.startDate);
+          if (sel.term?.endDate) setDateTo(sel.term.endDate);
+        }}
+      />
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'log' | 'coverage' | 'daily-bulk')} className="space-y-4">
         <TabsList className="bg-gray-100 p-1">
           <TabsTrigger value="coverage">Marking coverage</TabsTrigger>
@@ -515,7 +549,7 @@ export default function StudentRecords() {
             schools={schools.map((s) => ({ id: s.id, name: s.name }))}
             programs={allPrograms}
             programToSchoolMap={programToSchoolMap}
-            initialDate={coverageInitialDate}
+            initialDate={termStartDate || coverageInitialDate}
             initialStatus={coverageInitialStatus}
             refreshToken={coverageRefreshToken}
             onMarkClass={(prefill) => {
@@ -622,45 +656,60 @@ export default function StudentRecords() {
               <Input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
             </div>
             <div className="flex flex-col md:flex-row gap-3 flex-wrap">
-              <Select value={selectedSchool} onValueChange={handleSchoolChange}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>All schools</SelectItem>
-                  {schools.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedProgramId} onValueChange={handleProgramChange}>
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="Program" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>
-                    {selectedSchool === ALL_VALUE ? 'All programs' : `All programs in school`}
-                  </SelectItem>
-                  {filteredPrograms.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.code} — {p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="w-[240px]">
-                  <SelectValue placeholder="Course" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_VALUE}>
-                    {selectedProgramId === ALL_VALUE && selectedSchool === ALL_VALUE
-                      ? 'All courses'
-                      : 'All courses in scope'}
-                  </SelectItem>
-                  {filteredCourses.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.code} – {c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: ALL_VALUE, label: 'All schools' },
+                  ...schools.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+                value={selectedSchool}
+                onValueChange={(v) => handleSchoolChange(v || ALL_VALUE)}
+                placeholder="School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[220px]"
+                options={[
+                  {
+                    value: ALL_VALUE,
+                    label: selectedSchool === ALL_VALUE ? 'All programs' : 'All programs in school',
+                  },
+                  ...filteredPrograms.map((p) => ({
+                    value: p.id,
+                    label: `${p.code} — ${p.name}`,
+                  })),
+                ]}
+                value={selectedProgramId}
+                onValueChange={(v) => handleProgramChange(v || ALL_VALUE)}
+                placeholder="Program"
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[240px]"
+                options={[
+                  {
+                    value: ALL_VALUE,
+                    label:
+                      selectedProgramId === ALL_VALUE && selectedSchool === ALL_VALUE
+                        ? 'All courses'
+                        : 'All courses in scope',
+                  },
+                  ...filteredCourses.map((c) => ({
+                    value: c.id,
+                    label: `${c.code} – ${c.name}`,
+                  })),
+                ]}
+                value={selectedCourseId}
+                onValueChange={(v) => setSelectedCourseId(v || ALL_VALUE)}
+                placeholder="Course"
+                searchPlaceholder="Search courses..."
+                emptyText="No course found."
+                initialDisplayCount={50}
+              />
               <Select value={selectedYear} onValueChange={handleYearChange}>
                 <SelectTrigger className="w-[130px]">
                   <SelectValue placeholder="Year" />
@@ -686,7 +735,7 @@ export default function StudentRecords() {
               <Button variant="outline" onClick={loadAttendanceRecords} className="gap-2">
                 <Filter className="h-4 w-4" /> Apply
               </Button>
-              <Button variant="ghost" onClick={clearFilters}>Clear</Button>
+              <ResetFiltersButton onClick={clearFilters} disabled={!hasLogFiltersApplied} />
             </div>
           </div>
 

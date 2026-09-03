@@ -2,6 +2,7 @@ import api from '@/lib/api';
 import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord } from '@/types/qa';
 import { isLectureTaught, isLectureUntaught, mapImportStatusToComment } from '@/lib/lecture-outcome';
 import type { DeliveryMode } from '@/lib/delivery-mode';
+import { parseTimeLostToMinutes, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
 
 export const qaService = {
   /**
@@ -24,6 +25,7 @@ export const qaService = {
         if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+        if (filter.academicTermId) params.academicTermId = filter.academicTermId;
         if (filter.page) params.page = filter.page;
         if (filter.limit) params.limit = filter.limit;
         if ((filter as any).sortBy) params.sortBy = (filter as any).sortBy;
@@ -72,6 +74,7 @@ export const qaService = {
         if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+        if (filter.academicTermId) params.academicTermId = filter.academicTermId;
       }
       const response = await api.get<any>('/qa/lecture-records-summary', params);
       const data = (response as any)?.data ?? response;
@@ -185,6 +188,7 @@ export const qaService = {
       className?: string;
       courseUnit?: string;
       lecturerName?: string;
+      department?: string;
     }
   ): Promise<QALecturerSummaryReport[]> => {
     try {
@@ -195,6 +199,7 @@ export const qaService = {
       if (params?.className) query.className = params.className;
       if (params?.courseUnit) query.courseUnit = params.courseUnit;
       if (params?.lecturerName) query.lecturerName = params.lecturerName;
+      if (params?.department) query.department = params.department;
       const response = await api.get<QALecturerSummaryReport[]>('/qa/lecturer-summary-report', query);
       return Array.isArray(response) ? response : (response as { data?: QALecturerSummaryReport[] })?.data ?? [];
     } catch (error) {
@@ -392,13 +397,19 @@ export const qaService = {
    * Get classes for a specific school
    * Maps classes to schools based on lecturer summary data and common patterns
    */
-  getClassesBySchool: async (school: string): Promise<string[]> => {
+  getClassesBySchool: async (
+    school: string,
+    params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
+  ): Promise<string[]> => {
     try {
       const schools = await api.get<Array<{ id: string; name: string }>>('/academic/schools');
       const schoolObj = schools.find(s => s.name === school);
       if (!schoolObj) return [];
-      
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes', { schoolId: schoolObj.id });
+
+      const query: Record<string, string> = { schoolId: schoolObj.id };
+      if (params?.academicTermId) query.academicTermId = params.academicTermId;
+      if (params?.classStatus) query.classStatus = params.classStatus;
+      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
       return classes.map(c => c.name).sort();
     } catch (error) {
       console.error('Error fetching classes by school:', error);
@@ -409,9 +420,14 @@ export const qaService = {
   /**
    * Get all unique classes (across all schools)
    */
-  getAllClasses: async (): Promise<string[]> => {
+  getAllClasses: async (
+    params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
+  ): Promise<string[]> => {
     try {
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes');
+      const query: Record<string, string> = {};
+      if (params?.academicTermId) query.academicTermId = params.academicTermId;
+      if (params?.classStatus) query.classStatus = params.classStatus;
+      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
       return classes.map(c => c.name).sort();
     } catch (error) {
       console.error('Error fetching all classes:', error);
@@ -452,21 +468,10 @@ export const qaService = {
     const totalUntaught = records.filter((r) => isLectureUntaught(r.comment)).length;
     const totalCompensation = records.filter(r => r.comment === 'COMPENSATION').length;
     
-    // Calculate total time lost (sum of TIME LOST column)
-    // Parse time strings like "00:50:00" or "02:00:00"
-    const parseTimeToMinutes = (timeStr: string): number => {
-      if (!timeStr || timeStr === '0') return 0;
-      const parts = timeStr.split(':');
-      if (parts.length === 3) {
-        const hours = parseInt(parts[0]) || 0;
-        const minutes = parseInt(parts[1]) || 0;
-        const seconds = parseInt(parts[2]) || 0;
-        return hours * 60 + minutes + seconds / 60;
-      }
-      return 0;
-    };
-
-    const totalMinutes = records.reduce((sum, r) => sum + parseTimeToMinutes(r.timeLost), 0);
+    const totalMinutes = records.reduce(
+      (sum, r) => sum + parseTimeLostToMinutes(resolveLectureTimeLost(r)),
+      0
+    );
     const hours = Math.floor(totalMinutes / 60);
     const minutes = Math.floor(totalMinutes % 60);
     const seconds = Math.floor((totalMinutes % 1) * 60);

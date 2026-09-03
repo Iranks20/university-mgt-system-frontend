@@ -13,6 +13,47 @@ import type {
   AttendanceRecordRow,
 } from '@/types/student';
 
+export type ChangeStudentStatusPayload = {
+  status: 'Active' | 'OnLeave' | 'Withdrawn' | 'Suspended' | 'Completed';
+  reason: string;
+  notes?: string | null;
+  effectiveDate: string;
+  disablePortalAccess?: boolean;
+  reEnrollOnActivate?: boolean;
+  year?: number;
+  semester?: number;
+};
+
+export type StudentStatusLogEntry = {
+  id: string;
+  studentId: string;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  notes: string | null;
+  effectiveDate: string;
+  changedByUserId: string | null;
+  enrollmentsDropped: number;
+  portalDisabled: boolean;
+  reEnrolled: boolean;
+  createdAt: string;
+};
+
+export type ChangeStudentStatusResult = {
+  student: Student;
+  fromStatus: string;
+  toStatus: string;
+  enrollmentsDropped: number;
+  portalDisabled: boolean;
+  reEnrolled: boolean;
+};
+
+export type BulkChangeStudentStatusResult = {
+  succeeded: number;
+  failed: number;
+  results: Array<{ studentId: string; success: boolean; message?: string; toStatus?: string }>;
+};
+
 export const studentService = {
   getStudents: async (params?: {
     search?: string;
@@ -24,6 +65,7 @@ export const studentService = {
     intakeType?: 'Day' | 'Evening' | 'Weekend';
     programIntakeId?: string;
     status?: string;
+    heldBack?: boolean;
     page?: number;
     limit?: number;
   }): Promise<{ data: Student[]; total: number; page: number; pageSize: number }> => {
@@ -51,6 +93,7 @@ export const studentService = {
     intakeType?: 'Day' | 'Evening' | 'Weekend';
     programIntakeId?: string;
     status?: string;
+    heldBack?: boolean;
   }, filename?: string): Promise<void> => {
     const token = localStorage.getItem('kcu-token');
     const base = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
@@ -63,6 +106,8 @@ export const studentService = {
     if (params?.intakeType) qs.set('intakeType', params.intakeType);
     if (params?.programIntakeId) qs.set('programIntakeId', params.programIntakeId);
     if (params?.status) qs.set('status', params.status);
+    if (params?.heldBack === true) qs.set('heldBack', 'true');
+    if (params?.heldBack === false) qs.set('heldBack', 'false');
 
     const response = await fetch(`${base}/students/export?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -117,6 +162,26 @@ export const studentService = {
       console.error('Error creating student:', error);
       throw error;
     }
+  },
+
+  changeStudentStatus: async (
+    studentId: string,
+    payload: ChangeStudentStatusPayload
+  ): Promise<ChangeStudentStatusResult> => {
+    return api.post<ChangeStudentStatusResult>(`/students/${studentId}/status`, payload);
+  },
+
+  bulkChangeStudentStatus: async (
+    payload: ChangeStudentStatusPayload & { studentIds: string[] }
+  ): Promise<BulkChangeStudentStatusResult> => {
+    return api.post<BulkChangeStudentStatusResult>('/students/status/bulk', payload);
+  },
+
+  getStudentStatusHistory: async (
+    studentId: string,
+    params?: { page?: number; limit?: number }
+  ): Promise<{ data: StudentStatusLogEntry[]; total: number; page: number; pageSize: number }> => {
+    return api.get(`/students/${studentId}/status/history`, params as any);
   },
 
   getStudentAttendance: async (studentId: string, params?: { startDate?: string; endDate?: string; courseCode?: string; status?: string; classId?: string }): Promise<StudentAttendance[]> => {

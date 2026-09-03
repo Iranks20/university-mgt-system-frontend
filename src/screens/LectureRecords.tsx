@@ -52,11 +52,21 @@ import {
   type DeliveryMode,
 } from '@/lib/delivery-mode';
 import { clockTimeToMinutes, normalizeClockTime } from '@/lib/clock-time';
+import { AcademicTermFilter, TERM_FILTER_ACTIVE, resolveAcademicTermFilter } from '@/components/AcademicTermFilter';
+import { AcademicTermArchivedBanner } from '@/components/AcademicTermArchivedBanner';
+import { termScopeQueryParam } from '@/lib/academic-term-scope';
+import { calculateLectureTimeLost, calculateLectureLessonTimeout, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 const COMMENT_FILTER_LABELS = LECTURE_COMMENT_LABELS;
 
+type ModalLecturerOption = { id: string; name: string; departmentName?: string };
+
 export default function LectureRecords() {
   const { user } = useAuth();
+  const { termFilter, academicTermId, classStatusHint, onTermChange, applyTermDatesTo, selectedTerm } =
+    useAcademicTermFilterState();
   const canSeedFromTimetable = useMemo(
     () => (user?.permissions ?? []).includes('qa.seed_timetable'),
     [user?.permissions]
@@ -128,6 +138,9 @@ export default function LectureRecords() {
   } | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [classLecturerPool, setClassLecturerPool] = useState<ModalLecturerOption[]>([]);
+  const [classLecturerPoolClassId, setClassLecturerPoolClassId] = useState('');
+  const [classLecturerPoolLoading, setClassLecturerPoolLoading] = useState(false);
   const [summary, setSummary] = useState<{
     totalRecords: number;
     taughtCount: number;
@@ -141,6 +154,14 @@ export default function LectureRecords() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsRecord, setDetailsRecord] = useState<QALectureRecord | null>(null);
 
+  const classTermParams = useMemo(
+    () => ({
+      ...(academicTermId ? { academicTermId } : {}),
+      classStatus: classStatusHint,
+    }),
+    [academicTermId, classStatusHint]
+  );
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
@@ -151,20 +172,45 @@ export default function LectureRecords() {
   useEffect(() => {
     loadSchools();
     loadLecturers();
-    loadAllClasses();
   }, []);
 
   useEffect(() => {
+    loadAllClasses();
+    if (selectedSchool) {
+      loadClasses(selectedSchool);
+    }
+  }, [termFilter, academicTermId, classStatusHint]);
+
+  useEffect(() => {
+    let cancelled = false;
+    academicService
+      .getAcademicTerms()
+      .then((terms) => {
+        if (cancelled) return;
+        const sel = resolveAcademicTermFilter(TERM_FILTER_ACTIVE, terms);
+        applyTermDatesTo(setDateFrom, setDateTo)(sel);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [applyTermDatesTo]);
+
+  useEffect(() => {
     setPage(1);
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter, academicTermId]);
 
   useEffect(() => {
     loadRecords();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page, termFilter, academicTermId]);
 
   useEffect(() => {
     loadSummary();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter]);
+  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter, academicTermId]);
+
+  useEffect(() => {
+    setClassFilter('All');
+  }, [termFilter, academicTermId]);
 
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
@@ -420,12 +466,97 @@ export default function LectureRecords() {
     }
   };
 
+  const loadClassLecturerPool = async (classId: string): Promise<ModalLecturerOption[]> => {
+    if (!classId) {
+      setClassLecturerPool([]);
+      setClassLecturerPoolClassId('');
+      return [];
+    }
+    setClassLecturerPoolLoading(true);
+    try {
+      const rows = await academicService.getClassLecturerPool(classId);
+      const options = rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        departmentName: row.departmentName ?? undefined,
+      }));
+      setClassLecturerPool(options);
+      setClassLecturerPoolClassId(classId);
+      return options;
+    } catch (error) {
+      console.error('Error loading class lecturer pool:', error);
+      setClassLecturerPool([]);
+      setClassLecturerPoolClassId('');
+      return [];
+    } finally {
+      setClassLecturerPoolLoading(false);
+    }
+  };
+
+  const clearClassLecturerPool = () => {
+    setClassLecturerPool([]);
+    setClassLecturerPoolClassId('');
+    setClassLecturerPoolLoading(false);
+  };
+
+  const applySinglePoolLecturerIfNeeded = (
+    pool: ModalLecturerOption[],
+    opts?: { onlyWhenEmpty?: boolean }
+  ) => {
+    if (pool.length !== 1) return;
+    if (opts?.onlyWhenEmpty && selectedLecturerId) return;
+    const only = pool[0]!;
+    setSelectedLecturerId(only.id);
+    setSelectedLecturerName(only.name);
+    if (only.departmentName) {
+      setSelectedDepartmentName(only.departmentName);
+    }
+  };
+
+  const useClassLecturerPool =
+    Boolean(selectedClassId) &&
+    classLecturerPoolClassId === selectedClassId &&
+    (classLecturerPool.length > 0 || classLecturerPoolLoading);
+
+  const modalLecturerOptions = useMemo(() => {
+    if (useClassLecturerPool) {
+      if (classLecturerPoolLoading) return [];
+      const pool = [...classLecturerPool];
+      if (
+        selectedLecturerId &&
+        selectedLecturerName &&
+        !pool.some((entry) => entry.id === selectedLecturerId)
+      ) {
+        pool.unshift({
+          id: selectedLecturerId,
+          name: selectedLecturerName,
+          departmentName: selectedDepartmentName || undefined,
+        });
+      }
+      return pool;
+    }
+    return lecturerOptions;
+  }, [
+    useClassLecturerPool,
+    classLecturerPool,
+    classLecturerPoolLoading,
+    lecturerOptions,
+    selectedLecturerId,
+    selectedLecturerName,
+    selectedDepartmentName,
+  ]);
+
+  const modalSubstituteOptions = useMemo(
+    () => modalLecturerOptions.filter((entry) => entry.id !== selectedLecturerId),
+    [modalLecturerOptions, selectedLecturerId]
+  );
+
   const normalizeName = (value?: string | null) =>
     (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
   const loadAllClasses = async () => {
     try {
-      const classList = await qaService.getAllClasses();
+      const classList = await qaService.getAllClasses(classTermParams);
       setAllClasses(classList);
     } catch (error) {
       console.error('Error loading all classes:', error);
@@ -434,7 +565,6 @@ export default function LectureRecords() {
   };
 
 
-  // Load classes when school changes
   useEffect(() => {
     if (selectedSchool) {
       loadClasses(selectedSchool);
@@ -454,7 +584,7 @@ export default function LectureRecords() {
 
   const loadClasses = async (school: string) => {
     try {
-      const classList = await qaService.getClassesBySchool(school);
+      const classList = await qaService.getClassesBySchool(school, classTermParams);
       setClasses(classList);
     } catch (error) {
       console.error('Error loading classes:', error);
@@ -474,6 +604,7 @@ export default function LectureRecords() {
     if (statusFilter !== 'All') filter.checkInStatus = statusFilter;
     if (dateFrom) filter.startDate = dateFrom;
     if (dateTo) filter.endDate = dateTo;
+    Object.assign(filter, termScopeQueryParam(academicTermId));
     return filter;
   };
 
@@ -546,7 +677,27 @@ export default function LectureRecords() {
     setAttendanceStatusFilter('All');
     setDateFrom('');
     setDateTo('');
+    onTermChange({
+      value: TERM_FILTER_ACTIVE,
+      academicTermId: undefined,
+      classStatusHint: 'active',
+      term: null,
+      dateFrom: '',
+      dateTo: '',
+    });
   };
+
+  const hasFiltersApplied =
+    searchTerm.trim() !== '' ||
+    commentFilter !== 'All' ||
+    lecturerFilter !== 'All' ||
+    schoolFilter !== 'All' ||
+    classFilter !== 'All' ||
+    statusFilter !== 'All' ||
+    attendanceStatusFilter !== 'All' ||
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    termFilter !== TERM_FILTER_ACTIVE;
 
   const handleSeedFromTimetable = async () => {
     const d = timetableSeedDate.trim();
@@ -615,10 +766,22 @@ export default function LectureRecords() {
     // Calculate duration from check-in to check-out if available, otherwise from scheduled times
     let duration: string;
     let lessonTimeout: string | undefined;
+    let timeLost = '00:00';
     
     if (checkInTime && checkOutTime) {
       duration = calculateDuration(checkInTime, checkOutTime);
-      lessonTimeout = duration;
+      timeLost =
+        calculateLectureTimeLost({
+          timeForStarting: startTime,
+          timeOutForEnding: endTime,
+          checkInTime,
+          checkOutTime,
+        }) ?? '00:00';
+      lessonTimeout =
+        calculateLectureLessonTimeout({
+          timeOutForEnding: endTime,
+          checkOutTime,
+        }) ?? '00:00';
     } else {
       duration = calculateDuration(startTime, endTime);
     }
@@ -675,7 +838,7 @@ export default function LectureRecords() {
       timeForStarting: startTime,
       timeOutForEnding: endTime,
       duration: duration,
-      timeLost: '0',
+      timeLost,
       deliveryMode: deliveryModeValue,
       comment: commentValue,
       remarks: remarksRaw ? remarksRaw : null,
@@ -787,6 +950,8 @@ export default function LectureRecords() {
     setSelectedDepartmentId('');
     setSelectedClassId('');
 
+    let resolvedClassId = record.classId?.trim() || '';
+
     if (nameMatch?.id) {
       const classIdFromRecord = record.classId ?? undefined;
       try {
@@ -802,6 +967,7 @@ export default function LectureRecords() {
                 setSelectedDepartmentName(d.name);
                 setSelectedClassId(cls.id);
                 setSelectedClassName(cls.label || record.class || '');
+                resolvedClassId = cls.id;
                 matchedDept = true;
                 break;
               }
@@ -824,10 +990,15 @@ export default function LectureRecords() {
               if (clsByName) {
                 setSelectedClassId(clsByName.id);
                 setSelectedClassName(clsByName.label || record.class || '');
+                resolvedClassId = clsByName.id;
               }
               matchedDept = true;
             }
           }
+        }
+        if (classIdFromRecord && !matchedDept) {
+          setSelectedClassId(classIdFromRecord);
+          resolvedClassId = classIdFromRecord;
         }
       } catch (err) {
         console.error('Failed to load lecturer assignments:', err);
@@ -837,11 +1008,18 @@ export default function LectureRecords() {
       setLecturerAssignments(null);
     }
 
+    if (resolvedClassId) {
+      setSelectedClassId(resolvedClassId);
+      await loadClassLecturerPool(resolvedClassId);
+    } else {
+      clearClassLecturerPool();
+    }
+
     if (record.class) {
       qaService.getSchools().then((allSchools) => {
         Promise.all(
           allSchools.map((school) =>
-            qaService.getClassesBySchool(school).then((classes) => ({ school, classes }))
+            qaService.getClassesBySchool(school, classTermParams).then((classes) => ({ school, classes }))
           )
         ).then((results) => {
           const match = results.find(({ classes }) => classes.includes(record.class));
@@ -877,6 +1055,7 @@ export default function LectureRecords() {
     setSelectedDeliveryMode('InPerson');
     setSelectedSubstituteId('');
     setSelectedSubstituteName('');
+    clearClassLecturerPool();
     setIsDialogOpen(true);
   };
 
@@ -971,6 +1150,19 @@ export default function LectureRecords() {
     return toYmdLocal(date);
   };
 
+  const formatTimeForInput = (value: string | undefined | null): string => {
+    if (!value?.trim()) return '';
+    const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
+    if (!match) return '';
+    return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+  };
+
+  const resolveActualTimeDefault = (
+    actual: string | undefined | null,
+    scheduled: string | undefined | null,
+    fallback: string
+  ): string => formatTimeForInput(actual) || formatTimeForInput(scheduled) || fallback;
+
   const getCommentBadgeVariant = (comment: string) => {
     const normalized = normalizeLectureComment(comment);
     switch (normalized) {
@@ -1001,6 +1193,12 @@ export default function LectureRecords() {
           <p className="text-gray-500">Manage and verify daily teaching activities across all schools.</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center justify-end">
+          <AcademicTermFilter
+            value={termFilter}
+            showLabel={false}
+            onChange={applyTermDatesTo(setDateFrom, setDateTo)}
+            triggerClassName="w-[240px]"
+          />
           {canSeedFromTimetable && (
             <div className="flex flex-wrap items-center gap-2 mr-2 pr-2 border-r border-gray-200">
               <Input
@@ -1025,14 +1223,18 @@ export default function LectureRecords() {
           <Button variant="outline" className="gap-2" onClick={handleExport} disabled={summaryLoading || summaryTotalRecords === 0}>
             <Download size={16} /> Export Excel
           </Button>
+          {/* Import temporarily disabled
           <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
             <Upload size={16} /> Import
           </Button>
+          */}
           <Button onClick={openNew} className="bg-[#015F2B] hover:bg-[#014022] gap-2">
             <Plus size={16} /> Record Lecture
           </Button>
         </div>
       </div>
+
+      <AcademicTermArchivedBanner term={selectedTerm} termFilter={termFilter} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-white">
@@ -1125,41 +1327,47 @@ export default function LectureRecords() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={lecturerFilter} onValueChange={setLecturerFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Lecturer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Lecturers</SelectItem>
-                  {allLecturers.map(lecturer => (
-                    <SelectItem key={lecturer} value={lecturer}>{lecturer}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={classFilter} onValueChange={setClassFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Classes</SelectItem>
-                  {allClasses.map(cls => (
-                    <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-[180px]"
+                options={[
+                  { value: 'All', label: 'All Lecturers' },
+                  ...allLecturers.map((lecturer) => ({ value: lecturer, label: lecturer })),
+                ]}
+                value={lecturerFilter}
+                onValueChange={(v) => setLecturerFilter(v || 'All')}
+                placeholder="Filter Lecturer"
+                searchPlaceholder="Search lecturers..."
+                emptyText="No lecturer found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[180px]"
+                options={[
+                  { value: 'All', label: 'All Classes' },
+                  ...allClasses.map((cls) => ({ value: cls, label: cls })),
+                ]}
+                value={classFilter}
+                onValueChange={(v) => setClassFilter(v || 'All')}
+                placeholder="Filter Class"
+                searchPlaceholder="Search classes..."
+                emptyText="No class found."
+                initialDisplayCount={50}
+              />
             </div>
-            <div className="flex flex-col md:flex-row gap-4">
-              <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Filter by School" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Schools</SelectItem>
-                  {schools.map(school => (
-                    <SelectItem key={school} value={school}>{school}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col md:flex-row flex-wrap items-end gap-4">
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Schools' },
+                  ...schools.map((school) => ({ value: school, label: school })),
+                ]}
+                value={schoolFilter}
+                onValueChange={(v) => setSchoolFilter(v || 'All')}
+                placeholder="Filter by School"
+                searchPlaceholder="Search schools..."
+                emptyText="No school found."
+                initialDisplayCount={50}
+              />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Check-in Status" />
@@ -1197,9 +1405,7 @@ export default function LectureRecords() {
                 onChange={(e) => setDateTo(e.target.value)}
                 className="w-[150px]"
               />
-              <Button variant="outline" onClick={clearFilters} className="gap-2">
-                <Filter className="h-4 w-4" /> Clear Filters
-              </Button>
+              <ResetFiltersButton onClick={clearFilters} disabled={!hasFiltersApplied} />
             </div>
           </div>
 
@@ -1213,7 +1419,7 @@ export default function LectureRecords() {
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
                   <TableHead>DELIVERY</TableHead>
-                  <TableHead className="whitespace-nowrap">TIME LOST</TableHead>
+                  <TableHead className="whitespace-nowrap">TIME FOR STARTING</TableHead>
                   <TableHead>ATTENDANCE</TableHead>
                   <TableHead>STATUS</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -1250,7 +1456,9 @@ export default function LectureRecords() {
                       <TableCell className="whitespace-nowrap text-sm">
                         {deliveryModeLabel(record.deliveryMode)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm">{record.timeLost}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {record.timeForStarting ? record.timeForStarting.slice(0, 5) : '—'}
+                      </TableCell>
                       <TableCell>
                         {(() => {
                           const status = (record as any).status || 'OnTime';
@@ -1410,7 +1618,7 @@ export default function LectureRecords() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Time lost</p>
-                      <p className="font-medium text-gray-900">{detailsRecord.timeLost ?? '—'}</p>
+                      <p className="font-medium text-gray-900">{resolveLectureTimeLost(detailsRecord)}</p>
                     </div>
                   </div>
                 </section>
@@ -1737,38 +1945,65 @@ export default function LectureRecords() {
                   <div className="space-y-2 lg:col-span-3">
                     <Label>LECTURER&apos;S NAME *</Label>
                     <Combobox
-                      options={lecturerOptions.map((l) => ({
+                      key={`lecturer-${selectedClassId || 'all'}-${classLecturerPoolClassId}-${classLecturerPool.length}`}
+                      options={modalLecturerOptions.map((l) => ({
                         value: l.id,
                         label: l.departmentName ? `${l.name} — ${l.departmentName}` : l.name,
                       }))}
                       value={selectedLecturerId}
                       selectedLabel={selectedLecturerName || undefined}
+                      loading={useClassLecturerPool && classLecturerPoolLoading}
                       onValueChange={async (id) => {
                         if (!id) {
                           setSelectedLecturerId('');
                           setSelectedLecturerName('');
-                          setSelectedDepartmentId('');
-                          setSelectedDepartmentName('');
-                          setSelectedClassId('');
-                          setSelectedClassName('');
-                          setLecturerAssignments(null);
+                          if (!selectedClassId) {
+                            setSelectedDepartmentId('');
+                            setSelectedDepartmentName('');
+                            setSelectedClassId('');
+                            setSelectedClassName('');
+                            setLecturerAssignments(null);
+                            clearClassLecturerPool();
+                          }
                           return;
                         }
-                        const opt = lecturerOptions.find((l) => l.id === id);
+                        const opt = modalLecturerOptions.find((l) => l.id === id);
                         setSelectedLecturerId(id);
                         setSelectedLecturerName(opt?.name || '');
+                        if (selectedClassId) {
+                          return;
+                        }
                         setSelectedDepartmentId('');
                         setSelectedDepartmentName(opt?.departmentName || '');
                         setSelectedClassId('');
                         setSelectedClassName('');
+                        clearClassLecturerPool();
                         const assignments = await qaService.getLecturerAssignments(id);
                         setLecturerAssignments(assignments ?? null);
                       }}
-                      placeholder="Select a lecturer"
+                      placeholder={
+                        useClassLecturerPool && classLecturerPoolLoading
+                          ? 'Loading class lecturers…'
+                          : 'Select a lecturer'
+                      }
                       searchPlaceholder="Search lecturers by name or department..."
-                      emptyText="No lecturer found."
-                      initialDisplayCount={10}
+                      emptyText={
+                        useClassLecturerPool && classLecturerPoolLoading
+                          ? 'Loading class lecturers…'
+                          : useClassLecturerPool
+                            ? 'No lecturers in this class pool.'
+                            : 'No lecturer found.'
+                      }
+                      initialDisplayCount={useClassLecturerPool ? 50 : 10}
                   />
+                  {useClassLecturerPool ? (
+                    <p className="text-xs text-muted-foreground">
+                      Showing lecturers assigned to the selected class
+                      {classLecturerPool.length === 1 ? ' (only one in pool)' : ''}.
+                    </p>
+                  ) : selectedClassId ? (
+                    <p className="text-xs text-amber-800">Loading class lecturer pool…</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -1811,7 +2046,7 @@ export default function LectureRecords() {
                     <Select 
                       name="class"
                         value={selectedClassId}
-                        onValueChange={(value) => {
+                        onValueChange={async (value) => {
                           setSelectedClassId(value);
                           const dept = lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId);
                           const cls = dept?.classes.find((c) => c.id === value);
@@ -1819,6 +2054,8 @@ export default function LectureRecords() {
                           if (cls?.deliveryMode) {
                             setSelectedDeliveryMode(normalizeDeliveryMode(cls.deliveryMode));
                           }
+                          const pool = await loadClassLecturerPool(value);
+                          applySinglePoolLecturerIfNeeded(pool, { onlyWhenEmpty: currentRecordId === null });
                         }}
                       required
                     >
@@ -1880,7 +2117,12 @@ export default function LectureRecords() {
                     name="timeForStarting" 
                     type="time" 
                     required 
-                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeForStarting || '08:00' : '08:00'} 
+                    defaultValue={
+                      currentRecordId !== null
+                        ? formatTimeForInput(records.find((r) => r.id === currentRecordId)?.timeForStarting) ||
+                          '08:00'
+                        : '08:00'
+                    }
                   />
                 </div>
                 <div className="space-y-2">
@@ -1890,7 +2132,12 @@ export default function LectureRecords() {
                     name="timeOutForEnding" 
                     type="time" 
                     required 
-                    defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.timeOutForEnding || '10:00' : '10:00'} 
+                    defaultValue={
+                      currentRecordId !== null
+                        ? formatTimeForInput(records.find((r) => r.id === currentRecordId)?.timeOutForEnding) ||
+                          '10:00'
+                        : '10:00'
+                    }
                   />
                 </div>
               </div>
@@ -1908,8 +2155,15 @@ export default function LectureRecords() {
                       id="checkInTime" 
                       name="checkInTime" 
                       type="time" 
-                      step="1"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkInTime || '' : ''} 
+                      defaultValue={
+                        currentRecordId !== null
+                          ? resolveActualTimeDefault(
+                              records.find((r) => r.id === currentRecordId)?.checkInTime,
+                              records.find((r) => r.id === currentRecordId)?.timeForStarting,
+                              '08:00'
+                            )
+                          : '08:00'
+                      }
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually arrived.</p>
                   </div>
@@ -1919,8 +2173,15 @@ export default function LectureRecords() {
                       id="checkOutTime" 
                       name="checkOutTime" 
                       type="time" 
-                      step="1"
-                      defaultValue={currentRecordId !== null ? records.find(r => r.id === currentRecordId)?.checkOutTime || '' : ''} 
+                      defaultValue={
+                        currentRecordId !== null
+                          ? resolveActualTimeDefault(
+                              records.find((r) => r.id === currentRecordId)?.checkOutTime,
+                              records.find((r) => r.id === currentRecordId)?.timeOutForEnding,
+                              '10:00'
+                            )
+                          : '10:00'
+                      }
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually left.</p>
                   </div>
@@ -1970,12 +2231,10 @@ export default function LectureRecords() {
                     <div className="space-y-2">
                       <Label>SUBSTITUTE LECTURER *</Label>
                       <Combobox
-                        options={lecturerOptions
-                          .filter((l) => l.id !== selectedLecturerId)
-                          .map((l) => ({
-                            value: l.id,
-                            label: l.departmentName ? `${l.name} — ${l.departmentName}` : l.name,
-                          }))}
+                        options={modalSubstituteOptions.map((l) => ({
+                          value: l.id,
+                          label: l.departmentName ? `${l.name} — ${l.departmentName}` : l.name,
+                        }))}
                         value={selectedSubstituteId}
                         selectedLabel={selectedSubstituteName || undefined}
                         onValueChange={(id) => {
@@ -1984,14 +2243,16 @@ export default function LectureRecords() {
                             setSelectedSubstituteName('');
                             return;
                           }
-                          const opt = lecturerOptions.find((l) => l.id === id);
+                          const opt = modalSubstituteOptions.find((l) => l.id === id);
                           setSelectedSubstituteId(id);
                           setSelectedSubstituteName(opt?.name || '');
                         }}
                         placeholder="Select substitute lecturer"
                         searchPlaceholder="Search lecturers by name or department..."
-                        emptyText="No lecturer found."
-                        initialDisplayCount={10}
+                        emptyText={
+                          useClassLecturerPool ? 'No other lecturers in this class pool.' : 'No lecturer found.'
+                        }
+                        initialDisplayCount={useClassLecturerPool ? 50 : 10}
                       />
                       <p className="text-xs text-muted-foreground">
                         Who actually taught this session in place of {selectedLecturerName || 'the scheduled lecturer'}?

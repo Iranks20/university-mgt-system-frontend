@@ -4,12 +4,12 @@ import {
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
   MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff
+  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw, UserX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
 import { studentService, staffService, academicService, enrollmentService } from '@/services';
+import type { CohortPromotionStatusResult } from '@/services';
 import { adminService } from '@/services/admin.service';
 import { timetableService, type TimetableClass } from '@/services/timetable.service';
 import { downloadStudentImportTemplateExcel, downloadStaffImportTemplateExcel, downloadLecturerImportTemplateExcel } from '@/utils/excel';
@@ -30,6 +31,7 @@ import { toast } from 'sonner';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter';
+import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { formatProgramIntakeOptionLabel, useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 import {
   buildLecturerComboboxOptions,
@@ -40,8 +42,33 @@ import {
   type LecturerOption,
 } from '@/lib/class-admin-utils';
 import { getApiErrorMessage } from '@/lib/api';
+import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
+import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
+import { StudentStatusDialog } from '@/components/admin/StudentStatusDialog';
+import { studentStatusBadgeClass, studentStatusLabel } from '@/lib/student-lifecycle';
+import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  AcademicTermFilter,
+  TERM_FILTER_ACTIVE,
+  TERM_FILTER_ALL,
+  type AcademicTermFilterValue,
+} from '@/components/AcademicTermFilter';
 
-type StudentRow = { id: string; name: string; email: string; studentId: string; dept: string; year: string; status: string; programId?: string; departmentId?: string; semester?: number };
+type StudentRow = {
+  id: string;
+  name: string;
+  email: string;
+  studentId: string;
+  dept: string;
+  year: number;
+  status: string;
+  holdbackReason?: string | null;
+  programId?: string;
+  departmentId?: string;
+  semester?: number;
+};
 type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
 type ClassRow = {
   id: string;
@@ -64,6 +91,22 @@ type VenueRow = { id: string; name: string; code: string; type: string; capacity
 // -----------------------------------------------------------------------------
 // SUB-COMPONENT: Student Management Tab (with Import, Add, Enroll in classes)
 // -----------------------------------------------------------------------------
+type StudentListFilters = {
+  programId: string;
+  year: string;
+  semester: string;
+  intakeType: string;
+  status: string;
+};
+
+const DEFAULT_STUDENT_FILTERS: StudentListFilters = {
+  programId: '__all__',
+  year: '__all__',
+  semester: '__all__',
+  intakeType: '__all__',
+  status: '__all__',
+};
+
 function StudentsTab({
   students,
   setStudents,
@@ -90,17 +133,12 @@ function StudentsTab({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     }
   ) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<{
-    programId: string;
-    year: string;
-    semester: string;
-    intakeType: string;
-    status: string;
-  }>({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
+  const [filters, setFilters] = useState<StudentListFilters>({ ...DEFAULT_STUDENT_FILTERS });
   const [filterPrograms, setFilterPrograms] = useState<any[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -116,8 +154,22 @@ function StudentsTab({
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1', newPassword: '' });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    studentId: '',
+    schoolId: '',
+    departmentId: '',
+    programId: '',
+    year: 'Year 1',
+    semester: '1',
+    newPassword: '',
+    clearHoldback: false,
+  });
   const [editStudentPasswordVisible, setEditStudentPasswordVisible] = useState(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusDialogTargets, setStatusDialogTargets] = useState<StudentRow[]>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<any[]>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [previewCourses, setPreviewCourses] = useState<any[]>([]);
@@ -128,6 +180,41 @@ function StudentsTab({
   const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
   const [importPrograms, setImportPrograms] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cohortPromotionStatus, setCohortPromotionStatus] = useState<CohortPromotionStatusResult | null>(null);
+  const [cohortPromotionLoading, setCohortPromotionLoading] = useState(false);
+
+  const cohortScopeSelected =
+    filters.programId !== '__all__' &&
+    filters.year !== '__all__' &&
+    filters.semester !== '__all__';
+
+  useEffect(() => {
+    if (!cohortScopeSelected) {
+      setCohortPromotionStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setCohortPromotionLoading(true);
+    academicService
+      .getCohortPromotionStatus({
+        programId: filters.programId,
+        year: parseInt(filters.year, 10),
+        semester: parseInt(filters.semester, 10),
+        intakeType: filters.intakeType !== '__all__' ? (filters.intakeType as 'Day' | 'Evening' | 'Weekend') : undefined,
+      })
+      .then((data) => {
+        if (!cancelled) setCohortPromotionStatus(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCohortPromotionStatus(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCohortPromotionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cohortScopeSelected, filters.programId, filters.year, filters.semester, filters.intakeType]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -185,6 +272,7 @@ function StudentsTab({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     } = {};
     const s = searchTerm.trim();
     if (s) params.search = s;
@@ -192,7 +280,12 @@ function StudentsTab({
     if (filters.year !== '__all__') params.year = parseInt(filters.year, 10);
     if (filters.semester !== '__all__') params.semester = parseInt(filters.semester, 10);
     if (filters.intakeType !== '__all__') params.intakeType = filters.intakeType as 'Day' | 'Evening' | 'Weekend';
-    if (filters.status !== '__all__') params.status = filters.status;
+    if (filters.status === '__held_back__') {
+      params.heldBack = true;
+      params.status = 'Active';
+    } else if (filters.status !== '__all__') {
+      params.status = filters.status;
+    }
     return params;
   };
 
@@ -205,7 +298,9 @@ function StudentsTab({
     if (y) parts.push(y);
     if (s) parts.push(s);
     if (filters.intakeType !== '__all__') parts.push(filters.intakeType);
-    if (filters.status !== '__all__') parts.push(filters.status);
+    if (filters.status !== '__all__') {
+      parts.push(filters.status === '__held_back__' ? 'HeldBack' : filters.status);
+    }
     const today = new Date().toISOString().slice(0, 10);
     parts.push(today);
     return `${parts.join('_')}.xlsx`;
@@ -214,6 +309,19 @@ function StudentsTab({
   const runQuery = (pageNum: number) => {
     loadStudents(pageNum, buildQueryParams());
   };
+
+  const resetStudentFilters = () => {
+    setSearchTerm('');
+    setFilters({ ...DEFAULT_STUDENT_FILTERS });
+  };
+
+  const hasStudentFiltersApplied =
+    searchTerm.trim() !== '' ||
+    filters.programId !== DEFAULT_STUDENT_FILTERS.programId ||
+    filters.year !== DEFAULT_STUDENT_FILTERS.year ||
+    filters.semester !== DEFAULT_STUDENT_FILTERS.semester ||
+    filters.intakeType !== DEFAULT_STUDENT_FILTERS.intakeType ||
+    filters.status !== DEFAULT_STUDENT_FILTERS.status;
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -355,6 +463,30 @@ function StudentsTab({
 
   const listStudents = students;
 
+  const openStatusDialog = (rows: StudentRow[]) => {
+    setStatusDialogTargets(rows);
+    setStatusDialogOpen(true);
+  };
+
+  const toggleStudentSelected = (id: string, checked: boolean) => {
+    setSelectedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllOnPage = (checked: boolean) => {
+    if (!checked) {
+      setSelectedStudentIds(new Set());
+      return;
+    }
+    setSelectedStudentIds(new Set(listStudents.map((s) => s.id)));
+  };
+
+  const allOnPageSelected = listStudents.length > 0 && listStudents.every((s) => selectedStudentIds.has(s.id));
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -416,7 +548,7 @@ function StudentsTab({
       }
       
       await loadStudents(1);
-
+      
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
@@ -455,6 +587,43 @@ function StudentsTab({
 
   const studentTemplateCsv = 'name,email,studentId,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,TempPassword123!\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,TempPassword123!';
 
+  const cohortPromotionBadge = cohortScopeSelected ? (
+    cohortPromotionLoading ? (
+      <Badge variant="outline" className="shrink-0 text-muted-foreground font-normal">
+        <Loader2 className="mr-1 h-3 w-3 animate-spin inline" />
+        Checking promotion…
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'promoted' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 border-[#015F2B] text-[#015F2B] bg-[#015F2B]/5 font-normal"
+        title={
+          cohortPromotionStatus.activeTermName
+            ? `Promoted from Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester} in ${cohortPromotionStatus.activeTermName} (${cohortPromotionStatus.promotedCount} students)`
+            : undefined
+        }
+      >
+        Promoted this term
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'partial' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 border-amber-600 text-amber-800 bg-amber-50 font-normal"
+        title={`${cohortPromotionStatus.promotedCount} promoted · ${cohortPromotionStatus.pendingAtSource} still at Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester}`}
+      >
+        Partially promoted
+      </Badge>
+    ) : cohortPromotionStatus?.status === 'pending' ? (
+      <Badge
+        variant="outline"
+        className="shrink-0 text-muted-foreground font-normal"
+        title={`${cohortPromotionStatus.pendingAtSource} still at Y${cohortPromotionStatus.sourceYear} S${cohortPromotionStatus.sourceSemester}`}
+      >
+        Not promoted yet
+      </Badge>
+    ) : null
+  ) : null;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
@@ -471,8 +640,20 @@ function StudentsTab({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
+            <span className="lg:hidden">{cohortPromotionBadge}</span>
             <Button variant="outline" className="lg:hidden" onClick={() => setMobileFiltersOpen(true)}>
               <Filter className="mr-2 h-4 w-4" /> Filters
+            </Button>
+
+            <Button
+              variant="outline"
+              disabled={selectedStudentIds.size === 0}
+              onClick={() =>
+                openStatusDialog(listStudents.filter((s) => selectedStudentIds.has(s.id)))
+              }
+            >
+              <UserX className="mr-2 h-4 w-4" />
+              Change status ({selectedStudentIds.size || 0})
             </Button>
 
             <DropdownMenu>
@@ -498,14 +679,8 @@ function StudentsTab({
                 >
                   <FileSpreadsheet className="mr-2 h-4 w-4" /> Export (Excel)
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
-                    runQuery(1);
-                  }}
-                >
-                  <Filter className="mr-2 h-4 w-4" /> Clear filters
+                <DropdownMenuItem onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied}>
+                  <Filter className="mr-2 h-4 w-4" /> Reset filters
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setImportOpen(true)}>
                   <Upload className="mr-2 h-4 w-4" /> Import students
@@ -522,19 +697,22 @@ function StudentsTab({
         <div className="hidden lg:flex gap-3 flex-wrap">
           <div className="min-w-[240px]">
             <Label className="sr-only">Program</Label>
-            <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
-              <SelectTrigger>
-                <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'Program (All)'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">All programs</SelectItem>
-                {filterPrograms.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.code ? `${p.code} — ${p.name}` : p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: '__all__', label: 'All programs' },
+                ...filterPrograms.map((p: any) => ({
+                  value: p.id,
+                  label: p.code ? `${p.code} — ${p.name}` : p.name,
+                })),
+              ]}
+              value={filters.programId}
+              onValueChange={(v) => setFilters((f) => ({ ...f, programId: v || '__all__' }))}
+              disabled={filtersLoading}
+              placeholder={filtersLoading ? 'Loading programs…' : 'Program (All)'}
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
           </div>
 
           <div className="min-w-[140px]">
@@ -580,18 +758,25 @@ function StudentsTab({
             <Select value={filters.status} onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}>
               <SelectTrigger><SelectValue placeholder="Status (All)" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All statuses</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Inactive">Inactive</SelectItem>
-                <SelectItem value="Suspended">Suspended</SelectItem>
-                <SelectItem value="Graduated">Graduated</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              <SelectItem value="__all__">All statuses</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="OnLeave">On leave</SelectItem>
+              <SelectItem value="Withdrawn">Withdrawn</SelectItem>
+              <SelectItem value="__held_back__">Held back</SelectItem>
+              <SelectItem value="Suspended">Suspended</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Inactive">Inactive (legacy)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      </div>
 
-      <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <ResetFiltersButton onClick={resetStudentFilters} disabled={!hasStudentFiltersApplied} />
+
+        <span className="hidden lg:contents">{cohortPromotionBadge}</span>
+      </div>
+    </div>
+
+    <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Filters</DialogTitle>
@@ -600,19 +785,23 @@ function StudentsTab({
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label>Program</Label>
-              <Select value={filters.programId} onValueChange={(v) => setFilters((f) => ({ ...f, programId: v }))} disabled={filtersLoading}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={filtersLoading ? 'Loading programs…' : 'All programs'} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All programs</SelectItem>
-                  {filterPrograms.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.code ? `${p.code} — ${p.name}` : p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="mt-1"
+                options={[
+                  { value: '__all__', label: 'All programs' },
+                  ...filterPrograms.map((p: any) => ({
+                    value: p.id,
+                    label: p.code ? `${p.code} — ${p.name}` : p.name,
+                  })),
+                ]}
+                value={filters.programId}
+                onValueChange={(v) => setFilters((f) => ({ ...f, programId: v || '__all__' }))}
+                disabled={filtersLoading}
+                placeholder={filtersLoading ? 'Loading programs…' : 'All programs'}
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
             </div>
             <div>
               <Label>Year</Label>
@@ -656,24 +845,24 @@ function StudentsTab({
                 <SelectContent>
                   <SelectItem value="__all__">All statuses</SelectItem>
                   <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="OnLeave">On leave</SelectItem>
+                  <SelectItem value="Withdrawn">Withdrawn</SelectItem>
+                  <SelectItem value="__held_back__">Held back</SelectItem>
                   <SelectItem value="Suspended">Suspended</SelectItem>
-                  <SelectItem value="Graduated">Graduated</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Inactive">Inactive (legacy)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
+            <ResetFiltersButton
               onClick={() => {
-                setSearchTerm('');
-                setFilters({ programId: '__all__', year: '__all__', semester: '__all__', intakeType: '__all__', status: '__all__' });
-                runQuery(1);
+                resetStudentFilters();
+                setMobileFiltersOpen(false);
               }}
-            >
-              Clear
-            </Button>
+              disabled={!hasStudentFiltersApplied}
+            />
             <Button className="bg-[#015F2B]" onClick={() => setMobileFiltersOpen(false)}>
               Done
             </Button>
@@ -685,10 +874,18 @@ function StudentsTab({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allOnPageSelected}
+                  onCheckedChange={(checked) => toggleSelectAllOnPage(checked === true)}
+                  aria-label="Select all students on page"
+                />
+              </TableHead>
               <TableHead>Student</TableHead>
               <TableHead>ID</TableHead>
               <TableHead>Program</TableHead>
               <TableHead>Year</TableHead>
+              <TableHead>Semester</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -696,6 +893,13 @@ function StudentsTab({
           <TableBody>
             {listStudents.map((student) => (
               <TableRow key={student.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedStudentIds.has(student.id)}
+                    onCheckedChange={(checked) => toggleStudentSelected(student.id, checked === true)}
+                    aria-label={`Select ${student.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
@@ -710,8 +914,25 @@ function StudentsTab({
                 <TableCell>{student.studentId}</TableCell>
                 <TableCell>{student.dept}</TableCell>
                 <TableCell>{student.year}</TableCell>
+                <TableCell>{student.semester ?? '—'}</TableCell>
                 <TableCell>
-                  <Badge variant={student.status === 'Active' ? 'default' : 'destructive'} className={student.status === 'Active' ? 'bg-[#015F2B] hover:bg-[#015F2B]/90' : ''}>{student.status}</Badge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge
+                      variant={student.status === 'Active' ? 'default' : 'destructive'}
+                      className={studentStatusBadgeClass(student.status) || undefined}
+                    >
+                      {studentStatusLabel(student.status)}
+                    </Badge>
+                    {student.holdbackReason ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-600 text-amber-800 bg-amber-50"
+                        title={student.holdbackReason}
+                      >
+                        Held back
+                      </Badge>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <DropdownMenu>
@@ -732,9 +953,10 @@ function StudentsTab({
                           schoolId: dept?.schoolId ?? '',
                           departmentId: studentData?.departmentId ?? dept?.id ?? '',
                           programId: studentData?.programId ?? '',
-                          year: student.year,
+                          year: `Year ${student.year}`,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
+                          clearHoldback: false,
                         });
                         setEditStudentPasswordVisible(false);
                         setPreviewCourses([]);
@@ -742,6 +964,9 @@ function StudentsTab({
                         setCurrentEnrollments([]);
                         setEditOpen(true);
                       }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openStatusDialog([student])}>
+                        <UserX className="mr-2 h-4 w-4" /> Change status
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-red-600" onClick={async () => {
                         if (confirm(`Delete student "${student.name}"?`)) {
                           try {
@@ -1252,6 +1477,7 @@ function StudentsTab({
                 year,
                 semester,
                 ...(newPw ? { tempPassword: newPw } : {}),
+                ...(editForm.clearHoldback ? { holdbackReason: null } : {}),
               } as any);
               
               // Handle enrollments
@@ -1279,17 +1505,27 @@ function StudentsTab({
                 }
               }
 
-              for (const classId of toRemove) {
+              if (toRemove.length > 0) {
+                let studentEnrollmentsList: any[] = [];
                 try {
                   const enrollments = await enrollmentService.getStudentEnrollments(editingStudent.id);
                   const enrollmentsData = (enrollments as any)?.data || enrollments;
-                  const enrollment = enrollmentsData.find((e: any) => (e.classId || e.class?.id) === classId);
-                  if (enrollment?.id) {
-                    await enrollmentService.deleteEnrollment(enrollment.id);
-                  }
+                  studentEnrollmentsList = Array.isArray(enrollmentsData) ? enrollmentsData : [];
                 } catch (error: any) {
-                  console.error('Error removing enrollment:', error);
-                  enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                  enrollmentErrors.push(`Failed to load enrollments: ${error?.message || 'Unknown error'}`);
+                }
+                for (const classId of toRemove) {
+                  try {
+                    const enrollment = studentEnrollmentsList.find(
+                      (e: any) => (e.classId || e.class?.id) === classId
+                    );
+                    if (enrollment?.id) {
+                      await enrollmentService.deleteEnrollment(enrollment.id);
+                    }
+                  } catch (error: any) {
+                    console.error('Error removing enrollment:', error);
+                    enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                  }
                 }
               }
 
@@ -1361,6 +1597,22 @@ function StudentsTab({
                       </Button>
                     </div>
                   </div>
+                  {editingStudent?.holdbackReason ? (
+                    <div className="space-y-2 min-w-0 sm:col-span-2 xl:col-span-3 rounded-md border border-amber-200 bg-amber-50/60 p-3">
+                      <p className="text-sm text-amber-900">
+                        <span className="font-medium">Held back:</span> {editingStudent.holdbackReason}
+                      </p>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={editForm.clearHoldback}
+                          onCheckedChange={(v) =>
+                            setEditForm((f) => ({ ...f, clearHoldback: v === true }))
+                          }
+                        />
+                        Clear holdback (allow promote on next run)
+                      </label>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -1653,6 +1905,22 @@ function StudentsTab({
           </form>
         </DialogContent>
       </Dialog>
+
+      <StudentStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        targets={statusDialogTargets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          year: s.year,
+          semester: s.semester,
+        }))}
+        onCompleted={() => {
+          setSelectedStudentIds(new Set());
+          void runQuery(studentsPage);
+        }}
+      />
 
     </div>
   );
@@ -2895,7 +3163,16 @@ function CoursesTab() {
   const [addCourseOpen, setAddCourseOpen] = useState(false);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CoursesTabRow | null>(null);
-  const [courseForm, setCourseForm] = useState({ code: '', name: '', departmentId: '', programId: '', credits: 0, level: 1, semester: 1 });
+  const [courseForm, setCourseForm] = useState({
+    code: '',
+    name: '',
+    departmentId: '',
+    programId: '',
+    credits: 0,
+    level: 1,
+    semester: 1,
+    enrollmentPolicy: 'Auto' as 'Auto' | 'Self' | 'StaffOnly',
+  });
 
   const loadCourses = async (pageNum: number = 1, search?: string) => {
     setLoading(true);
@@ -2962,7 +3239,16 @@ function CoursesTab() {
 
   const openAddCourse = () => {
     setEditingCourse(null);
-    setCourseForm({ code: '', name: '', departmentId: Object.keys(depts)[0] ?? '', programId: '', credits: 0, level: 1, semester: 1 });
+    setCourseForm({
+      code: '',
+      name: '',
+      departmentId: Object.keys(depts)[0] ?? '',
+      programId: '',
+      credits: 0,
+      level: 1,
+      semester: 1,
+      enrollmentPolicy: 'Auto',
+    });
     setAddCourseOpen(true);
   };
 
@@ -2983,6 +3269,7 @@ function CoursesTab() {
       credits: courseData.credits ?? course.credits,
       level: courseData.level || 1,
       semester: courseData.semester || 1,
+      enrollmentPolicy: (courseData.enrollmentPolicy as 'Auto' | 'Self' | 'StaffOnly') || 'Auto',
     });
     setEditCourseOpen(true);
   };
@@ -2999,6 +3286,7 @@ function CoursesTab() {
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
+          enrollmentPolicy: courseForm.enrollmentPolicy,
         });
       } else {
         await academicService.createCourse({
@@ -3009,6 +3297,7 @@ function CoursesTab() {
           credits: courseForm.credits,
           level: courseForm.level,
           semester: courseForm.semester,
+          enrollmentPolicy: courseForm.enrollmentPolicy,
         });
       }
       await loadCourses(coursesPage);
@@ -3192,6 +3481,27 @@ function CoursesTab() {
               <Label>Credits</Label>
               <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
             </div>
+            <div>
+              <Label>Enrollment policy</Label>
+              <Select
+                value={courseForm.enrollmentPolicy}
+                onValueChange={(v) =>
+                  setCourseForm((f) => ({
+                    ...f,
+                    enrollmentPolicy: v as 'Auto' | 'Self' | 'StaffOnly',
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Auto">Auto (required — system seats)</SelectItem>
+                  <SelectItem value="Self">Self (student registration)</SelectItem>
+                  <SelectItem value="StaffOnly">Staff only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddCourseOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">Save</Button>
@@ -3271,6 +3581,27 @@ function CoursesTab() {
             <div>
               <Label>Credits</Label>
               <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
+            </div>
+            <div>
+              <Label>Enrollment policy</Label>
+              <Select
+                value={courseForm.enrollmentPolicy}
+                onValueChange={(v) =>
+                  setCourseForm((f) => ({
+                    ...f,
+                    enrollmentPolicy: v as 'Auto' | 'Self' | 'StaffOnly',
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Auto">Auto (required — system seats)</SelectItem>
+                  <SelectItem value="Self">Self (student registration)</SelectItem>
+                  <SelectItem value="StaffOnly">Staff only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditCourseOpen(false)}>Cancel</Button>
@@ -4256,16 +4587,16 @@ function SchoolsTab() {
     if (selectedNode.type !== 'yearSemester') return;
     setAddCourseSaving(true);
     try {
-      await academicService.createCourse({
+      const result = await academicService.addCourseToNode({
         code: addCourseForm.code.trim(),
         name: addCourseForm.name.trim(),
         departmentId: selectedNode.departmentId,
         programId: selectedNode.programId,
-        level: selectedNode.level,
+        year: selectedNode.level,
         semester: selectedNode.semester,
         credits: addCourseForm.credits,
       });
-      toast.success('Course created');
+      toast.success(result.linked ? 'Existing course linked to this program' : 'Course created');
       setAddCourseOpen(false);
       setAddCourseForm({ code: '', name: '', credits: 3 });
       await refreshCoursesInNode();
@@ -4774,13 +5105,22 @@ function SchoolsTab() {
                                                                                                   size="sm"
                                                                                                   className="h-7 w-7 p-0 text-red-600"
                                                                                                   onClick={async () => {
-                                                                                                    if (!confirm(`Delete course "${c.name}" (${c.code})?`)) return;
+                                                                                                    const isLinked = selectedNode?.type === 'yearSemester';
+                                                                                                    const msg = isLinked
+                                                                                                      ? `Remove course "${c.name}" (${c.code}) from this program? The course will remain in the catalog.`
+                                                                                                      : `Delete course "${c.name}" (${c.code})?`;
+                                                                                                    if (!confirm(msg)) return;
                                                                                                     try {
-                                                                                                      await academicService.deleteCourse(c.id);
-                                                                                                      toast.success('Course deleted');
+                                                                                                      if (isLinked && selectedNode) {
+                                                                                                        await academicService.unlinkCourseFromProgram(c.id, selectedNode.programId);
+                                                                                                        toast.success('Course removed from program');
+                                                                                                      } else {
+                                                                                                        await academicService.deleteCourse(c.id);
+                                                                                                        toast.success('Course deleted');
+                                                                                                      }
                                                                                                       await refreshCoursesInNode();
                                                                                                     } catch (err: any) {
-                                                                                                      toast.error(err?.message || 'Failed to delete course');
+                                                                                                      toast.error(err?.message || 'Failed to remove course');
                                                                                                     }
                                                                                                   }}
                                                                                                 >
@@ -5383,12 +5723,23 @@ function ClassesTab({
   classesPage: number;
   classesTotal: number;
   pageSize: number;
-  loadClasses: (page: number, params?: { programIntakeId?: string | null; search?: string }) => Promise<void>;
+  loadClasses: (
+    page: number,
+    params?: {
+      programIntakeId?: string | null;
+      search?: string;
+      academicTermId?: string;
+      classStatus?: 'active' | 'inactive' | 'all';
+    }
+  ) => Promise<void>;
   programIntakeId: string | null;
   setProgramIntakeId: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [termFilter, setTermFilter] = useState<AcademicTermFilterValue>(TERM_FILTER_ACTIVE);
+  const [termClassStatus, setTermClassStatus] = useState<'active' | 'all'>('active');
+  const [termQueryId, setTermQueryId] = useState<string | undefined>(undefined);
   const [lecturerFilter, setLecturerFilter] = useState<string>('all');
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
   const [addEditOpen, setAddEditOpen] = useState(false);
@@ -5427,6 +5778,17 @@ function ClassesTab({
   const classIntakeScope = useProgramIntakeScope({ showSchool: false, intakeField: 'type' });
   const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
   const [scopeLoading, setScopeLoading] = useState<boolean>(false);
+  const classListParams = (overrides?: {
+    programIntakeId?: string | null;
+    search?: string;
+  }) => ({
+    programIntakeId:
+      overrides && 'programIntakeId' in overrides ? overrides.programIntakeId : programIntakeId,
+    search: overrides?.search ?? (searchTerm.trim() || undefined),
+    ...(termQueryId ? { academicTermId: termQueryId } : {}),
+    classStatus: termClassStatus,
+  });
+
   const openTimetableBuilderForScope = () => {
     if (!scopeEnabled || !classIntakeScope.programId) {
       toast.error('Enable the intake scope filter and select a program first');
@@ -5440,6 +5802,21 @@ function ClassesTab({
     });
     navigate(`/timetable-builder?${qs.toString()}`);
   };
+
+  const resetClassListFilters = () => {
+    setSearchTerm('');
+    setTermFilter(TERM_FILTER_ACTIVE);
+    setTermQueryId(undefined);
+    setTermClassStatus('active');
+    setLecturerFilter('all');
+    setAssignmentFilter('all');
+  };
+
+  const hasClassListFiltersApplied =
+    searchTerm.trim() !== '' ||
+    termFilter !== TERM_FILTER_ACTIVE ||
+    lecturerFilter !== 'all' ||
+    assignmentFilter !== 'all';
 
   const refreshClassData = async () => {
     try {
@@ -5479,7 +5856,7 @@ function ClassesTab({
           label: formatProgramIntakeOptionLabel(i, programById),
         }))
       );
-      await loadClasses(classesPage, { programIntakeId: programIntakeId, search: searchTerm.trim() || undefined });
+      await loadClasses(classesPage, classListParams({ programIntakeId, search: searchTerm.trim() || undefined }));
     } catch (error) {
       console.error('Error refreshing class data:', error);
     }
@@ -5514,10 +5891,10 @@ function ClassesTab({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadClasses(1, { programIntakeId, search: searchTerm.trim() || undefined });
+      loadClasses(1, classListParams());
     }, 250);
     return () => clearTimeout(timer);
-  }, [searchTerm, programIntakeId, loadClasses]);
+  }, [searchTerm, programIntakeId, termFilter, termQueryId, termClassStatus, loadClasses]);
 
   const applyScopeFilter = async () => {
     if (!classIntakeScope.programId) {
@@ -5532,7 +5909,7 @@ function ClassesTab({
         return;
       }
       setProgramIntakeId(resolved.id);
-      await loadClasses(1, { programIntakeId: resolved.id, search: searchTerm.trim() || undefined });
+      await loadClasses(1, classListParams({ programIntakeId: resolved.id }));
       toast.success('Filtered classes by intake scope');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to apply intake filter');
@@ -5543,7 +5920,7 @@ function ClassesTab({
 
   const clearScopeFilter = async () => {
     setProgramIntakeId(null);
-    await loadClasses(1, { programIntakeId: null, search: searchTerm.trim() || undefined });
+    await loadClasses(1, classListParams({ programIntakeId: null }));
     toast.success('Showing all classes');
   };
 
@@ -5892,6 +6269,15 @@ function ClassesTab({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <AcademicTermFilter
+          value={termFilter}
+          onChange={(sel) => {
+            setTermFilter(sel.value);
+            setTermQueryId(sel.academicTermId);
+            setTermClassStatus(sel.classStatusHint);
+          }}
+          triggerClassName="w-[240px]"
+        />
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search classes..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -5921,6 +6307,7 @@ function ClassesTab({
             <SelectItem value="unassigned">Without lecturer</SelectItem>
           </SelectContent>
         </Select>
+        <ResetFiltersButton onClick={resetClassListFilters} disabled={!hasClassListFiltersApplied} />
         <Button
           variant="outline"
           onClick={openTimetableBuilderForScope}
@@ -5978,7 +6365,15 @@ function ClassesTab({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEnrollForClass(cls)}><Users className="h-4 w-4 mr-1" /> Enrollments</Button>
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(cls)}><Edit className="h-4 w-4" /></Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEdit(cls)}
+                      disabled={cls.isActive === false}
+                      title={cls.isActive === false ? 'Inactive class is read-only' : 'Edit class'}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
                     {cls.isActive !== false && (
                       <Button
                         variant="ghost"
@@ -6021,9 +6416,9 @@ function ClassesTab({
           <div className="flex items-center justify-between border-t px-4 py-2">
             <span className="text-sm text-muted-foreground">{classesTotal} total</span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={classesPage <= 1} onClick={() => loadClasses(classesPage - 1, classListParams())}>Previous</Button>
               <span className="text-sm">Page {classesPage} of {Math.max(1, Math.ceil(classesTotal / pageSize))}</span>
-              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, { programIntakeId, search: searchTerm.trim() || undefined })}>Next</Button>
+              <Button variant="outline" size="sm" disabled={classesPage >= Math.ceil(classesTotal / pageSize)} onClick={() => loadClasses(classesPage + 1, classListParams())}>Next</Button>
             </div>
           </div>
         )}
@@ -6473,25 +6868,7 @@ const DAY_OPTIONS = [
 ];
 
 function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
-  const [classes, setClasses] = useState<TimetableClass[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<any>(null);
-  const [importScope, setImportScope] = useState({ programId: '', year: 1, semester: 1 });
-  const [allPrograms, setAllPrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingClass, setEditingClass] = useState<TimetableClass | null>(null);
-  const [editForm, setEditForm] = useState({ dayOfWeek: 1, lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletingClass, setDeletingClass] = useState<TimetableClass | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [deactivatingClass, setDeactivatingClass] = useState<TimetableClass | null>(null);
-  const [deactivating, setDeactivating] = useState(false);
-  const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
-  const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
-  const [filters, setFilters] = useState({
+  const DEFAULT_TIMETABLE_FILTERS = {
     programId: '',
     program: '',
     year: '',
@@ -6500,7 +6877,29 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     day: '',
     courseCode: '',
     classStatus: 'active' as 'active' | 'inactive' | 'all',
-  });
+    academicTermFilter: TERM_FILTER_ACTIVE as AcademicTermFilterValue,
+    academicTermId: undefined as string | undefined,
+  };
+  const [classes, setClasses] = useState<TimetableClass[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const [importScope, setImportScope] = useState({ programId: '', year: 1, semester: 1 });
+  const [allPrograms, setAllPrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
+  const [activeTermLabel, setActiveTermLabel] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<TimetableClass | null>(null);
+  const [editForm, setEditForm] = useState({ dayOfWeek: 1, lecturerId: '', venueId: '', capacity: 50, startTime: '', endTime: '' });
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivatingClass, setDeactivatingClass] = useState<TimetableClass | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [reactivatingClass, setReactivatingClass] = useState<TimetableClass | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const [venues, setVenues] = useState<{ id: string; name: string }[]>([]);
+  const [lecturers, setLecturers] = useState<{ id: string; name: string }[]>([]);
+  const [filters, setFilters] = useState({ ...DEFAULT_TIMETABLE_FILTERS });
   const [timetablePrograms, setTimetablePrograms] = useState<{ id: string; name: string; code: string; duration?: number }[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -6558,6 +6957,13 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       if (filters.day) query.day = filters.day;
       if (filters.courseCode) query.courseCode = filters.courseCode;
       if (filters.classStatus) query.classStatus = filters.classStatus;
+      if (filters.academicTermId) {
+        query.academicTermId = filters.academicTermId;
+      } else if (filters.classStatus === 'inactive' || filters.classStatus === 'all') {
+        if (filters.academicTermFilter === TERM_FILTER_ACTIVE) {
+          query.academicTermId = 'all';
+        }
+      }
       const result = await timetableService.getTimetable(query);
       setClasses(result.data);
       setTotal(result.total);
@@ -6597,14 +7003,14 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       const allLecturers: any[] = [];
       let lecturerPage = 1;
       while (true) {
-        const result = await staffService.getStaff({ role: 'Lecturer', page: lecturerPage, limit: 100 });
+        const result = await staffService.getLecturers({ page: lecturerPage, limit: 100 });
         const arr = Array.isArray(result) ? result : (result.data || []);
         allLecturers.push(...arr);
         const total = Array.isArray(result) ? arr.length : (result.total ?? allLecturers.length);
         if (arr.length === 0 || allLecturers.length >= total) break;
         lecturerPage += 1;
       }
-      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer').map((s: any) => ({
+      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer' || !s.role).map((s: any) => ({
         id: s.id,
         name: `${s.firstName} ${s.lastName}`,
       })));
@@ -6641,6 +7047,22 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       const arr = res?.data ?? (Array.isArray(res) ? res : []);
       setTimetablePrograms(arr.map((p: any) => ({ id: p.id, name: p.name, code: p.code || '', duration: p.duration ?? 4 })));
     }).catch(() => setTimetablePrograms([]));
+  }, []);
+
+  useEffect(() => {
+    academicService
+      .getActiveAcademicTerm()
+      .then((term) => {
+        if (!term) {
+          setActiveTermLabel(null);
+          return;
+        }
+        setActiveTermLabel(term.name);
+        if (term.semester === 1 || term.semester === 2) {
+          setImportScope((s) => ({ ...s, semester: term.semester }));
+        }
+      })
+      .catch(() => setActiveTermLabel(null));
   }, []);
 
   useEffect(() => {
@@ -6710,37 +7132,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     }
   };
 
-  const handleDelete = (cls: TimetableClass) => {
-    setDeletingClass(cls);
-    setDeleteOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deletingClass) return;
-    setDeleting(true);
-    try {
-      await timetableService.deleteClass(deletingClass.id);
-      toast.success('Class deleted successfully');
-      setDeleteOpen(false);
-      setDeletingClass(null);
-      await loadTimetable();
-      window.dispatchEvent(new CustomEvent('class-updated'));
-    } catch (error: any) {
-      const code = error?.response?.data?.code;
-      const msg = error?.response?.data?.message || error?.message || 'Unknown error';
-      if (code === 'CLASS_HAS_ENROLLMENTS') {
-        setDeleteOpen(false);
-        setDeactivatingClass(deletingClass);
-        setDeactivateOpen(true);
-        toast.error(msg);
-      } else {
-        toast.error(`Failed to delete: ${msg}`);
-      }
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const openDeactivateModal = (cls: TimetableClass) => {
     setDeactivatingClass(cls);
     setDeactivateOpen(true);
@@ -6754,8 +7145,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       toast.success('Class deactivated');
       setDeactivateOpen(false);
       setDeactivatingClass(null);
-      setDeleteOpen(false);
-      setDeletingClass(null);
       await loadTimetable();
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
@@ -6765,36 +7154,72 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
     }
   };
 
-  const handleActivateClass = async (cls: TimetableClass) => {
+  const openReactivateModal = (cls: TimetableClass) => {
+    setReactivatingClass(cls);
+    setReactivateOpen(true);
+  };
+
+  const handleConfirmReactivate = async () => {
+    if (!reactivatingClass) return;
+    setReactivating(true);
     try {
-      await timetableService.activateClass(cls.id);
-      toast.success('Class activated');
+      await timetableService.activateClass(reactivatingClass.id);
+      toast.success('Class reactivated');
+      setReactivateOpen(false);
+      setReactivatingClass(null);
       await loadTimetable();
       window.dispatchEvent(new CustomEvent('class-updated'));
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to activate class');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to reactivate class');
+    } finally {
+      setReactivating(false);
     }
   };
 
   const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const resetTimetableFilters = () => {
+    setFilters({ ...DEFAULT_TIMETABLE_FILTERS });
+    setPage(1);
+  };
+
+  const hasTimetableFiltersApplied =
+    (filters.programId !== '' && filters.programId !== '__all__') ||
+    filters.program !== '' ||
+    filters.year !== '' ||
+    filters.semester !== '' ||
+    filters.intakeType !== DEFAULT_TIMETABLE_FILTERS.intakeType ||
+    filters.day !== '' ||
+    filters.courseCode.trim() !== '' ||
+    filters.classStatus !== DEFAULT_TIMETABLE_FILTERS.classStatus ||
+    filters.academicTermFilter !== DEFAULT_TIMETABLE_FILTERS.academicTermFilter;
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between gap-4 flex-wrap">
         <div className="flex gap-2 flex-wrap">
           <div className="w-[200px]">
-            <Select
-              value={filters.programId || 'all'}
-              onValueChange={(v) => setFilters({ ...filters, programId: v === 'all' ? '__all__' : v, program: '' })}
-            >
-              <SelectTrigger><SelectValue placeholder="Program" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All programs</SelectItem>
-                {timetablePrograms.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.code})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: 'all', label: 'All programs' },
+                ...timetablePrograms.map((p) => ({
+                  value: p.id,
+                  label: `${p.name} (${p.code})`,
+                })),
+              ]}
+              value={filters.programId === '__all__' || !filters.programId ? 'all' : filters.programId}
+              onValueChange={(v) =>
+                setFilters({
+                  ...filters,
+                  programId: !v || v === 'all' ? '__all__' : v,
+                  program: '',
+                })
+              }
+              placeholder="Program"
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
           </div>
           <Select value={filters.year || "all"} onValueChange={(v) => setFilters({ ...filters, year: v === "all" ? "" : v })}>
             <SelectTrigger className="w-[100px]">
@@ -6852,12 +7277,29 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               <SelectItem value="all">All classes</SelectItem>
             </SelectContent>
           </Select>
+          <AcademicTermFilter
+            value={filters.academicTermFilter}
+            showLabel={false}
+            triggerClassName="w-[220px]"
+            onChange={(sel) =>
+              setFilters({
+                ...filters,
+                academicTermFilter: sel.value,
+                academicTermId: sel.academicTermId,
+                classStatus:
+                  sel.classStatusHint === 'all' && filters.classStatus === 'active'
+                    ? 'all'
+                    : filters.classStatus,
+              })
+            }
+          />
               <Input
             placeholder="Course Code"
             value={filters.courseCode}
             onChange={(e) => setFilters({ ...filters, courseCode: e.target.value })}
             className="w-[150px]"
               />
+          <ResetFiltersButton onClick={resetTimetableFilters} disabled={!hasTimetableFiltersApplied} />
             </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExportExcel}>
@@ -6873,8 +7315,14 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
         <CardHeader>
           <CardTitle>University Timetable</CardTitle>
           <CardDescription>
-            View and manage class schedules. Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
-            Deactivate instead of delete when students are still enrolled.
+            View and manage class schedules
+            {filters.academicTermFilter === TERM_FILTER_ACTIVE && activeTermLabel
+              ? ` for Active term “${activeTermLabel}”`
+              : filters.academicTermFilter === TERM_FILTER_ALL
+                ? ' across all terms'
+                : ' for the selected term'}
+            . Showing {filters.classStatus === 'inactive' ? 'inactive' : filters.classStatus === 'all' ? 'all' : 'active'} classes ({total}).
+            Use Status “Inactive classes” to find deactivated rows and reactivate them. Inactive schedules are read-only until reactivated.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -6904,9 +7352,9 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
               ) : (
                 classes.map((cls) => (
                   <TableRow key={cls.id} className={cls.isActive === false ? 'opacity-70 bg-muted/30' : undefined}>
-                    <TableCell>{(cls.course as any).program?.name ?? cls.course.department?.name ?? '—'}</TableCell>
-                    <TableCell>{cls.course.level}</TableCell>
-                    <TableCell>{cls.course.semester}</TableCell>
+                    <TableCell>{(cls.course as any)?.program?.name ?? cls.course?.department?.name ?? '—'}</TableCell>
+                    <TableCell>{cls.course?.level ?? '—'}</TableCell>
+                    <TableCell>{cls.course?.semester ?? '—'}</TableCell>
                     <TableCell className="font-medium">{cls.course?.name?.trim() || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{cls.course?.code || '—'}</TableCell>
                     <TableCell>
@@ -6923,21 +7371,31 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                     <TableCell className={cls.lecturer ? '' : 'text-amber-600 font-medium'}>{cls.lecturer?.name || 'Not assigned'}</TableCell>
                       <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(cls)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(cls)}
+                          disabled={cls.isActive === false}
+                          title={cls.isActive === false ? 'Inactive timetable is read-only' : 'Edit schedule'}
+                        >
                           <Edit className="h-4 w-4" />
                             </Button>
                         {cls.isActive === false ? (
-                          <Button variant="ghost" size="sm" onClick={() => handleActivateClass(cls)} className="text-[#015F2B]">
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openReactivateModal(cls)}
+                            className="text-[#015F2B] border-[#015F2B]/30 hover:bg-[#015F2B]/5"
+                            title="Reactivate class"
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Reactivate
                           </Button>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => openDeactivateModal(cls)} title="Deactivate class">
                             <EyeOff className="h-4 w-4 text-amber-700" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(cls)} className="text-red-600 hover:text-red-700" title="Delete permanently (no active enrollments)">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
                       </div>
                       </TableCell>
                     </TableRow>
@@ -7108,26 +7566,6 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       </Dialog>
       )}
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="w-[95vw] max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete Class</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete "{deletingClass?.name}"? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
         <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
@@ -7147,6 +7585,30 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             >
               {deactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reactivateOpen} onOpenChange={setReactivateOpen}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reactivate Class</DialogTitle>
+            <DialogDescription>
+              Reactivate &quot;{reactivatingClass?.name}&quot;? It will appear again in schedules and class lists.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReactivateOpen(false)} disabled={reactivating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#015F2B] hover:bg-[#014a22] text-white"
+              onClick={handleConfirmReactivate}
+              disabled={reactivating}
+            >
+              {reactivating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Reactivate
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7616,6 +8078,14 @@ function UsersTab() {
 function AcademicCalendarTab() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [readiness, setReadiness] = useState<{
+    hasActiveTerm: boolean;
+    activeTerm: { id: string; name: string } | null;
+    unscopedActiveClassCount: number;
+    activeClassCount: number;
+    activeStudentCount: number;
+  } | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
@@ -7623,6 +8093,10 @@ function AcademicCalendarTab() {
 
   useEffect(() => {
     loadEvents();
+    academicService
+      .getRolloverReadiness()
+      .then(setReadiness)
+      .catch(() => setReadiness(null));
   }, []);
 
   const loadEvents = async () => {
@@ -7691,50 +8165,152 @@ function AcademicCalendarTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search calendar..." className="pl-8" />
-        </div>
-        <Button className="bg-[#015F2B]" onClick={openAdd}><Plus className="mr-2 h-4 w-4" /> Add Event</Button>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Event / Period Name</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Start Date</TableHead>
-              <TableHead>End Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : events.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No calendar events. Click "Add Event" to create one.</TableCell></TableRow>
-            ) : (
-              events.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell className="font-medium">{event.name}</TableCell>
-                  <TableCell>{event.type}</TableCell>
-                  <TableCell>{event.startDate ? new Date(event.startDate).toLocaleDateString() : '—'}</TableCell>
-                  <TableCell>{event.endDate ? new Date(event.endDate).toLocaleDateString() : '—'}</TableCell>
-                  <TableCell><Badge>{event.status || 'Scheduled'}</Badge></TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(event)}><Edit className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteEvent(event.id)}><Trash2 className="h-4 w-4 text-red-600" /></Button>
-                    </div>
-                  </TableCell>
+      {!readiness?.hasActiveTerm ? (
+        <Alert variant="destructive" className="border-amber-300 bg-amber-50 text-amber-950 [&>svg]:text-amber-700">
+          <AlertCircle />
+          <AlertTitle>No Active academic term</AlertTitle>
+          <AlertDescription className="text-amber-900">
+            Timetable Builder, promote, and register are blocked until a term is active. Open the{' '}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => {
+                const el = document.querySelector('[data-value="terms"]') as HTMLElement | null;
+                el?.click();
+              }}
+            >
+              Terms
+            </button>{' '}
+            tab to create or activate one.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {readiness && readiness.unscopedActiveClassCount > 0 ? (
+        <Alert className="border-amber-300 bg-amber-50/80 text-amber-950">
+          <AlertCircle className="text-amber-700" />
+          <AlertTitle>Unscoped active classes</AlertTitle>
+          <AlertDescription>
+            {readiness.unscopedActiveClassCount} active class(es) are not tied to a term. Attach them
+            from the{' '}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => {
+                const el = document.querySelector('[data-value="terms"]') as HTMLElement | null;
+                el?.click();
+              }}
+            >
+              Terms
+            </button>{' '}
+            tab (Attach legacy) before closing the semester.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Tabs defaultValue="terms" className="w-full">
+        <TabsList className="bg-gray-100 h-auto w-full max-w-full flex flex-wrap items-center justify-start gap-1 p-1 [&_[data-slot=tabs-trigger]]:h-8 [&_[data-slot=tabs-trigger]]:shrink-0 [&_[data-slot=tabs-trigger]]:flex-none">
+          <TabsTrigger value="terms" data-value="terms">Terms</TabsTrigger>
+          <TabsTrigger value="rollover">Semester rollover</TabsTrigger>
+          <TabsTrigger value="events">Events</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="terms" className="mt-4">
+          <AcademicTermsPanel />
+        </TabsContent>
+
+        <TabsContent value="rollover" className="mt-4 space-y-4">
+          <AcademicRolloverWizard
+            onCompleted={() => {
+              window.dispatchEvent(new Event('academic-terms-updated'));
+              academicService.getRolloverReadiness().then(setReadiness).catch(() => setReadiness(null));
+            }}
+          />
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" className="w-full justify-between">
+                <span>
+                  Manual / repair steps (<span className="text-red-600 font-semibold">advanced</span>)
+                </span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Use the wizard above for normal semester transitions. These panels are for repair,
+                partial runs, or cohort standing fixes (selected students or entire cohort) only.
+              </p>
+              <AcademicRolloverPanel sections={['offerings', 'promote', 'repair', 'register']} />
+            </CollapsibleContent>
+          </Collapsible>
+        </TabsContent>
+
+        <TabsContent value="events" className="mt-4 space-y-4">
+          <div className="flex justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search events…" className="pl-8" />
+            </div>
+            <Button className="bg-[#015F2B]" onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" /> Add Event
+            </Button>
+          </div>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event / Period Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>End Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : events.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                      No calendar events. Click "Add Event" to create one.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell className="font-medium">{event.name}</TableCell>
+                      <TableCell>{event.type}</TableCell>
+                      <TableCell>
+                        {event.startDate ? new Date(event.startDate).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {event.endDate ? new Date(event.endDate).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge>{event.status || 'Scheduled'}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(event)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteEvent(event.id)}>
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="w-[96vw] max-w-xl max-h-[90vh] overflow-y-auto">
@@ -7878,6 +8454,7 @@ export default function AdminView({
       semester?: number;
       intakeType?: 'Day' | 'Evening' | 'Weekend';
       status?: string;
+      heldBack?: boolean;
     }
   ) => {
     try {
@@ -7889,8 +8466,9 @@ export default function AdminView({
         email: s.email,
         studentId: s.studentNumber,
         dept: s.program || '',
-        year: `Year ${s.year || 1}`,
+        year: s.year ?? 1,
         status: s.status || 'Active',
+        holdbackReason: s.holdbackReason ?? null,
         programId: s.programId,
         departmentId: s.departmentId,
         semester: s.semester,
@@ -7939,7 +8517,15 @@ export default function AdminView({
   classesProgramIntakeIdRef.current = classesProgramIntakeId;
 
   const loadClasses = useCallback(
-    async (pageNum: number, params?: { programIntakeId?: string | null; search?: string }) => {
+    async (
+      pageNum: number,
+      params?: {
+        programIntakeId?: string | null;
+        search?: string;
+        academicTermId?: string;
+        classStatus?: 'active' | 'inactive' | 'all';
+      }
+    ) => {
       try {
         const intakeFromParams = params && 'programIntakeId' in params ? params.programIntakeId : undefined;
         const programIntakeId =
@@ -7952,6 +8538,8 @@ export default function AdminView({
           limit: LIST_PAGE_SIZE,
           ...(programIntakeId ? { programIntakeId } : {}),
           ...(search && search.trim() ? { search: search.trim() } : {}),
+          ...(params?.academicTermId ? { academicTermId: params.academicTermId } : {}),
+          ...(params?.classStatus ? { classStatus: params.classStatus } : {}),
         });
         const arr = res.data ?? [];
         setClasses(

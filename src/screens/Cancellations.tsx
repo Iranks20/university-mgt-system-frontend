@@ -27,6 +27,8 @@ import { Combobox } from '@/components/ui/combobox';
 import { useRole } from '@/components/RoleProvider';
 import { cancellationsService, timetableService, substitutionsService } from '@/services';
 import type { CancellationRequest } from '@/services/cancellations.service';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 import type {
   SubstitutionRequest,
   SubstituteCandidate,
@@ -63,6 +65,7 @@ export default function Cancellations() {
   const { role } = useRole();
   const isLecturer = role === 'Lecturer';
   const isQA = role === 'QA' || role === 'Admin' || role === 'Management';
+  const { termFilter, onTermChange } = useAcademicTermFilterState();
 
   const [myRequests, setMyRequests] = useState<CancellationRequest[]>([]);
   const [pendingList, setPendingList] = useState<CancellationRequest[]>([]);
@@ -541,6 +544,22 @@ export default function Cancellations() {
           Manage cancellation and substitute lecturer requests. Cancellations remove a session from the timetable; substitutions keep the session but record a different lecturer.
         </p>
       </div>
+
+      <AcademicTermFilter
+        value={termFilter}
+        onChange={(sel) => {
+          onTermChange(sel);
+          if (sel.term?.startDate) {
+            setFilterDateFrom(sel.term.startDate);
+            setDateFrom(sel.term.startDate);
+          }
+          if (sel.term?.endDate) {
+            setFilterDateTo(sel.term.endDate);
+            setDateTo(sel.term.endDate);
+          }
+        }}
+        triggerClassName="w-[240px]"
+      />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'cancellations' | 'substitutions')}>
         <TabsList>
