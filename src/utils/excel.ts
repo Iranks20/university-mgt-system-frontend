@@ -544,6 +544,134 @@ export function exportLecturerSummaryReports(
   saveAs(blob, finalFilename);
 }
 
+export type LecturerSummaryTableRow = QALecturerSummary & { school: string };
+
+function buildLecturerSummaryFilterLine(options?: {
+  showSchool?: boolean;
+  schoolFilter?: string;
+  departmentFilter?: string;
+  classFilter?: string;
+  courseUnitFilter?: string;
+  lecturerFilter?: string;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  dateRangeLabel?: string;
+}): string {
+  const parts: string[] = [];
+  if (options?.dateFrom || options?.dateTo) {
+    const from = formatReportDateLabel(options?.dateFrom ?? null);
+    const to = formatReportDateLabel(options?.dateTo ?? null);
+    if (from && to) parts.push(`Period: ${from} – ${to}`);
+    else if (from) parts.push(`From: ${from}`);
+    else if (to) parts.push(`Until: ${to}`);
+  } else if (options?.dateRangeLabel) {
+    parts.push(`Period: ${options.dateRangeLabel}`);
+  }
+  if (options?.schoolFilter && options.schoolFilter !== 'All') {
+    parts.push(`School: ${options.schoolFilter}`);
+  }
+  if (options?.departmentFilter && options.departmentFilter !== 'All') {
+    parts.push(`Department: ${options.departmentFilter}`);
+  }
+  if (options?.classFilter && options.classFilter !== 'All') {
+    parts.push(`Class: ${options.classFilter}`);
+  }
+  if (options?.courseUnitFilter && options.courseUnitFilter !== 'All') {
+    parts.push(`Course unit: ${options.courseUnitFilter}`);
+  }
+  if (options?.lecturerFilter && options.lecturerFilter !== 'All') {
+    parts.push(`Lecturer: ${options.lecturerFilter}`);
+  }
+  parts.push(`Generated: ${formatDate(new Date())}`);
+  return parts.join(' | ');
+}
+
+export function exportLecturerSummaryTableView(
+  rows: LecturerSummaryTableRow[],
+  options?: {
+    showSchool?: boolean;
+    schoolFilter?: string;
+    departmentFilter?: string;
+    classFilter?: string;
+    courseUnitFilter?: string;
+    lecturerFilter?: string;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    dateRangeLabel?: string;
+  },
+  filename?: string
+): void {
+  const showSchool = options?.showSchool ?? true;
+  const headers = [
+    ...(showSchool ? ['SCHOOL'] : []),
+    "LECTURER'S NAME",
+    'CLASS',
+    'COURSE UNIT',
+    'NO. TAUGHT',
+    'NO. UNTAIGHT',
+    'MISSED BY LECTURER',
+    'MISSED BY STUDENTS',
+    'OTHER PROG. & HOLIDAYS',
+    'ASSIGNMENT',
+    'SDL',
+    'SUBSTITUTED',
+  ];
+  const colCount = headers.length;
+  const data: (string | number)[][] = [
+    [UNIVERSITY_NAME],
+    ['Lecturer Summary Report'],
+    [buildLecturerSummaryFilterLine(options)],
+    [],
+    headers,
+    ...rows.map((row) => [
+      ...(showSchool ? [row.school] : []),
+      row.lecturerName,
+      row.class,
+      row.courseUnit,
+      row.noTaught,
+      row.noUntaught ?? 0,
+      row.missedByLecturer ?? row.noMissedByLecturers,
+      row.missedByStudents ?? 0,
+      row.missedOtherProgramsHolidays ?? 0,
+      row.assignment ?? 0,
+      row.noSdl ?? 0,
+      row.noSubstituted ?? 0,
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [
+    ...(showSchool ? [{ wch: 24 }] : []),
+    { wch: 25 },
+    { wch: 30 },
+    { wch: 35 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 12 },
+    { wch: 8 },
+    { wch: 12 },
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lecturer Summary');
+  const deptPart =
+    options?.departmentFilter && options.departmentFilter !== 'All'
+      ? `_${options.departmentFilter.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 40)}`
+      : '';
+  const defaultFilename = `QA_Lecturer_Summary${deptPart}_${formatDate(new Date())}.xlsx`;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, filename || defaultFilename);
+}
+
 /**
  * Export School Summary Report to CSV/Excel (matches 1.csv format exactly)
  * Columns: SCHOOL, TOTAL NO. TAUGHT, NO. UNTAIGHT (preserving typo)
@@ -1267,4 +1395,280 @@ export function exportAttendanceHistoryToCSV(
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, finalFilename);
+}
+
+export type LecturerPerformanceTableRow = {
+  id: string;
+  name: string;
+  school: string;
+  department: string;
+  taught: number;
+  missed: number;
+  rate: number;
+};
+
+export type LecturerStatsDetailExport = {
+  lecturer: {
+    id: string;
+    name: string;
+    staffNumber: string | null;
+    email: string | null;
+    phone: string | null;
+    role: string | null;
+    school: string;
+    department: string;
+  };
+  summary: {
+    totalRecords: number;
+    taught: number;
+    missedByLecturer: number;
+    otherOutcomes: number;
+    rate: number;
+    rateBasis: string;
+    byComment: Record<string, number>;
+  };
+  byClass: Array<{
+    className: string;
+    courseUnit: string;
+    taught: number;
+    missedByLecturer: number;
+    total: number;
+  }>;
+  records: Array<{
+    id: string;
+    date: string | null;
+    classId: string | null;
+    className: string;
+    courseUnit: string;
+    comment: string;
+    status: string | null;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    timeForStarting: string | null;
+    timeOutForEnding: string | null;
+    duration: string | null;
+    timeLost: string | null;
+    lessonTimeout: string | null;
+    recordedBy: string | null;
+    recordedAt: string | null;
+    substituteLecturerId: string | null;
+    substituteLecturerName: string | null;
+  }>;
+  dateFrom: string | null;
+  dateTo: string | null;
+};
+
+function buildLecturerPerformanceFilterLine(options?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  dateRangeLabel?: string;
+  schoolFilter?: string;
+  departmentFilter?: string;
+  rateFilter?: string;
+  searchQuery?: string;
+}): string {
+  const parts: string[] = [];
+  if (options?.dateFrom || options?.dateTo) {
+    const from = formatReportDateLabel(options.dateFrom ?? null);
+    const to = formatReportDateLabel(options.dateTo ?? null);
+    if (from && to) parts.push(`Period: ${from} – ${to}`);
+    else if (from) parts.push(`From: ${from}`);
+    else if (to) parts.push(`Until: ${to}`);
+  } else if (options?.dateRangeLabel) {
+    parts.push(`Period: ${options.dateRangeLabel}`);
+  }
+  if (options?.schoolFilter && options.schoolFilter !== 'all') {
+    parts.push(`School: ${options.schoolFilter}`);
+  }
+  if (options?.departmentFilter && options.departmentFilter !== 'all') {
+    parts.push(`Department: ${options.departmentFilter}`);
+  }
+  if (options?.rateFilter && options.rateFilter !== 'all') {
+    parts.push(
+      options.rateFilter === '90_plus' ? 'Teaching rate: 90% and above' : 'Teaching rate: below 90%'
+    );
+  }
+  if (options?.searchQuery?.trim()) {
+    parts.push(`Search: ${options.searchQuery.trim()}`);
+  }
+  parts.push(`Generated: ${formatDate(new Date())}`);
+  return parts.join(' | ');
+}
+
+export function exportLecturerPerformanceTable(
+  rows: LecturerPerformanceTableRow[],
+  options?: {
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    dateRangeLabel?: string;
+    schoolFilter?: string;
+    departmentFilter?: string;
+    rateFilter?: string;
+    searchQuery?: string;
+  },
+  filename?: string
+): void {
+  const colCount = 7;
+  const data: (string | number)[][] = [
+    [UNIVERSITY_NAME],
+    ['Lecturer Performance Report'],
+    [buildLecturerPerformanceFilterLine(options)],
+    [],
+    ['No.', 'Lecturer Name', 'School', 'Department', 'Taught', 'Missed', 'Rate (%)'],
+    ...rows.map((row, index) => [
+      index + 1,
+      row.name,
+      row.school,
+      row.department,
+      row.taught,
+      row.missed,
+      `${row.rate.toFixed(1)}%`,
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [
+    { wch: 6 },
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 24 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 12 },
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lecturer Performance');
+  const defaultFilename = `Lecturer_Performance_${formatDate(new Date())}.xlsx`;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, filename || defaultFilename);
+}
+
+export function exportLecturerStatsDetailReport(
+  detail: LecturerStatsDetailExport,
+  commentLabel: (comment: string) => string,
+  filename?: string
+): void {
+  const period =
+    detail.dateFrom && detail.dateTo
+      ? `${formatReportDateLabel(detail.dateFrom)} – ${formatReportDateLabel(detail.dateTo)}`
+      : 'All time';
+
+  const summaryData: (string | number)[][] = [
+    [UNIVERSITY_NAME],
+    ['Lecturer Performance Details'],
+    [`${detail.lecturer.name} | ${period} | Generated: ${formatDate(new Date())}`],
+    [],
+    ['Field', 'Value'],
+    ['Name', detail.lecturer.name],
+    ['Staff number', detail.lecturer.staffNumber || '—'],
+    ['Email', detail.lecturer.email || '—'],
+    ['Phone', detail.lecturer.phone || '—'],
+    ['Role', detail.lecturer.role || '—'],
+    ['School', detail.lecturer.school],
+    ['Department', detail.lecturer.department],
+    [],
+    ['Metric', 'Value'],
+    ['Total records', detail.summary.totalRecords],
+    ['Taught', detail.summary.taught],
+    ['Missed by lecturer', detail.summary.missedByLecturer],
+    ['Other outcomes', detail.summary.otherOutcomes],
+    ['Teaching rate (%)', `${detail.summary.rate.toFixed(1)}%`],
+    ['Rate basis', detail.summary.rateBasis || '—'],
+    [],
+    ['Outcome', 'Count'],
+    ...Object.entries(detail.summary.byComment)
+      .sort((a, b) => b[1] - a[1])
+      .map(([comment, count]) => [commentLabel(comment), count]),
+  ];
+
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+  summaryWs['!cols'] = [{ wch: 28 }, { wch: 40 }];
+  summaryWs['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } },
+  ];
+
+  const byClassData: (string | number)[][] = [
+    ['Class', 'Course unit', 'Taught', 'Missed by lecturer', 'Total'],
+    ...detail.byClass.map((row) => [
+      row.className,
+      row.courseUnit,
+      row.taught,
+      row.missedByLecturer,
+      row.total,
+    ]),
+  ];
+  const byClassWs = XLSX.utils.aoa_to_sheet(byClassData);
+  byClassWs['!cols'] = [{ wch: 24 }, { wch: 32 }, { wch: 10 }, { wch: 18 }, { wch: 10 }];
+
+  const recordsData: (string | number)[][] = [
+    [
+      'Date',
+      'Class',
+      'Course unit',
+      'Outcome',
+      'Status',
+      'Scheduled start',
+      'Scheduled end',
+      'Check-in',
+      'Check-out',
+      'Duration',
+      'Time lost',
+      'Substitute',
+      'Recorded by',
+      'Recorded at',
+    ],
+    ...detail.records.map((row) => [
+      row.date || '—',
+      row.className,
+      row.courseUnit,
+      commentLabel(row.comment),
+      row.status || '—',
+      row.timeForStarting || '—',
+      row.timeOutForEnding || '—',
+      row.checkInTime || '—',
+      row.checkOutTime || '—',
+      row.duration || '—',
+      row.timeLost || '—',
+      row.substituteLecturerName || '—',
+      row.recordedBy || '—',
+      row.recordedAt || '—',
+    ]),
+  ];
+  const recordsWs = XLSX.utils.aoa_to_sheet(recordsData);
+  recordsWs['!cols'] = [
+    { wch: 12 },
+    { wch: 20 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 18 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+  XLSX.utils.book_append_sheet(wb, byClassWs, 'By Class');
+  XLSX.utils.book_append_sheet(wb, recordsWs, 'Lecture Records');
+
+  const safeName = detail.lecturer.name.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 40);
+  const defaultFilename = `Lecturer_Details_${safeName}_${formatDate(new Date())}.xlsx`;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, filename || defaultFilename);
 }
