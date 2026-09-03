@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -337,17 +338,22 @@ export default function ManagementStudentPerformance() {
                   <SelectItem value="Critical">Critical</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={programFilter} onValueChange={setProgramFilter}>
-                <SelectTrigger className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Program" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Programs</SelectItem>
-                  {Array.from(new Set(studentPerformance.map(s => s.program))).map(prog => (
-                    <SelectItem key={prog} value={prog}>{prog}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                className="w-full md:w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Programs' },
+                  ...Array.from(new Set(studentPerformance.map((s) => s.program))).map((prog) => ({
+                    value: prog,
+                    label: prog,
+                  })),
+                ]}
+                value={programFilter}
+                onValueChange={(v) => setProgramFilter(v || 'All')}
+                placeholder="Program"
+                searchPlaceholder="Search programs..."
+                emptyText="No program found."
+                initialDisplayCount={50}
+              />
             </div>
             <div className="flex flex-col md:flex-row gap-4">
               <Select value={yearFilter} onValueChange={setYearFilter}>

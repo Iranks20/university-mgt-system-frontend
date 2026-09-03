@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { studentService, reportService, settingsService } from '@/services';
@@ -282,17 +283,19 @@ export default function ManagementStudentDetails() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <Select value={programFilter} onValueChange={setProgramFilter}>
-              <SelectTrigger className="w-full md:w-[200px]">
-                <SelectValue placeholder="Program" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="All">All Programs</SelectItem>
-                {programCodes.map(code => (
-                  <SelectItem key={code} value={code}>{code}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              className="w-full md:w-[200px]"
+              options={[
+                { value: 'All', label: 'All Programs' },
+                ...programCodes.map((code) => ({ value: code, label: code })),
+              ]}
+              value={programFilter}
+              onValueChange={(v) => setProgramFilter(v || 'All')}
+              placeholder="Program"
+              searchPlaceholder="Search programs..."
+              emptyText="No program found."
+              initialDisplayCount={50}
+            />
             <Select value={yearFilter} onValueChange={setYearFilter}>
               <SelectTrigger className="w-full md:w-[150px]">
                 <SelectValue placeholder="Year" />
