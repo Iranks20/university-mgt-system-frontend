@@ -188,6 +188,7 @@ export const qaService = {
       className?: string;
       courseUnit?: string;
       lecturerName?: string;
+      department?: string;
     }
   ): Promise<QALecturerSummaryReport[]> => {
     try {
@@ -198,6 +199,7 @@ export const qaService = {
       if (params?.className) query.className = params.className;
       if (params?.courseUnit) query.courseUnit = params.courseUnit;
       if (params?.lecturerName) query.lecturerName = params.lecturerName;
+      if (params?.department) query.department = params.department;
       const response = await api.get<QALecturerSummaryReport[]>('/qa/lecturer-summary-report', query);
       return Array.isArray(response) ? response : (response as { data?: QALecturerSummaryReport[] })?.data ?? [];
     } catch (error) {

@@ -23,7 +23,13 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { timetableService } from '@/services/timetable.service';
 import { studentService } from '@/services/student.service';
-import { exportClassAttendanceSummaryReport, exportCourseWiseAttendanceSummaryReport } from '@/utils/excel';
+import {
+  exportClassAttendanceSummaryReport,
+  exportCourseWiseAttendanceSummaryReport,
+  exportLecturerPerformanceTable,
+  exportLecturerStatsDetailReport,
+} from '@/utils/excel';
+import { printLecturerStatsDetailReport } from '@/lib/lecturer-stats-print';
 import WeeklyAttendanceMatrixPanel from '@/features/student/components/WeeklyAttendanceMatrixPanel';
 import {
   formatWeightedAttendedCount,
@@ -161,6 +167,9 @@ export default function Reports() {
   const [courseWiseReport, setCourseWiseReport] = useState<CourseWiseAttendanceSummaryReport | null>(null);
   const [courseWiseLoading, setCourseWiseLoading] = useState(false);
   const [courseWiseExporting, setCourseWiseExporting] = useState(false);
+  const [lecturerExporting, setLecturerExporting] = useState(false);
+  const [lecturerDetailExporting, setLecturerDetailExporting] = useState(false);
+  const [lecturerDetailPdfExporting, setLecturerDetailPdfExporting] = useState(false);
   const [exportAllLoading, setExportAllLoading] = useState(false);
   const [newReportLoading, setNewReportLoading] = useState(false);
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
@@ -662,6 +671,74 @@ export default function Reports() {
     const start = (classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE;
     return rows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
   }, [classAttendReport, classAttendPage]);
+
+  const getLecturerDateRangeLabel = (): string => {
+    if (reportsScopedDates?.dateFrom || reportsScopedDates?.dateTo) {
+      const from = reportsScopedDates.dateFrom ?? '';
+      const to = reportsScopedDates.dateTo ?? '';
+      return from && to ? `${from} to ${to}` : from || to || 'Selected term';
+    }
+    if (lecturerDateRange === 'all') return 'All time';
+    if (lecturerDateRange === 'last_30_days') return 'Last 30 days';
+    return 'Last 3 months';
+  };
+
+  const handleExportLecturerPerformanceTable = () => {
+    if (filteredLecturers.length === 0) {
+      toast.warning('No lecturer data to export for the selected filters.');
+      return;
+    }
+    setLecturerExporting(true);
+    try {
+      const params = getLecturerDateParams();
+      exportLecturerPerformanceTable(filteredLecturers, {
+        dateFrom: params?.dateFrom ?? null,
+        dateTo: params?.dateTo ?? null,
+        dateRangeLabel: getLecturerDateRangeLabel(),
+        schoolFilter,
+        departmentFilter: lecturerDeptFilter,
+        rateFilter: lecturerRateFilter,
+        searchQuery: lecturerSearch,
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setLecturerExporting(false);
+    }
+  };
+
+  const handleExportLecturerDetailExcel = () => {
+    if (!lecturerDetail) {
+      toast.warning('Lecturer details are still loading.');
+      return;
+    }
+    setLecturerDetailExporting(true);
+    try {
+      exportLecturerStatsDetailReport(lecturerDetail, lectureCommentLabel);
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setLecturerDetailExporting(false);
+    }
+  };
+
+  const handleExportLecturerDetailPdf = () => {
+    if (!lecturerDetail) {
+      toast.warning('Lecturer details are still loading.');
+      return;
+    }
+    setLecturerDetailPdfExporting(true);
+    try {
+      printLecturerStatsDetailReport(lecturerDetail, lectureCommentLabel);
+      toast.success('Print dialog opened — choose Save as PDF to download');
+    } catch {
+      toast.error('Could not open the print dialog. Please try again.');
+    } finally {
+      setLecturerDetailPdfExporting(false);
+    }
+  };
 
   const openLecturerDetails = async (lecturer: {
     id: string;
@@ -1502,6 +1579,14 @@ export default function Reports() {
                        Clear filters
                      </Button>
                    )}
+                   <Button
+                     variant="outline"
+                     onClick={handleExportLecturerPerformanceTable}
+                     disabled={lecturerExporting || lecturersLoading || filteredLecturers.length === 0}
+                   >
+                     <Download className="mr-2 h-4 w-4" />
+                     {lecturerExporting ? 'Exporting…' : 'Export Excel'}
+                   </Button>
                  </div>
                  <div className="rounded-md border">
                  <Table>
@@ -2347,15 +2432,39 @@ export default function Reports() {
         >
           <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Lecturer Performance Details</DialogTitle>
-              <DialogDescription>
-                Full lecture evidence for {selectedLecturer?.name}
-                {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
-                  ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
-                  : lecturerDateRange === 'all'
-                    ? ' · all time'
-                    : ''}
-              </DialogDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
+                <div>
+                  <DialogTitle>Lecturer Performance Details</DialogTitle>
+                  <DialogDescription>
+                    Full lecture evidence for {selectedLecturer?.name}
+                    {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
+                      ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
+                      : lecturerDateRange === 'all'
+                        ? ' · all time'
+                        : ''}
+                  </DialogDescription>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportLecturerDetailExcel}
+                    disabled={lecturerDetailLoading || lecturerDetailExporting || !lecturerDetail}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {lecturerDetailExporting ? 'Exporting…' : 'Export Excel'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportLecturerDetailPdf}
+                    disabled={lecturerDetailLoading || lecturerDetailPdfExporting || !lecturerDetail}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    {lecturerDetailPdfExporting ? 'Opening…' : 'Save as PDF'}
+                  </Button>
+                </div>
+              </div>
             </DialogHeader>
             {selectedLecturer && (
               <div className="space-y-6 py-2">
