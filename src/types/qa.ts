@@ -85,6 +85,24 @@ export interface QALecturerSummaryReport {
   lecturers: QALecturerSummary[];
 }
 
+export interface QACourseUnitSummary {
+  lecturerName: string;
+  class: string;
+  courseUnit: string;
+  expectedLectures: number;
+  noTaught: number;
+  physicalClasses: number;
+  onlineLectures: number;
+  noSdl: number;
+  assignment: number;
+  missedByLecturer: number;
+  missedByStudents: number;
+  missedOtherProgramsHolidays: number;
+  totalLearningActivity: number;
+  totalUntaught: number;
+  totalMissed: number;
+}
+
 /**
  * Legacy type for backward compatibility
  * @deprecated Use QALectureRecord instead

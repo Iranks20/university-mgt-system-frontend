@@ -6,4 +6,5 @@
 export * from './components/QAAttendanceForm';
 export * from './components/QAAttendanceTable';
 export * from './components/QALecturerSummary';
+export * from './components/QACourseUnitSummary';
 export * from './components/QASchoolSummary';
