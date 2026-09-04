@@ -16,7 +16,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { QASchoolSummary, QALecturerSummary } from '@/features/qa';
+import { QASchoolSummary, QALecturerSummary, QACourseUnitSummary } from '@/features/qa';
 import { analyticsService } from '@/services/analytics.service';
 import { reportService } from '@/services/report.service';
 import { qaService } from '@/services/qa.service';
@@ -1101,6 +1101,7 @@ export default function Reports() {
             <TabsTrigger value="reconciliation">Teaching Reconciliation</TabsTrigger>
             <TabsTrigger value="school-summary">School Summary</TabsTrigger>
             <TabsTrigger value="lecturer-summary">Lecturer Summary</TabsTrigger>
+            <TabsTrigger value="course-unit-summary">Course Unit Summary</TabsTrigger>
             <TabsTrigger value="schools">School Performance</TabsTrigger>
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
@@ -1203,6 +1204,10 @@ export default function Reports() {
           {/* LECTURER SUMMARY TAB - Matches 2.csv format */}
           <TabsContent value="lecturer-summary" className="space-y-4">
             <QALecturerSummary scopedDateRange={reportsScopedDates} />
+          </TabsContent>
+
+          <TabsContent value="course-unit-summary" className="space-y-4">
+            <QACourseUnitSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* OVERVIEW TAB */}
