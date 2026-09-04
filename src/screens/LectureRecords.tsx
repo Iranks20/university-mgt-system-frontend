@@ -75,7 +75,7 @@ export default function LectureRecords() {
   const [totalRecords, setTotalRecords] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [commentFilteron , setCommentFilter] = useState('All');
+  const [commentFilter, setCommentFilter] = useState('All');
   const [lecturerFilter, setLecturerFilter] = useState('All');
   const [schoolFilter, setSchoolFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
