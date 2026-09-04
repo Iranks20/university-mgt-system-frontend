@@ -9,7 +9,7 @@
 
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord } from '@/types/qa';
+import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
 import { mapImportStatusToComment, normalizeLectureComment } from '@/lib/lecture-outcome';
 import { deliveryModeLabel } from '@/lib/delivery-mode';
 import type {
@@ -665,6 +665,95 @@ export function exportLecturerSummaryTableView(
       ? `_${options.departmentFilter.replace(/[<>:"/\\|?*]+/g, '_').slice(0, 40)}`
       : '';
   const defaultFilename = `QA_Lecturer_Summary${deptPart}_${formatDate(new Date())}.xlsx`;
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, filename || defaultFilename);
+}
+
+export function exportCourseUnitSummaryReport(
+  rows: QACourseUnitSummary[],
+  options?: {
+    schoolFilter?: string;
+    departmentFilter?: string;
+    classFilter?: string;
+    courseUnitFilter?: string;
+    lecturerFilter?: string;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    dateRangeLabel?: string;
+  },
+  filename?: string
+): void {
+  const headers = [
+    "LECTURER'S NAME",
+    'CLASS',
+    'COURSE UNIT',
+    'EXPECTED LECTURES',
+    'NO. TAUGHT',
+    'PHYSICAL CLASSES',
+    'ONLINE LECTURES',
+    'No. OF SDL',
+    'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+    "NO. MISSED BY LECTURER'S",
+    'NO. MISSED BY STUDENTS',
+    'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+    'TOTAL LEARNING ACTIVITY',
+    'TOTAL UNTAUGHT',
+    'TOTAL MISSED',
+  ];
+  const colCount = headers.length;
+  const data: (string | number)[][] = [
+    [UNIVERSITY_NAME],
+    ['Course Unit Summary Report'],
+    [buildLecturerSummaryFilterLine(options)],
+    [],
+    headers,
+    ...rows.map((row) => [
+      row.lecturerName,
+      row.class,
+      row.courseUnit,
+      row.expectedLectures,
+      row.noTaught,
+      row.physicalClasses,
+      row.onlineLectures,
+      row.noSdl,
+      row.assignment,
+      row.missedByLecturer,
+      row.missedByStudents,
+      row.missedOtherProgramsHolidays,
+      row.totalLearningActivity,
+      row.totalUntaught,
+      row.totalMissed,
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Course Unit Summary');
+  const defaultFilename = `QA_Course_Unit_Summary_${formatDate(new Date())}.xlsx`;
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, filename || defaultFilename);

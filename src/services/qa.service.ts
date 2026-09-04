@@ -1,5 +1,5 @@
 import api from '@/lib/api';
-import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord } from '@/types/qa';
+import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
 import { isLectureTaught, isLectureUntaught, mapImportStatusToComment } from '@/lib/lecture-outcome';
 import type { DeliveryMode } from '@/lib/delivery-mode';
 import { parseTimeLostToMinutes, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
@@ -204,6 +204,34 @@ export const qaService = {
       return Array.isArray(response) ? response : (response as { data?: QALecturerSummaryReport[] })?.data ?? [];
     } catch (error) {
       console.error('Error fetching lecturer summary report:', error);
+      return [];
+    }
+  },
+
+  getCourseUnitSummaryReport: async (
+    school?: string,
+    params?: {
+      dateFrom?: string;
+      dateTo?: string;
+      className?: string;
+      courseUnit?: string;
+      lecturerName?: string;
+      department?: string;
+    }
+  ): Promise<QACourseUnitSummary[]> => {
+    try {
+      const query: Record<string, string> = {};
+      if (school) query.school = school;
+      if (params?.dateFrom) query.dateFrom = params.dateFrom;
+      if (params?.dateTo) query.dateTo = params.dateTo;
+      if (params?.className) query.className = params.className;
+      if (params?.courseUnit) query.courseUnit = params.courseUnit;
+      if (params?.lecturerName) query.lecturerName = params.lecturerName;
+      if (params?.department) query.department = params.department;
+      const response = await api.get<QACourseUnitSummary[]>('/qa/course-unit-summary-report', query);
+      return Array.isArray(response) ? response : (response as { data?: QACourseUnitSummary[] })?.data ?? [];
+    } catch (error) {
+      console.error('Error fetching course unit summary report:', error);
       return [];
     }
   },
