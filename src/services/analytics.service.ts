@@ -234,7 +234,16 @@ export const analyticsService = {
     summary: {
       totalRecords: number;
       taught: number;
+      physicalClasses: number;
+      onlineLectures: number;
       missedByLecturer: number;
+      missedByStudents: number;
+      missedOtherProgramsHolidays: number;
+      noSdl: number;
+      assignment: number;
+      totalLearningActivity: number;
+      totalUntaught: number;
+      totalMissed: number;
       otherOutcomes: number;
       rate: number;
       rateBasis: string;
@@ -245,6 +254,8 @@ export const analyticsService = {
       courseUnit: string;
       taught: number;
       missedByLecturer: number;
+      totalMissed: number;
+      totalUntaught: number;
       total: number;
     }>;
     records: Array<{
@@ -254,6 +265,7 @@ export const analyticsService = {
       className: string;
       courseUnit: string;
       comment: string;
+      deliveryMode?: string | null;
       status: string | null;
       checkInTime: string | null;
       checkOutTime: string | null;

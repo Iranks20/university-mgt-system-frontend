@@ -1251,7 +1251,7 @@ export default function Reports() {
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                  <CardTitle className="text-sm font-medium">Missed Classes</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total Untaught</CardTitle>
                   <AlertCircle className="h-4 w-4 text-red-600" />
                 </CardHeader>
                 <CardContent>
@@ -1483,7 +1483,7 @@ export default function Reports() {
                       )}
                       <TableHead className="text-right">Sessions Recorded</TableHead>
                       <TableHead className="text-right">Classes Taught</TableHead>
-                      <TableHead className="text-right">Classes Missed</TableHead>
+                      <TableHead className="text-right">Total Untaught</TableHead>
                       <TableHead className="text-right">Performance</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1601,7 +1601,7 @@ export default function Reports() {
                        <TableHead>School</TableHead>
                        <TableHead>Department</TableHead>
                        <TableHead className="text-right">Taught</TableHead>
-                       <TableHead className="text-right">Missed</TableHead>
+                       <TableHead className="text-right">Total Missed</TableHead>
                        <TableHead className="text-right">Rate</TableHead>
                        <TableHead className="text-right">Actions</TableHead>
                      </TableRow>
@@ -2518,27 +2518,61 @@ export default function Reports() {
                       </Card>
                       <Card>
                         <CardContent className="pt-4">
-                          <p className="text-xs text-muted-foreground">Taught</p>
+                          <p className="text-xs text-muted-foreground">No. Taught (physical + online)</p>
                           <p className="text-xl font-bold text-[#015F2B]">{lecturerDetail?.summary.taught ?? selectedLecturer.taught}</p>
                         </CardContent>
                       </Card>
                       <Card>
                         <CardContent className="pt-4">
-                          <p className="text-xs text-muted-foreground">Missed by lecturer</p>
-                          <p className="text-xl font-bold text-red-600">{lecturerDetail?.summary.missedByLecturer ?? selectedLecturer.missed}</p>
+                          <p className="text-xs text-muted-foreground">Physical / Online</p>
+                          <p className="text-xl font-bold">
+                            {lecturerDetail
+                              ? `${lecturerDetail.summary.physicalClasses} / ${lecturerDetail.summary.onlineLectures}`
+                              : '—'}
+                          </p>
                         </CardContent>
                       </Card>
                       <Card>
                         <CardContent className="pt-4">
-                          <p className="text-xs text-muted-foreground">Other outcomes</p>
-                          <p className="text-xl font-bold">{lecturerDetail?.summary.otherOutcomes ?? '—'}</p>
+                          <p className="text-xs text-muted-foreground">Total learning activity</p>
+                          <p className="text-xl font-bold">{lecturerDetail?.summary.totalLearningActivity ?? '—'}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Total untaught</p>
+                          <p className="text-xl font-bold">{lecturerDetail?.summary.totalUntaught ?? '—'}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Total missed</p>
+                          <p className="text-xl font-bold text-red-600">
+                            {lecturerDetail?.summary.totalMissed ?? selectedLecturer.missed}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Missed by lecturer</p>
+                          <p className="text-xl font-bold text-red-600">{lecturerDetail?.summary.missedByLecturer ?? '—'}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">SDL / Assignment</p>
+                          <p className="text-xl font-bold">
+                            {lecturerDetail
+                              ? `${lecturerDetail.summary.noSdl} / ${lecturerDetail.summary.assignment}`
+                              : '—'}
+                          </p>
                         </CardContent>
                       </Card>
                     </div>
 
                     {lecturerDetail?.summary.rateBasis && (
                       <p className="text-xs text-muted-foreground">
-                        Rate calculation: {lecturerDetail.summary.rateBasis}. Other outcomes (SDL, assignment, pending, etc.) are listed below but excluded from the rate denominator.
+                        Rate calculation: {lecturerDetail.summary.rateBasis}.
                       </p>
                     )}
 
@@ -2564,7 +2598,8 @@ export default function Reports() {
                                 <TableHead>Class</TableHead>
                                 <TableHead>Course unit</TableHead>
                                 <TableHead className="text-right">Taught</TableHead>
-                                <TableHead className="text-right">Missed</TableHead>
+                                <TableHead className="text-right">Total Missed</TableHead>
+                                <TableHead className="text-right">Total Untaught</TableHead>
                                 <TableHead className="text-right">Total</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -2574,7 +2609,8 @@ export default function Reports() {
                                   <TableCell>{row.className}</TableCell>
                                   <TableCell>{row.courseUnit}</TableCell>
                                   <TableCell className="text-right">{row.taught}</TableCell>
-                                  <TableCell className="text-right text-red-600">{row.missedByLecturer}</TableCell>
+                                  <TableCell className="text-right text-red-600">{row.totalMissed}</TableCell>
+                                  <TableCell className="text-right">{row.totalUntaught}</TableCell>
                                   <TableCell className="text-right">{row.total}</TableCell>
                                 </TableRow>
                               ))}

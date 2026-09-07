@@ -412,12 +412,16 @@ export function exportLecturerSummaryReport(
     'CLASS',
     'COURSE UNIT',
     'NO. TAUGHT',
-    'NO. UNTAIGHT',
-    'MISSED BY LECTURER',
-    'MISSED BY STUDENTS',
-    'OTHER PROG. & HOLIDAYS',
-    'ASSIGNMENT',
-    'SDL',
+    'PHYSICAL CLASSES',
+    'ONLINE LECTURES',
+    'No. OF SDL',
+    'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+    "NO. MISSED BY LECTURER'S",
+    'NO. MISSED BY STUDENTS',
+    'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+    'TOTAL LEARNING ACTIVITY',
+    'TOTAL UNTAUGHT',
+    'TOTAL MISSED',
     'SUBSTITUTED',
   ];
   const data: (string | number)[][] = [[report.school], headers];
@@ -428,12 +432,16 @@ export function exportLecturerSummaryReport(
       lecturer.class,
       lecturer.courseUnit,
       lecturer.noTaught,
-      lecturer.noUntaught ?? 0,
+      lecturer.physicalClasses ?? 0,
+      lecturer.onlineLectures ?? 0,
+      lecturer.noSdl ?? 0,
+      lecturer.assignment ?? 0,
       lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
       lecturer.missedByStudents ?? 0,
       lecturer.missedOtherProgramsHolidays ?? 0,
-      lecturer.assignment ?? 0,
-      lecturer.noSdl ?? 0,
+      lecturer.totalLearningActivity ?? 0,
+      lecturer.noUntaught ?? 0,
+      lecturer.totalMissed ?? 0,
       lecturer.noSubstituted ?? 0,
     ]);
 
@@ -450,11 +458,15 @@ export function exportLecturerSummaryReport(
     { wch: 35 },
     { wch: 12 },
     { wch: 14 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 22 },
+    { wch: 14 },
     { wch: 12 },
-    { wch: 8 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
     { wch: 12 },
   ];
 
@@ -486,12 +498,16 @@ export function exportLecturerSummaryReports(
       'CLASS',
       'COURSE UNIT',
       'NO. TAUGHT',
-      'NO. UNTAIGHT',
-      'MISSED BY LECTURER',
-      'MISSED BY STUDENTS',
-      'OTHER PROG. & HOLIDAYS',
-      'ASSIGNMENT',
-      'SDL',
+      'PHYSICAL CLASSES',
+      'ONLINE LECTURES',
+      'No. OF SDL',
+      'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+      "NO. MISSED BY LECTURER'S",
+      'NO. MISSED BY STUDENTS',
+      'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+      'TOTAL LEARNING ACTIVITY',
+      'TOTAL UNTAUGHT',
+      'TOTAL MISSED',
       'SUBSTITUTED',
     ];
     const data: (string | number)[][] = [
@@ -505,12 +521,16 @@ export function exportLecturerSummaryReports(
         lecturer.class,
         lecturer.courseUnit,
         lecturer.noTaught,
-        lecturer.noUntaught ?? 0,
+        lecturer.physicalClasses ?? 0,
+        lecturer.onlineLectures ?? 0,
+        lecturer.noSdl ?? 0,
+        lecturer.assignment ?? 0,
         lecturer.missedByLecturer ?? lecturer.noMissedByLecturers,
         lecturer.missedByStudents ?? 0,
         lecturer.missedOtherProgramsHolidays ?? 0,
-        lecturer.assignment ?? 0,
-        lecturer.noSdl ?? 0,
+        lecturer.totalLearningActivity ?? 0,
+        lecturer.noUntaught ?? 0,
+        lecturer.totalMissed ?? 0,
         lecturer.noSubstituted ?? 0,
       ]);
       if (index < report.lecturers.length - 1) {
@@ -525,11 +545,15 @@ export function exportLecturerSummaryReports(
       { wch: 35 },
       { wch: 12 },
       { wch: 14 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 22 },
+      { wch: 14 },
       { wch: 12 },
-      { wch: 8 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 14 },
       { wch: 12 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, report.school.substring(0, 31));
@@ -606,12 +630,16 @@ export function exportLecturerSummaryTableView(
     'CLASS',
     'COURSE UNIT',
     'NO. TAUGHT',
-    'NO. UNTAIGHT',
-    'MISSED BY LECTURER',
-    'MISSED BY STUDENTS',
-    'OTHER PROG. & HOLIDAYS',
-    'ASSIGNMENT',
-    'SDL',
+    'PHYSICAL CLASSES',
+    'ONLINE LECTURES',
+    'No. OF SDL',
+    'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+    "NO. MISSED BY LECTURER'S",
+    'NO. MISSED BY STUDENTS',
+    'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+    'TOTAL LEARNING ACTIVITY',
+    'TOTAL UNTAUGHT',
+    'TOTAL MISSED',
     'SUBSTITUTED',
   ];
   const colCount = headers.length;
@@ -627,12 +655,16 @@ export function exportLecturerSummaryTableView(
       row.class,
       row.courseUnit,
       row.noTaught,
-      row.noUntaught ?? 0,
+      row.physicalClasses ?? 0,
+      row.onlineLectures ?? 0,
+      row.noSdl ?? 0,
+      row.assignment ?? 0,
       row.missedByLecturer ?? row.noMissedByLecturers,
       row.missedByStudents ?? 0,
       row.missedOtherProgramsHolidays ?? 0,
-      row.assignment ?? 0,
-      row.noSdl ?? 0,
+      row.totalLearningActivity ?? 0,
+      row.noUntaught ?? 0,
+      row.totalMissed ?? 0,
       row.noSubstituted ?? 0,
     ]),
   ];
@@ -645,11 +677,15 @@ export function exportLecturerSummaryTableView(
     { wch: 35 },
     { wch: 12 },
     { wch: 14 },
-    { wch: 18 },
-    { wch: 18 },
-    { wch: 22 },
+    { wch: 14 },
     { wch: 12 },
-    { wch: 8 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
     { wch: 12 },
   ];
   ws['!merges'] = [
@@ -770,35 +806,47 @@ export function exportSchoolSummaryReport(
   const data = [
     [
       'SCHOOL',
-      'TOTAL NO. TAUGHT',
-      'NO. UNTAIGHT',
-      'MISSED BY LECTURER',
-      'MISSED BY STUDENTS',
-      'OTHER PROGRAMS & HOLIDAYS',
-      'ASSIGNMENT',
-      'SDL',
+      'NO. TAUGHT',
+      'PHYSICAL CLASSES',
+      'ONLINE LECTURES',
+      'No. OF SDL',
+      'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+      "NO. MISSED BY LECTURER'S",
+      'NO. MISSED BY STUDENTS',
+      'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+      'TOTAL LEARNING ACTIVITY',
+      'TOTAL UNTAUGHT',
+      'TOTAL MISSED',
       'SUBSTITUTED',
     ],
     ...summaries.map((summary) => [
       summary.school,
       summary.totalNoTaught,
-      summary.noUntaught,
+      summary.physicalClasses ?? 0,
+      summary.onlineLectures ?? 0,
+      summary.noSdl ?? 0,
+      summary.assignment ?? 0,
       summary.missedByLecturer ?? 0,
       summary.missedByStudents ?? 0,
       summary.missedOtherProgramsHolidays ?? 0,
-      summary.assignment ?? 0,
-      summary.noSdl ?? 0,
+      summary.totalLearningActivity ?? 0,
+      summary.noUntaught,
+      summary.totalMissed ?? 0,
       summary.noSubstituted ?? 0,
     ]),
     [
       'TOTAL',
       summaries.reduce((sum, s) => sum + s.totalNoTaught, 0),
-      summaries.reduce((sum, s) => sum + s.noUntaught, 0),
+      summaries.reduce((sum, s) => sum + (s.physicalClasses ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.onlineLectures ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSdl ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.assignment ?? 0), 0),
       summaries.reduce((sum, s) => sum + (s.missedByLecturer ?? 0), 0),
       summaries.reduce((sum, s) => sum + (s.missedByStudents ?? 0), 0),
       summaries.reduce((sum, s) => sum + (s.missedOtherProgramsHolidays ?? 0), 0),
-      summaries.reduce((sum, s) => sum + (s.assignment ?? 0), 0),
-      summaries.reduce((sum, s) => sum + (s.noSdl ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.totalLearningActivity ?? 0), 0),
+      summaries.reduce((sum, s) => sum + s.noUntaught, 0),
+      summaries.reduce((sum, s) => sum + (s.totalMissed ?? 0), 0),
       summaries.reduce((sum, s) => sum + (s.noSubstituted ?? 0), 0),
     ],
   ];
@@ -807,14 +855,18 @@ export function exportSchoolSummaryReport(
 
   ws['!cols'] = [
     { wch: 25 },
-    { wch: 18 },
-    { wch: 15 },
-    { wch: 20 },
-    { wch: 20 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
     { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
     { wch: 14 },
-    { wch: 10 },
     { wch: 14 },
+    { wch: 12 },
   ];
 
   const wb = XLSX.utils.book_new();
@@ -1501,7 +1553,16 @@ export type LecturerStatsDetailExport = {
   summary: {
     totalRecords: number;
     taught: number;
+    physicalClasses: number;
+    onlineLectures: number;
     missedByLecturer: number;
+    missedByStudents: number;
+    missedOtherProgramsHolidays: number;
+    noSdl: number;
+    assignment: number;
+    totalLearningActivity: number;
+    totalUntaught: number;
+    totalMissed: number;
     otherOutcomes: number;
     rate: number;
     rateBasis: string;
@@ -1512,6 +1573,8 @@ export type LecturerStatsDetailExport = {
     courseUnit: string;
     taught: number;
     missedByLecturer: number;
+    totalMissed: number;
+    totalUntaught: number;
     total: number;
   }>;
   records: Array<{
@@ -1521,6 +1584,7 @@ export type LecturerStatsDetailExport = {
     className: string;
     courseUnit: string;
     comment: string;
+    deliveryMode?: string | null;
     status: string | null;
     checkInTime: string | null;
     checkOutTime: string | null;
@@ -1594,7 +1658,7 @@ export function exportLecturerPerformanceTable(
     ['Lecturer Performance Report'],
     [buildLecturerPerformanceFilterLine(options)],
     [],
-    ['No.', 'Lecturer Name', 'School', 'Department', 'Taught', 'Missed', 'Rate (%)'],
+    ['No.', 'Lecturer Name', 'School', 'Department', 'Taught', 'Total Missed', 'Rate (%)'],
     ...rows.map((row, index) => [
       index + 1,
       row.name,
@@ -1656,9 +1720,17 @@ export function exportLecturerStatsDetailReport(
     [],
     ['Metric', 'Value'],
     ['Total records', detail.summary.totalRecords],
-    ['Taught', detail.summary.taught],
+    ['No. Taught (physical + online)', detail.summary.taught],
+    ['Physical classes', detail.summary.physicalClasses],
+    ['Online lectures', detail.summary.onlineLectures],
+    ['SDL', detail.summary.noSdl],
+    ['Assignment', detail.summary.assignment],
+    ['Total learning activity', detail.summary.totalLearningActivity],
+    ['Total untaught', detail.summary.totalUntaught],
+    ['Total missed', detail.summary.totalMissed],
     ['Missed by lecturer', detail.summary.missedByLecturer],
-    ['Other outcomes', detail.summary.otherOutcomes],
+    ['Missed by students', detail.summary.missedByStudents],
+    ['Missed other programs/holidays', detail.summary.missedOtherProgramsHolidays],
     ['Teaching rate (%)', `${detail.summary.rate.toFixed(1)}%`],
     ['Rate basis', detail.summary.rateBasis || '—'],
     [],
@@ -1677,17 +1749,18 @@ export function exportLecturerStatsDetailReport(
   ];
 
   const byClassData: (string | number)[][] = [
-    ['Class', 'Course unit', 'Taught', 'Missed by lecturer', 'Total'],
+    ['Class', 'Course unit', 'Taught', 'Total Missed', 'Total Untaught', 'Total'],
     ...detail.byClass.map((row) => [
       row.className,
       row.courseUnit,
       row.taught,
-      row.missedByLecturer,
+      row.totalMissed,
+      row.totalUntaught,
       row.total,
     ]),
   ];
   const byClassWs = XLSX.utils.aoa_to_sheet(byClassData);
-  byClassWs['!cols'] = [{ wch: 24 }, { wch: 32 }, { wch: 10 }, { wch: 18 }, { wch: 10 }];
+  byClassWs['!cols'] = [{ wch: 24 }, { wch: 32 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
 
   const recordsData: (string | number)[][] = [
     [
