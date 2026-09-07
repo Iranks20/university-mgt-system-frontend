@@ -48,6 +48,8 @@ export interface QALecturerSummary {
   class: string;
   courseUnit: string;
   noTaught: number;
+  physicalClasses?: number;
+  onlineLectures?: number;
   noUntaught?: number;
   noMissedByLecturers: number;
   missedByLecturer?: number;
@@ -56,6 +58,8 @@ export interface QALecturerSummary {
   assignment?: number;
   noSdl?: number;
   noSubstituted?: number;
+  totalLearningActivity?: number;
+  totalMissed?: number;
 }
 
 /**
@@ -66,12 +70,16 @@ export interface QASchoolSummary {
   school: string;
   totalNoTaught: number;
   noUntaught: number;
+  physicalClasses?: number;
+  onlineLectures?: number;
   missedByLecturer?: number;
   missedByStudents?: number;
   missedOtherProgramsHolidays?: number;
   assignment?: number;
   noSdl?: number;
   noSubstituted?: number;
+  totalLearningActivity?: number;
+  totalMissed?: number;
 }
 
 /**

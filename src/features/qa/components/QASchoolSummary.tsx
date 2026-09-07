@@ -109,14 +109,18 @@ export function QASchoolSummary({ scopedDateRange }: QASchoolSummaryProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>SCHOOL</TableHead>
-                    <TableHead className="text-right">TOTAL NO. TAUGHT</TableHead>
-                    <TableHead className="text-right">NO. UNTAIGHT</TableHead>
-                    <TableHead className="text-right">MISSED BY LECTURER</TableHead>
-                    <TableHead className="text-right">MISSED BY STUDENTS</TableHead>
-                    <TableHead className="text-right">OTHER PROG. & HOLIDAYS</TableHead>
-                    <TableHead className="text-right">ASSIGNMENT</TableHead>
-                    <TableHead className="text-right">SDL</TableHead>
-                    <TableHead className="text-right">SUBSTITUTED</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">NO. TAUGHT</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">ONLINE</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">SDL</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">ASSIGNMENT</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">MISS. LECT.</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">MISS. STUD.</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">MISS. OTHER</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">LEARNING ACT.</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">TOTAL UNTAUGHT</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">TOTAL MISSED</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">SUBSTITUTED</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -124,24 +128,32 @@ export function QASchoolSummary({ scopedDateRange }: QASchoolSummaryProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{summary.school}</TableCell>
                       <TableCell className="text-right">{summary.totalNoTaught}</TableCell>
-                      <TableCell className="text-right">{summary.noUntaught}</TableCell>
+                      <TableCell className="text-right">{summary.physicalClasses ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.onlineLectures ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.noSdl ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.assignment ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.missedByLecturer ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.missedByStudents ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.missedOtherProgramsHolidays ?? 0}</TableCell>
-                      <TableCell className="text-right">{summary.assignment ?? 0}</TableCell>
-                      <TableCell className="text-right">{summary.noSdl ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.totalLearningActivity ?? 0}</TableCell>
+                      <TableCell className="text-right">{summary.noUntaught}</TableCell>
+                      <TableCell className="text-right">{summary.totalMissed ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.noSubstituted ?? 0}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-gray-50">
                     <TableCell>TOTAL</TableCell>
                     <TableCell className="text-right">{sum((s) => s.totalNoTaught)}</TableCell>
-                    <TableCell className="text-right">{sum((s) => s.noUntaught)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.physicalClasses ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.onlineLectures ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.noSdl ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.assignment ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.missedByLecturer ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.missedByStudents ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.missedOtherProgramsHolidays ?? 0)}</TableCell>
-                    <TableCell className="text-right">{sum((s) => s.assignment ?? 0)}</TableCell>
-                    <TableCell className="text-right">{sum((s) => s.noSdl ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.totalLearningActivity ?? 0)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.noUntaught)}</TableCell>
+                    <TableCell className="text-right">{sum((s) => s.totalMissed ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.noSubstituted ?? 0)}</TableCell>
                   </TableRow>
                 </TableBody>

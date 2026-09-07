@@ -390,14 +390,18 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
                   <TableHead>LECTURER&apos;S NAME</TableHead>
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
-                  <TableHead className="text-right">NO. TAUGHT</TableHead>
-                  <TableHead className="text-right">NO. UNTAIGHT</TableHead>
-                  <TableHead className="text-right">MISSED BY LECTURER</TableHead>
-                  <TableHead className="text-right">MISSED BY STUDENTS</TableHead>
-                  <TableHead className="text-right">OTHER PROG. & HOLIDAYS</TableHead>
-                  <TableHead className="text-right">ASSIGNMENT</TableHead>
-                  <TableHead className="text-right">SDL</TableHead>
-                  <TableHead className="text-right">SUBSTITUTED</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">NO. TAUGHT</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">ONLINE</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">SDL</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">ASSIGNMENT</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">MISS. LECT.</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">MISS. STUD.</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">MISS. OTHER</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">LEARNING ACT.</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">TOTAL UNTAUGHT</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">TOTAL MISSED</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">SUBSTITUTED</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -408,12 +412,16 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
                     <TableCell>{row.class}</TableCell>
                     <TableCell className="max-w-xs truncate">{row.courseUnit}</TableCell>
                     <TableCell className="text-right">{row.noTaught}</TableCell>
-                    <TableCell className="text-right">{row.noUntaught ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.physicalClasses ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.onlineLectures ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.noSdl ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.assignment ?? 0}</TableCell>
                     <TableCell className="text-right">{row.missedByLecturer ?? row.noMissedByLecturers}</TableCell>
                     <TableCell className="text-right">{row.missedByStudents ?? 0}</TableCell>
                     <TableCell className="text-right">{row.missedOtherProgramsHolidays ?? 0}</TableCell>
-                    <TableCell className="text-right">{row.assignment ?? 0}</TableCell>
-                    <TableCell className="text-right">{row.noSdl ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.totalLearningActivity ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.noUntaught ?? 0}</TableCell>
+                    <TableCell className="text-right">{row.totalMissed ?? 0}</TableCell>
                     <TableCell className="text-right">{row.noSubstituted ?? 0}</TableCell>
                   </TableRow>
                 ))}

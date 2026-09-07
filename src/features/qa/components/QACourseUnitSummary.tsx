@@ -16,7 +16,7 @@ type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
 const PAGE_SIZE = 20;
 const ALL = 'All';
-const PREVIEW_ITEM_COUNT = 1;
+const PREVIEW_ITEM_COUNT = 3;
 
 function splitCsvList(value: string): string[] {
   return value
@@ -429,10 +429,10 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                   const lecturers = formatPreviewList(row.lecturerName);
                   const classes = formatPreviewList(row.class);
                   return (
-                    <TableRow key={row.courseUnit}>
+                    <TableRow key={`${row.courseUnit}|${row.class}|${row.lecturerName}`}>
                       <TableCell className="align-top">
-                        <div className="max-w-[180px]">
-                          <p className="font-medium truncate" title={row.lecturerName}>
+                        <div className="max-w-[220px]">
+                          <p className="font-medium whitespace-normal break-words" title={row.lecturerName}>
                             {lecturers.preview}
                           </p>
                           {lecturers.hasMore ? (
@@ -441,8 +441,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
-                        <div className="max-w-[160px]">
-                          <p className="truncate" title={row.class}>
+                        <div className="max-w-[220px]">
+                          <p className="whitespace-normal break-words" title={row.class}>
                             {classes.preview}
                           </p>
                           {classes.hasMore ? (
@@ -450,8 +450,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="font-medium align-top max-w-[180px]">
-                        <span className="line-clamp-2" title={row.courseUnit}>
+                      <TableCell className="font-medium align-top max-w-[220px]">
+                        <span className="whitespace-normal break-words" title={row.courseUnit}>
                           {row.courseUnit}
                         </span>
                       </TableCell>
