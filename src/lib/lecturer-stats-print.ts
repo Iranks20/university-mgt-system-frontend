@@ -43,7 +43,8 @@ function buildLecturerStatsDetailHtml(
           <td>${escapeHtml(row.className)}</td>
           <td>${escapeHtml(row.courseUnit)}</td>
           <td class="num">${row.taught}</td>
-          <td class="num">${row.missedByLecturer}</td>
+          <td class="num">${row.totalMissed}</td>
+          <td class="num">${row.totalUntaught}</td>
           <td class="num">${row.total}</td>
         </tr>`
     )
@@ -119,14 +120,18 @@ function buildLecturerStatsDetailHtml(
 
   <div class="stats">
     <div class="stat"><label>Total records</label><strong>${detail.summary.totalRecords}</strong></div>
-    <div class="stat"><label>Taught</label><strong>${detail.summary.taught}</strong></div>
+    <div class="stat"><label>No. Taught</label><strong>${detail.summary.taught}</strong></div>
+    <div class="stat"><label>Physical / Online</label><strong>${detail.summary.physicalClasses} / ${detail.summary.onlineLectures}</strong></div>
+    <div class="stat"><label>Total learning activity</label><strong>${detail.summary.totalLearningActivity}</strong></div>
+    <div class="stat"><label>Total untaught</label><strong>${detail.summary.totalUntaught}</strong></div>
+    <div class="stat"><label>Total missed</label><strong>${detail.summary.totalMissed}</strong></div>
     <div class="stat"><label>Missed by lecturer</label><strong>${detail.summary.missedByLecturer}</strong></div>
-    <div class="stat"><label>Other outcomes</label><strong>${detail.summary.otherOutcomes}</strong></div>
+    <div class="stat"><label>SDL / Assignment</label><strong>${detail.summary.noSdl} / ${detail.summary.assignment}</strong></div>
   </div>
 
   ${
     detail.summary.rateBasis
-      ? `<p class="note">Rate calculation: ${escapeHtml(detail.summary.rateBasis)}. Other outcomes are listed but excluded from the rate denominator.</p>`
+      ? `<p class="note">Rate calculation: ${escapeHtml(detail.summary.rateBasis)}.</p>`
       : ''
   }
 
@@ -138,7 +143,7 @@ function buildLecturerStatsDetailHtml(
 
   ${
     detail.byClass.length > 0
-      ? `<h2>By class / course unit</h2><table><thead><tr><th>Class</th><th>Course unit</th><th>Taught</th><th>Missed</th><th>Total</th></tr></thead><tbody>${byClassRows}</tbody></table>`
+      ? `<h2>By class / course unit</h2><table><thead><tr><th>Class</th><th>Course unit</th><th>Taught</th><th>Total Missed</th><th>Total Untaught</th><th>Total</th></tr></thead><tbody>${byClassRows}</tbody></table>`
       : ''
   }
 

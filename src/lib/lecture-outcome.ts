@@ -67,6 +67,54 @@ export function isLectureMissedByLecturer(comment: string | null | undefined): b
   return normalizeLectureComment(comment) === 'MISSED_BY_LECTURER';
 }
 
+export type UntaughtComment = (typeof UNTAUGHT_COMMENT_VALUES)[number];
+
+export interface UntaughtBreakdown {
+  total: number;
+  missedByLecturer: number;
+  missedByStudents: number;
+  missedOtherProgramsHolidays: number;
+  assignment: number;
+  sdl: number;
+}
+
+export function emptyUntaughtBreakdown(): UntaughtBreakdown {
+  return {
+    total: 0,
+    missedByLecturer: 0,
+    missedByStudents: 0,
+    missedOtherProgramsHolidays: 0,
+    assignment: 0,
+    sdl: 0,
+  };
+}
+
+export function tallyUntaughtBreakdown(
+  records: ReadonlyArray<{ comment: string | null | undefined }>
+): UntaughtBreakdown {
+  const breakdown = emptyUntaughtBreakdown();
+  for (const record of records) {
+    const normalized = normalizeLectureComment(record.comment);
+    if (normalized === 'MISSED_BY_LECTURER') {
+      breakdown.missedByLecturer += 1;
+      breakdown.total += 1;
+    } else if (normalized === 'MISSED_BY_STUDENTS') {
+      breakdown.missedByStudents += 1;
+      breakdown.total += 1;
+    } else if (normalized === 'MISSED_OTHER_PROGRAMS_HOLIDAYS') {
+      breakdown.missedOtherProgramsHolidays += 1;
+      breakdown.total += 1;
+    } else if (normalized === 'ASSIGNMENT') {
+      breakdown.assignment += 1;
+      breakdown.total += 1;
+    } else if (normalized === 'SDL') {
+      breakdown.sdl += 1;
+      breakdown.total += 1;
+    }
+  }
+  return breakdown;
+}
+
 export function mapImportStatusToComment(status: string): string {
   const upper = status.trim().toUpperCase().replace(/\s+/g, '_');
   const direct: Record<string, string> = {
