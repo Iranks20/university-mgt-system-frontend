@@ -89,6 +89,7 @@ export default function LectureRecords() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [schools, setSchools] = useState<string[]>([]);
   const [schoolRecords, setSchoolRecords] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedSchool, setSelectedSchool] = useState<string>('');
@@ -1192,32 +1193,21 @@ export default function LectureRecords() {
   };
 
   const handleExport = async () => {
+    setIsExporting(true);
     try {
-      const filter: any = {
-        ...buildBaseFilter(),
-        page: 1,
-        limit: 10000,
-        sortBy: 'date',
-        sortOrder: 'desc',
-      };
-      const response = await qaService.getLectureRecords(filter);
-      const data: QALectureRecord[] = Array.isArray(response)
-        ? response
-        : ((response as any)?.data || []);
-      const enriched = data.map((record: any) => ({
-        ...record,
-        class: record.class || record.className || '',
-      }));
-      if (enriched.length === 0) {
+      const data = await qaService.fetchAllLectureRecords(buildBaseFilter());
+      if (data.length === 0) {
         toast.warning('No records match the current filters.');
         return;
       }
       const filename = `Lecture_Records_${new Date().toISOString().split('T')[0]}.xlsx`;
-      exportLectureRecordsToCSV(enriched, filename);
-      toast.success(`Exported ${enriched.length} record(s) to Excel.`);
+      exportLectureRecordsToCSV(data, filename);
+      toast.success(`Exported ${data.length} record(s) to Excel.`);
     } catch (error) {
       console.error('Error exporting:', error);
       toast.error('Failed to export records. Please try again.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1317,6 +1307,18 @@ export default function LectureRecords() {
     }
   };
 
+  const exportExcelButton = (size: 'default' | 'sm' = 'default') => (
+    <Button
+      variant="outline"
+      size={size}
+      className="gap-2 shrink-0 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+      onClick={handleExport}
+      disabled={isExporting || isLoading || totalRecords === 0}
+    >
+      <Download size={16} /> {isExporting ? 'Exporting…' : 'Export Excel'}
+    </Button>
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1352,14 +1354,12 @@ export default function LectureRecords() {
               </Button>
             </div>
           )}
-          <Button variant="outline" className="gap-2" onClick={handleExport} disabled={summaryLoading || summaryTotalRecords === 0}>
-            <Download size={16} /> Export Excel
-          </Button>
           {/* Import temporarily disabled
           <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
             <Upload size={16} /> Import
           </Button>
           */}
+          {exportExcelButton()}
           <Button onClick={openNew} className="bg-[#015F2B] hover:bg-[#014022] gap-2">
             <Plus size={16} /> Record Lecture
           </Button>
@@ -1428,10 +1428,15 @@ export default function LectureRecords() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle>All Records</CardTitle>
-          <CardDescription>
-            Showing {filteredRecords.length} of {totalRecords} records matching your filters.
-          </CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle>All Records</CardTitle>
+              <CardDescription>
+                Showing {filteredRecords.length} of {totalRecords} records matching your filters.
+              </CardDescription>
+            </div>
+            {exportExcelButton()}
+          </div>
         </CardHeader>
         <CardContent>
           {/* Filters Toolbar */}
@@ -1703,9 +1708,10 @@ export default function LectureRecords() {
               </TableBody>
             </Table>
             {totalRecords > 0 && (
-              <div className="flex items-center justify-between border-t px-4 py-2">
+              <div className="flex flex-col gap-3 border-t px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm text-muted-foreground">{totalRecords} total</span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {exportExcelButton('sm')}
                   <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
                     <ChevronLeft className="h-4 w-4" /> Previous
                   </Button>

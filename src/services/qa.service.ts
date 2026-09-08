@@ -42,42 +42,102 @@ async function fetchAllClassNames(params?: {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+function toDateQueryParam(value?: Date | string): string | undefined {
+  if (!value) return undefined;
+  return typeof value === 'string' ? value : value.toISOString().split('T')[0];
+}
+
+function buildLectureRecordQueryParams(
+  filter?: QAFilter,
+  options?: { includePaging?: boolean }
+): Record<string, string | number> {
+  const params: Record<string, string | number> = {};
+  if (!filter) return params;
+
+  const startDate = toDateQueryParam(filter.startDate);
+  const endDate = toDateQueryParam(filter.endDate);
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
+  if (filter.school) params.school = filter.school;
+  if (filter.department) params.department = filter.department;
+  if (filter.lecturerName) params.lecturerName = filter.lecturerName;
+  if (filter.courseCode) params.courseCode = filter.courseCode;
+  if (filter.class) params.class = filter.class;
+  if (filter.search) params.search = filter.search;
+  if (filter.comment) params.comment = filter.comment;
+  if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+  if (filter.status) params.status = filter.status;
+  if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
+  if (filter.academicTermId) params.academicTermId = filter.academicTermId;
+
+  if (options?.includePaging !== false) {
+    if (filter.page) params.page = filter.page;
+    if (filter.limit) params.limit = filter.limit;
+    if (filter.sortBy) params.sortBy = filter.sortBy;
+    if (filter.sortOrder) params.sortOrder = filter.sortOrder;
+  }
+
+  return params;
+}
+
+function unwrapLectureRecordPage(
+  response: QALectureRecord[] | { data?: QALectureRecord[]; total?: number }
+): { data: QALectureRecord[]; total: number } {
+  if (Array.isArray(response)) {
+    return { data: response, total: response.length };
+  }
+  const data = Array.isArray(response?.data) ? response.data : [];
+  return {
+    data,
+    total: typeof response?.total === 'number' ? response.total : data.length,
+  };
+}
+
+function withLectureRecordClassName(records: QALectureRecord[]): QALectureRecord[] {
+  return records.map((record) => ({
+    ...record,
+    class: record.class || (record as { className?: string }).className || '',
+  }));
+}
+
 export const qaService = {
-  /**
-   * Get all lecture records (3.csv format)
-   */
   getLectureRecords: async (filter?: QAFilter): Promise<QALectureRecord[] | { data: QALectureRecord[]; total: number; page: number; pageSize: number }> => {
     try {
-      const params: Record<string, any> = {};
-      if (filter) {
-        if (filter.startDate) {
-          params.startDate = typeof filter.startDate === 'string' ? filter.startDate : filter.startDate.toISOString().split('T')[0];
-        }
-        if (filter.endDate) {
-          params.endDate = typeof filter.endDate === 'string' ? filter.endDate : filter.endDate.toISOString().split('T')[0];
-        }
-        if (filter.school) params.school = filter.school;
-        if (filter.department) params.department = filter.department;
-        if (filter.lecturerName) params.lecturerName = filter.lecturerName;
-        if (filter.courseCode) params.courseCode = filter.courseCode;
-        if (filter.class) params.class = filter.class;
-        if (filter.search) params.search = filter.search;
-        if (filter.comment) params.comment = filter.comment;
-        if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
-        if (filter.status) params.status = filter.status;
-        if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
-        if (filter.academicTermId) params.academicTermId = filter.academicTermId;
-        if (filter.page) params.page = filter.page;
-        if (filter.limit) params.limit = filter.limit;
-        if ((filter as any).sortBy) params.sortBy = (filter as any).sortBy;
-        if ((filter as any).sortOrder) params.sortOrder = (filter as any).sortOrder;
-      }
+      const params = buildLectureRecordQueryParams(filter);
       const response = await api.get<QALectureRecord[] | { data: QALectureRecord[]; total: number; page: number; pageSize: number }>('/qa/lecture-records', params);
       return response;
     } catch (error) {
       console.error('Error fetching lecture records:', error);
       return { data: [], total: 0, page: 1, pageSize: 0 };
     }
+  },
+
+  fetchAllLectureRecords: async (filter?: QAFilter): Promise<QALectureRecord[]> => {
+    const pageSize = 500;
+    const all: QALectureRecord[] = [];
+    let page = 1;
+    let total = Infinity;
+
+    while ((page - 1) * pageSize < total) {
+      const params = buildLectureRecordQueryParams({
+        ...filter,
+        page,
+        limit: pageSize,
+        sortBy: filter?.sortBy ?? 'date',
+        sortOrder: filter?.sortOrder ?? 'desc',
+      });
+      const response = await api.get<
+        QALectureRecord[] | { data: QALectureRecord[]; total: number; page: number; pageSize: number }
+      >('/qa/lecture-records', params);
+      const { data, total: nextTotal } = unwrapLectureRecordPage(response);
+      total = nextTotal;
+      all.push(...withLectureRecordClassName(data));
+      if (data.length === 0) break;
+      page += 1;
+      if (page > 200) break;
+    }
+
+    return all;
   },
 
   getLectureRecordsSummary: async (filter?: QAFilter): Promise<{
@@ -100,26 +160,7 @@ export const qaService = {
     hasFilters: boolean;
   }> => {
     try {
-      const params: Record<string, any> = {};
-      if (filter) {
-        if (filter.startDate) {
-          params.startDate = typeof filter.startDate === 'string' ? filter.startDate : filter.startDate.toISOString().split('T')[0];
-        }
-        if (filter.endDate) {
-          params.endDate = typeof filter.endDate === 'string' ? filter.endDate : filter.endDate.toISOString().split('T')[0];
-        }
-        if (filter.school) params.school = filter.school;
-        if (filter.department) params.department = filter.department;
-        if (filter.lecturerName) params.lecturerName = filter.lecturerName;
-        if (filter.courseCode) params.courseCode = filter.courseCode;
-        if (filter.class) params.class = filter.class;
-        if (filter.search) params.search = filter.search;
-        if (filter.comment) params.comment = filter.comment;
-        if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
-        if (filter.status) params.status = filter.status;
-        if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
-        if (filter.academicTermId) params.academicTermId = filter.academicTermId;
-      }
+      const params = buildLectureRecordQueryParams(filter, { includePaging: false });
       const response = await api.get<any>('/qa/lecture-records-summary', params);
       const data = (response as any)?.data ?? response;
       return {
