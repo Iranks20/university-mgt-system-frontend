@@ -308,7 +308,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
       <CardHeader className="pb-3">
         <CardTitle>Course Unit Summary</CardTitle>
         <CardDescription>
-          Teaching outcomes rolled up by course unit
+          Teaching outcomes by course unit within each class (lecturers combined per class)
           {selectedSchool !== ALL ? ` · ${selectedSchool}` : ''}
           {selectedDepartment !== ALL ? ` · ${selectedDepartment}` : ''}
           {activeFilterCount > 0
@@ -516,7 +516,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
           <DialogHeader>
             <DialogTitle>{detailRow?.courseUnit ?? 'Course unit details'}</DialogTitle>
             <DialogDescription>
-              Full lecturer and class lists for this course unit, with teaching totals.
+              Full lecturer list for this class and course unit, with teaching totals.
             </DialogDescription>
           </DialogHeader>
           {detailRow ? (
