@@ -78,21 +78,27 @@ export default function LectureRecords() {
   const [commentFilter, setCommentFilter] = useState('All');
   const [lecturerFilter, setLecturerFilter] = useState('All');
   const [schoolFilter, setSchoolFilter] = useState('All');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
+  const [courseUnitFilter, setCourseUnitFilter] = useState('All');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState('All');
+  const [deliveryModeFilter, setDeliveryModeFilter] = useState('All');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [schools, setSchools] = useState<string[]>([]);
+  const [schoolRecords, setSchoolRecords] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [classes, setClasses] = useState<string[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const lectureImportFileRef = useRef<HTMLInputElement>(null);
   const [allLecturers, setAllLecturers] = useState<string[]>([]);
   const [allClasses, setAllClasses] = useState<string[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [courseUnitOptions, setCourseUnitOptions] = useState<string[]>([]);
   const [selectedLecturerName, setSelectedLecturerName] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
@@ -175,11 +181,62 @@ export default function LectureRecords() {
   }, []);
 
   useEffect(() => {
-    loadAllClasses();
-    if (selectedSchool) {
-      loadClasses(selectedSchool);
+    if (schoolFilter !== 'All') {
+      loadClasses(schoolFilter);
+    } else {
+      loadAllClasses();
     }
-  }, [termFilter, academicTermId, classStatusHint]);
+  }, [schoolFilter, termFilter, academicTermId, classStatusHint]);
+
+  useEffect(() => {
+    const loadDepartmentsAndCourses = async () => {
+      try {
+        const schoolId =
+          schoolFilter === 'All'
+            ? undefined
+            : schoolRecords.find((s) => s.name === schoolFilter)?.id;
+        const depts = await academicService.getDepartments(schoolId);
+        const names = Array.from(new Set(depts.map((d) => d.name).filter(Boolean))).sort((a, b) =>
+          a.localeCompare(b)
+        );
+        setDepartmentOptions(names);
+        if (departmentFilter !== 'All' && !names.includes(departmentFilter)) {
+          setDepartmentFilter('All');
+        }
+
+        const departmentId =
+          departmentFilter === 'All'
+            ? undefined
+            : depts.find((d) => d.name === departmentFilter)?.id;
+
+        let courseNames: string[] = [];
+        if (departmentId) {
+          courseNames = (await academicService.getAllCourses({ departmentId }))
+            .map((c) => c.name)
+            .filter(Boolean);
+        } else if (schoolId) {
+          const schoolDeptIds = new Set(depts.map((d) => d.id));
+          courseNames = (await academicService.getAllCourses())
+            .filter((c) => c.departmentId && schoolDeptIds.has(c.departmentId))
+            .map((c) => c.name)
+            .filter(Boolean);
+        } else {
+          courseNames = (await academicService.getAllCourses()).map((c) => c.name).filter(Boolean);
+        }
+
+        const uniqueCourses = Array.from(new Set(courseNames)).sort((a, b) => a.localeCompare(b));
+        setCourseUnitOptions(uniqueCourses);
+        if (courseUnitFilter !== 'All' && !uniqueCourses.includes(courseUnitFilter)) {
+          setCourseUnitFilter('All');
+        }
+      } catch (error) {
+        console.error('Error loading department/course filters:', error);
+        setDepartmentOptions([]);
+        setCourseUnitOptions([]);
+      }
+    };
+    loadDepartmentsAndCourses();
+  }, [schoolFilter, departmentFilter, schoolRecords]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,20 +255,73 @@ export default function LectureRecords() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter, academicTermId]);
+  }, [
+    debouncedSearchTerm,
+    commentFilter,
+    lecturerFilter,
+    schoolFilter,
+    departmentFilter,
+    classFilter,
+    courseUnitFilter,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    attendanceStatusFilter,
+    deliveryModeFilter,
+    termFilter,
+    academicTermId,
+  ]);
 
   useEffect(() => {
     loadRecords();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, page, termFilter, academicTermId]);
+  }, [
+    debouncedSearchTerm,
+    commentFilter,
+    lecturerFilter,
+    schoolFilter,
+    departmentFilter,
+    classFilter,
+    courseUnitFilter,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    attendanceStatusFilter,
+    deliveryModeFilter,
+    page,
+    termFilter,
+    academicTermId,
+  ]);
 
   useEffect(() => {
     loadSummary();
-  }, [debouncedSearchTerm, commentFilter, lecturerFilter, schoolFilter, classFilter, dateFrom, dateTo, statusFilter, attendanceStatusFilter, termFilter, academicTermId]);
+  }, [
+    debouncedSearchTerm,
+    commentFilter,
+    lecturerFilter,
+    schoolFilter,
+    departmentFilter,
+    classFilter,
+    courseUnitFilter,
+    dateFrom,
+    dateTo,
+    statusFilter,
+    attendanceStatusFilter,
+    deliveryModeFilter,
+    termFilter,
+    academicTermId,
+  ]);
 
   useEffect(() => {
     setClassFilter('All');
-  }, [termFilter, academicTermId]);
+  }, [schoolFilter, termFilter, academicTermId]);
 
+  useEffect(() => {
+    setDepartmentFilter('All');
+  }, [schoolFilter]);
+
+  useEffect(() => {
+    setCourseUnitFilter('All');
+  }, [departmentFilter]);
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
       setSessionLoading(true);
@@ -558,6 +668,7 @@ export default function LectureRecords() {
     try {
       const classList = await qaService.getAllClasses(classTermParams);
       setAllClasses(classList);
+      setClassFilter((prev) => (prev !== 'All' && !classList.includes(prev) ? 'All' : prev));
     } catch (error) {
       console.error('Error loading all classes:', error);
       setAllClasses([]);
@@ -575,10 +686,20 @@ export default function LectureRecords() {
 
   const loadSchools = async () => {
     try {
-      const schoolList = await qaService.getSchools();
-      setSchools(schoolList);
+      const schoolList = await academicService.getSchools();
+      const rows = Array.isArray(schoolList) ? schoolList : [];
+      setSchoolRecords(rows.map((s: any) => ({ id: s.id, name: s.name })));
+      setSchools(rows.map((s: any) => s.name).filter(Boolean).sort((a: string, b: string) => a.localeCompare(b)));
     } catch (error) {
       console.error('Error loading schools:', error);
+      try {
+        const schoolList = await qaService.getSchools();
+        setSchools(schoolList);
+        setSchoolRecords([]);
+      } catch {
+        setSchools([]);
+        setSchoolRecords([]);
+      }
     }
   };
 
@@ -586,22 +707,27 @@ export default function LectureRecords() {
     try {
       const classList = await qaService.getClassesBySchool(school, classTermParams);
       setClasses(classList);
+      setClassFilter((prev) => (prev !== 'All' && !classList.includes(prev) ? 'All' : prev));
     } catch (error) {
       console.error('Error loading classes:', error);
+      setClasses([]);
     }
   };
+
+  const classFilterOptions = schoolFilter !== 'All' ? classes : allClasses;
 
   const buildBaseFilter = () => {
     const filter: any = {};
     if (schoolFilter !== 'All') filter.school = schoolFilter;
-    if (lecturerFilter !== 'All') {
-      filter.lecturerName = lecturerFilter;
-    } else if (debouncedSearchTerm.trim()) {
-      filter.search = debouncedSearchTerm.trim();
-    }
+    if (departmentFilter !== 'All') filter.department = departmentFilter;
+    if (lecturerFilter !== 'All') filter.lecturerName = lecturerFilter;
+    if (debouncedSearchTerm.trim()) filter.search = debouncedSearchTerm.trim();
     if (classFilter !== 'All') filter.class = classFilter;
+    if (courseUnitFilter !== 'All') filter.courseCode = courseUnitFilter;
     if (commentFilter !== 'All') filter.comment = commentFilter;
     if (statusFilter !== 'All') filter.checkInStatus = statusFilter;
+    if (attendanceStatusFilter !== 'All') filter.status = attendanceStatusFilter;
+    if (deliveryModeFilter !== 'All') filter.deliveryMode = deliveryModeFilter;
     if (dateFrom) filter.startDate = dateFrom;
     if (dateTo) filter.endDate = dateTo;
     Object.assign(filter, termScopeQueryParam(academicTermId));
@@ -672,9 +798,12 @@ export default function LectureRecords() {
     setCommentFilter('All');
     setLecturerFilter('All');
     setSchoolFilter('All');
+    setDepartmentFilter('All');
     setClassFilter('All');
+    setCourseUnitFilter('All');
     setStatusFilter('All');
     setAttendanceStatusFilter('All');
+    setDeliveryModeFilter('All');
     setDateFrom('');
     setDateTo('');
     onTermChange({
@@ -692,9 +821,12 @@ export default function LectureRecords() {
     commentFilter !== 'All' ||
     lecturerFilter !== 'All' ||
     schoolFilter !== 'All' ||
+    departmentFilter !== 'All' ||
     classFilter !== 'All' ||
+    courseUnitFilter !== 'All' ||
     statusFilter !== 'All' ||
     attendanceStatusFilter !== 'All' ||
+    deliveryModeFilter !== 'All' ||
     dateFrom !== '' ||
     dateTo !== '' ||
     termFilter !== TERM_FILTER_ACTIVE;
@@ -1304,57 +1436,16 @@ export default function LectureRecords() {
         <CardContent>
           {/* Filters Toolbar */}
           <div className="space-y-4 mb-6">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col md:flex-row flex-wrap items-end gap-3">
+              <div className="relative flex-1 min-w-[220px]">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search lecturer, course unit, or class..." 
+                <Input
+                  placeholder="Search lecturer, course unit, or class..."
                   className="pl-8"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Select value={commentFilter} onValueChange={setCommentFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filter Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All statuses</SelectItem>
-                  {commentOptions.map((comment) => (
-                    <SelectItem key={comment} value={comment}>
-                      {COMMENT_FILTER_LABELS[comment] ?? comment}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Combobox
-                className="w-[180px]"
-                options={[
-                  { value: 'All', label: 'All Lecturers' },
-                  ...allLecturers.map((lecturer) => ({ value: lecturer, label: lecturer })),
-                ]}
-                value={lecturerFilter}
-                onValueChange={(v) => setLecturerFilter(v || 'All')}
-                placeholder="Filter Lecturer"
-                searchPlaceholder="Search lecturers..."
-                emptyText="No lecturer found."
-                initialDisplayCount={50}
-              />
-              <Combobox
-                className="w-[180px]"
-                options={[
-                  { value: 'All', label: 'All Classes' },
-                  ...allClasses.map((cls) => ({ value: cls, label: cls })),
-                ]}
-                value={classFilter}
-                onValueChange={(v) => setClassFilter(v || 'All')}
-                placeholder="Filter Class"
-                searchPlaceholder="Search classes..."
-                emptyText="No class found."
-                initialDisplayCount={50}
-              />
-            </div>
-            <div className="flex flex-col md:flex-row flex-wrap items-end gap-4">
               <Combobox
                 className="w-[200px]"
                 options={[
@@ -1363,11 +1454,91 @@ export default function LectureRecords() {
                 ]}
                 value={schoolFilter}
                 onValueChange={(v) => setSchoolFilter(v || 'All')}
-                placeholder="Filter by School"
+                placeholder="School"
                 searchPlaceholder="Search schools..."
                 emptyText="No school found."
                 initialDisplayCount={50}
               />
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Departments' },
+                  ...departmentOptions.map((dept) => ({ value: dept, label: dept })),
+                ]}
+                value={departmentFilter}
+                onValueChange={(v) => setDepartmentFilter(v || 'All')}
+                placeholder="Department"
+                searchPlaceholder="Search departments..."
+                emptyText="No department found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Classes' },
+                  ...classFilterOptions.map((cls) => ({ value: cls, label: cls })),
+                ]}
+                value={classFilter}
+                onValueChange={(v) => setClassFilter(v || 'All')}
+                placeholder="Class"
+                searchPlaceholder="Search classes..."
+                emptyText="No class found."
+                initialDisplayCount={50}
+              />
+              <Combobox
+                className="w-[220px]"
+                options={[
+                  { value: 'All', label: 'All Course Units' },
+                  ...courseUnitOptions.map((unit) => ({ value: unit, label: unit })),
+                ]}
+                value={courseUnitFilter}
+                onValueChange={(v) => setCourseUnitFilter(v || 'All')}
+                placeholder="Course unit"
+                searchPlaceholder="Search course units..."
+                emptyText="No course unit found."
+                initialDisplayCount={50}
+              />
+            </div>
+            <div className="flex flex-col md:flex-row flex-wrap items-end gap-3">
+              <Combobox
+                className="w-[200px]"
+                options={[
+                  { value: 'All', label: 'All Lecturers' },
+                  ...allLecturers.map((lecturer) => ({ value: lecturer, label: lecturer })),
+                ]}
+                value={lecturerFilter}
+                onValueChange={(v) => setLecturerFilter(v || 'All')}
+                placeholder="Lecturer"
+                searchPlaceholder="Search lecturers..."
+                emptyText="No lecturer found."
+                initialDisplayCount={50}
+              />
+              <Select value={commentFilter} onValueChange={setCommentFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Lecture outcome" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All outcomes</SelectItem>
+                  {commentOptions.map((comment) => (
+                    <SelectItem key={comment} value={comment}>
+                      {COMMENT_FILTER_LABELS[comment] ?? comment}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={deliveryModeFilter} onValueChange={setDeliveryModeFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Delivery mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All delivery</SelectItem>
+                  {DELIVERY_MODE_OPTIONS.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Check-in Status" />
