@@ -4,6 +4,44 @@ import { isLectureTaught, isLectureUntaught, mapImportStatusToComment } from '@/
 import type { DeliveryMode } from '@/lib/delivery-mode';
 import { parseTimeLostToMinutes, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
 
+async function fetchAllClassNames(params?: {
+  schoolId?: string;
+  academicTermId?: string;
+  classStatus?: 'active' | 'inactive' | 'all';
+}): Promise<string[]> {
+  const names = new Set<string>();
+  let page = 1;
+  let total = Infinity;
+  const pageSize = 200;
+
+  while ((page - 1) * pageSize < total) {
+    const query: Record<string, string> = {
+      page: String(page),
+      limit: String(pageSize),
+    };
+    if (params?.schoolId) query.schoolId = params.schoolId;
+    if (params?.academicTermId) query.academicTermId = params.academicTermId;
+    if (params?.classStatus) query.classStatus = params.classStatus;
+
+    const res = await api.get<
+      Array<{ name: string }> | { data: Array<{ name: string }>; total?: number }
+    >('/academic/classes', query);
+
+    const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    total = Array.isArray(res) ? rows.length : typeof res?.total === 'number' ? res.total : rows.length;
+
+    for (const row of rows) {
+      if (row?.name?.trim()) names.add(row.name.trim());
+    }
+
+    if (rows.length === 0) break;
+    page += 1;
+    if (page > 50) break;
+  }
+
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
 export const qaService = {
   /**
    * Get all lecture records (3.csv format)
@@ -19,12 +57,15 @@ export const qaService = {
           params.endDate = typeof filter.endDate === 'string' ? filter.endDate : filter.endDate.toISOString().split('T')[0];
         }
         if (filter.school) params.school = filter.school;
+        if (filter.department) params.department = filter.department;
         if (filter.lecturerName) params.lecturerName = filter.lecturerName;
         if (filter.courseCode) params.courseCode = filter.courseCode;
         if (filter.class) params.class = filter.class;
         if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+        if (filter.status) params.status = filter.status;
+        if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
         if (filter.academicTermId) params.academicTermId = filter.academicTermId;
         if (filter.page) params.page = filter.page;
         if (filter.limit) params.limit = filter.limit;
@@ -68,12 +109,15 @@ export const qaService = {
           params.endDate = typeof filter.endDate === 'string' ? filter.endDate : filter.endDate.toISOString().split('T')[0];
         }
         if (filter.school) params.school = filter.school;
+        if (filter.department) params.department = filter.department;
         if (filter.lecturerName) params.lecturerName = filter.lecturerName;
         if (filter.courseCode) params.courseCode = filter.courseCode;
         if (filter.class) params.class = filter.class;
         if (filter.search) params.search = filter.search;
         if (filter.comment) params.comment = filter.comment;
         if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+        if (filter.status) params.status = filter.status;
+        if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
         if (filter.academicTermId) params.academicTermId = filter.academicTermId;
       }
       const response = await api.get<any>('/qa/lecture-records-summary', params);
@@ -431,14 +475,15 @@ export const qaService = {
   ): Promise<string[]> => {
     try {
       const schools = await api.get<Array<{ id: string; name: string }>>('/academic/schools');
-      const schoolObj = schools.find(s => s.name === school);
+      const schoolList = Array.isArray(schools) ? schools : (schools as any)?.data ?? [];
+      const schoolObj = schoolList.find((s: { name: string }) => s.name === school);
       if (!schoolObj) return [];
 
-      const query: Record<string, string> = { schoolId: schoolObj.id };
-      if (params?.academicTermId) query.academicTermId = params.academicTermId;
-      if (params?.classStatus) query.classStatus = params.classStatus;
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
-      return classes.map(c => c.name).sort();
+      return fetchAllClassNames({
+        schoolId: schoolObj.id,
+        academicTermId: params?.academicTermId,
+        classStatus: params?.classStatus,
+      });
     } catch (error) {
       console.error('Error fetching classes by school:', error);
       return [];
@@ -452,11 +497,10 @@ export const qaService = {
     params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
   ): Promise<string[]> => {
     try {
-      const query: Record<string, string> = {};
-      if (params?.academicTermId) query.academicTermId = params.academicTermId;
-      if (params?.classStatus) query.classStatus = params.classStatus;
-      const classes = await api.get<Array<{ name: string }>>('/academic/classes', query);
-      return classes.map(c => c.name).sort();
+      return fetchAllClassNames({
+        academicTermId: params?.academicTermId,
+        classStatus: params?.classStatus,
+      });
     } catch (error) {
       console.error('Error fetching all classes:', error);
       return [];
