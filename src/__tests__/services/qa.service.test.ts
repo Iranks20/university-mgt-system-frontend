@@ -143,6 +143,48 @@ describe('qaService.getLectureRecords term scope', () => {
     });
   });
 
+  it('forwards table filters to lecture-records API', async () => {
+    (api.get as any).mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 20 });
+
+    await qaService.getLectureRecords({
+      startDate: '2026-08-24',
+      endDate: '2026-12-04',
+      school: 'Health Sciences',
+      department: 'Clinical Medicine',
+      lecturerName: 'Jane Doe',
+      class: 'DCM Y2S1 Day',
+      courseCode: 'Basic Pharmacology',
+      comment: 'TAUGHT',
+      checkInStatus: 'Checked In',
+      status: 'OnTime',
+      deliveryMode: 'InPerson',
+      search: 'anatomy',
+      page: 1,
+      limit: 20,
+      sortBy: 'date',
+      sortOrder: 'desc',
+    });
+
+    expect(api.get).toHaveBeenCalledWith('/qa/lecture-records', {
+      startDate: '2026-08-24',
+      endDate: '2026-12-04',
+      school: 'Health Sciences',
+      department: 'Clinical Medicine',
+      lecturerName: 'Jane Doe',
+      class: 'DCM Y2S1 Day',
+      courseCode: 'Basic Pharmacology',
+      comment: 'TAUGHT',
+      checkInStatus: 'Checked In',
+      status: 'OnTime',
+      deliveryMode: 'InPerson',
+      search: 'anatomy',
+      page: 1,
+      limit: 20,
+      sortBy: 'date',
+      sortOrder: 'desc',
+    });
+  });
+
   it('forwards academicTermId to lecture-records-summary API', async () => {
     (api.get as any).mockResolvedValue({
       totalRecords: 0,
@@ -163,6 +205,80 @@ describe('qaService.getLectureRecords term scope', () => {
       startDate: '2026-01-01',
       academicTermId: 'all',
     });
+  });
+});
+
+describe('qaService.fetchAllLectureRecords', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('pages through all matching records and keeps current filters', async () => {
+    const pageOne = Array.from({ length: 500 }, (_, i) => ({
+      date: '2026-09-01',
+      lecturerName: 'Jane Doe',
+      class: 'DCM Y2S1 Day',
+      courseUnit: 'Basic Pharmacology',
+      timeForStarting: '09:00:00',
+      timeOutForEnding: '11:00:00',
+      duration: '02:00:00',
+      timeLost: '0',
+      comment: 'TAUGHT',
+      id: `r-${i}`,
+    }));
+    const pageTwo = [
+      {
+        date: '2026-09-02',
+        lecturerName: 'Jane Doe',
+        className: 'DCM Y2S1 Day',
+        courseUnit: 'Basic Pharmacology',
+        timeForStarting: '09:00:00',
+        timeOutForEnding: '11:00:00',
+        duration: '02:00:00',
+        timeLost: '0',
+        comment: 'TAUGHT',
+        id: 'r-500',
+      },
+    ];
+
+    (api.get as any)
+      .mockResolvedValueOnce({ data: pageOne, total: 501, page: 1, pageSize: 500 })
+      .mockResolvedValueOnce({ data: pageTwo, total: 501, page: 2, pageSize: 500 });
+
+    const result = await qaService.fetchAllLectureRecords({
+      class: 'DCM Y2S1 Day',
+      courseCode: 'Basic Pharmacology',
+      lecturerName: 'Jane Doe',
+      startDate: '2026-08-24',
+      endDate: '2026-12-04',
+    });
+
+    expect(api.get).toHaveBeenNthCalledWith(1, '/qa/lecture-records', {
+      class: 'DCM Y2S1 Day',
+      courseCode: 'Basic Pharmacology',
+      lecturerName: 'Jane Doe',
+      startDate: '2026-08-24',
+      endDate: '2026-12-04',
+      page: 1,
+      limit: 500,
+      sortBy: 'date',
+      sortOrder: 'desc',
+    });
+    expect(api.get).toHaveBeenNthCalledWith(2, '/qa/lecture-records', expect.objectContaining({
+      class: 'DCM Y2S1 Day',
+      courseCode: 'Basic Pharmacology',
+      page: 2,
+      limit: 500,
+    }));
+    expect(result).toHaveLength(501);
+    expect(result[500].class).toBe('DCM Y2S1 Day');
+  });
+
+  it('throws when the lecture-records request fails', async () => {
+    (api.get as any).mockRejectedValue(new Error('Network error'));
+    await expect(
+      qaService.fetchAllLectureRecords({ school: 'Health Sciences' })
+    ).rejects.toThrow('Network error');
   });
 });
 

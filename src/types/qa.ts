@@ -167,6 +167,8 @@ export interface QAFilter {
   academicTermId?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
   status?: 'OnTime' | 'Late' | 'Absent' | 'EarlyDeparture' | QALecturerRecord['status'];
   deliveryMode?: DeliveryMode;
 }
