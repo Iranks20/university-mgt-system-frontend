@@ -44,6 +44,7 @@ export interface TimetableClass {
     id: string;
     name: string;
   } | null;
+  todayOccurrenceStatus?: 'Scheduled' | 'Completed' | 'Cancelled' | null;
 }
 
 export interface TimetableImportResult {
