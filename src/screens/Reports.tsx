@@ -1069,7 +1069,7 @@ export default function Reports() {
             />
             <Button
               variant="outline"
-              className="gap-2 min-w-[130px]"
+              className="gap-2 min-w-[130px] border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
               onClick={handleExportAll}
               disabled={headerReportActionBusy}
             >
@@ -1586,6 +1586,7 @@ export default function Reports() {
                    )}
                    <Button
                      variant="outline"
+                     className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
                      onClick={handleExportLecturerPerformanceTable}
                      disabled={lecturerExporting || lecturersLoading || filteredLecturers.length === 0}
                    >
@@ -1786,7 +1787,12 @@ export default function Reports() {
                     <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadClassAttendanceReport} disabled={classAttendLoading || !canLoadClassAttendReport}>
                       {classAttendLoading ? 'Loading…' : 'Generate report'}
                     </Button>
-                    <Button variant="outline" onClick={handleExportClassAttendanceReport} disabled={classAttendExporting || !classAttendReport?.students.length}>
+                    <Button
+                      variant="outline"
+                      className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                      onClick={handleExportClassAttendanceReport}
+                      disabled={classAttendExporting || !classAttendReport?.students.length}
+                    >
                       <Download className="mr-2 h-4 w-4" />
                       {classAttendExporting ? 'Exporting…' : 'Export Excel'}
                     </Button>
@@ -2003,7 +2009,12 @@ export default function Reports() {
                   <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadCourseWiseAttendanceReport} disabled={courseWiseLoading || !canLoadClassAttendReport}>
                     {courseWiseLoading ? 'Loading…' : 'Generate report'}
                   </Button>
-                  <Button variant="outline" onClick={handleExportCourseWiseAttendanceReport} disabled={courseWiseExporting || !courseWiseReport?.rows.length}>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                    onClick={handleExportCourseWiseAttendanceReport}
+                    disabled={courseWiseExporting || !courseWiseReport?.rows.length}
+                  >
                     <Download className="mr-2 h-4 w-4" />
                     {courseWiseExporting ? 'Exporting…' : 'Export Excel'}
                   </Button>
@@ -2453,6 +2464,7 @@ export default function Reports() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
                     onClick={handleExportLecturerDetailExcel}
                     disabled={lecturerDetailLoading || lecturerDetailExporting || !lecturerDetail}
                   >

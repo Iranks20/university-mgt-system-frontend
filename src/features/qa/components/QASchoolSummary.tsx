@@ -84,7 +84,11 @@ export function QASchoolSummary({ scopedDateRange }: QASchoolSummaryProps) {
             </SelectContent>
           </Select>
           ) : null}
-          <Button variant="outline" onClick={handleExport}>
+          <Button
+            variant="outline"
+            className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+            onClick={handleExport}
+          >
             <Download className="mr-2 h-4 w-4" />
             Export Excel
           </Button>
