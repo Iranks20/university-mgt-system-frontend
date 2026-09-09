@@ -93,6 +93,8 @@ interface TimetableItem {
   startTime?: string;
   endTime?: string;
   isLive?: boolean;
+  todayOccurrenceStatus?: 'Scheduled' | 'Completed' | 'Cancelled' | null;
+  isCancelledToday?: boolean;
 }
 
 export default function Timetable() {
@@ -254,7 +256,16 @@ export default function Timetable() {
         const endRaw = item.endTime || '';
         const startDisplay = formatTimeDisplay(startRaw);
         const endDisplay = formatTimeDisplay(endRaw);
-        const live = isClassInPresenceWindow(startRaw || startDisplay, endRaw || endDisplay, dayOfWeek);
+        const todayOccurrenceStatus =
+          item.todayOccurrenceStatus === 'Scheduled' ||
+          item.todayOccurrenceStatus === 'Completed' ||
+          item.todayOccurrenceStatus === 'Cancelled'
+            ? item.todayOccurrenceStatus
+            : null;
+        const isCancelledToday = todayOccurrenceStatus === 'Cancelled';
+        const live =
+          !isCancelledToday &&
+          isClassInPresenceWindow(startRaw || startDisplay, endRaw || endDisplay, dayOfWeek);
         return {
           id: item.id,
           day: dayName,
@@ -268,6 +279,8 @@ export default function Timetable() {
           startTime: startRaw || startDisplay,
           endTime: endRaw || endDisplay,
           isLive: live,
+          todayOccurrenceStatus,
+          isCancelledToday,
         };
       });
       setTimetableData(formatted);
@@ -299,11 +312,13 @@ export default function Timetable() {
     setTimetableData((prev) =>
       prev.map((item) => ({
         ...item,
-        isLive: isClassInPresenceWindow(
-          item.startTime || '',
-          item.endTime || '',
-          item.dayOfWeek ?? null
-        ),
+        isLive:
+          !item.isCancelledToday &&
+          isClassInPresenceWindow(
+            item.startTime || '',
+            item.endTime || '',
+            item.dayOfWeek ?? null
+          ),
       }))
     );
   }, [nowTick]);
@@ -1032,10 +1047,15 @@ export default function Timetable() {
                         const isLecturer = role === 'Lecturer';
                         
                         return (
-                          <div key={item.id} className={`p-3 bg-white rounded border shadow-sm hover:shadow-md transition-shadow group ${item.isLive ? 'border-green-400 bg-green-50/30' : ''}`}>
+                          <div key={item.id} className={`p-3 bg-white rounded border shadow-sm hover:shadow-md transition-shadow group ${item.isCancelledToday ? 'border-amber-300 bg-amber-50/40' : item.isLive ? 'border-green-400 bg-green-50/30' : ''}`}>
                             <div className="flex justify-between items-start mb-1">
                               <span className="text-xs font-bold text-[#F6A000]">{item.time}</span>
                               <div className="flex gap-1">
+                                {item.isCancelledToday && (
+                                  <Badge variant="outline" className="text-[10px] px-1 h-5 border-amber-400 text-amber-800 bg-amber-50">
+                                    Cancelled today
+                                  </Badge>
+                                )}
                                 {item.isLive && (
                                   <Badge className="bg-green-500 text-white hover:bg-green-600 border-green-600 animate-pulse text-[10px] px-1 h-5">
                                     Live
@@ -1154,9 +1174,10 @@ function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: {
   const hasCheckedIn = !!checkInData?.checkIn;
   const hasCheckedOut = !!checkInData?.checkOut;
   const isLive = item.isLive ?? false;
+  const isCancelledToday = item.isCancelledToday ?? false;
 
   return (
-    <Card className={`hover:shadow-md transition-shadow border-l-4 ${isLive ? 'border-l-green-500 bg-green-50/20' : 'border-l-[#015F2B]'}`}>
+    <Card className={`hover:shadow-md transition-shadow border-l-4 ${isCancelledToday ? 'border-l-amber-500 bg-amber-50/20' : isLive ? 'border-l-green-500 bg-green-50/20' : 'border-l-[#015F2B]'}`}>
       <CardContent className="p-0">
         <div className="flex flex-col md:flex-row">
           <div className="p-4 md:w-48 bg-gray-50 flex flex-col justify-center border-b md:border-b-0 md:border-r">
@@ -1165,6 +1186,11 @@ function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: {
               <span>{item.time}</span>
             </div>
             <div className="flex gap-1 mb-1">
+              {isCancelledToday && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-800 bg-amber-50">
+                  Cancelled today
+                </Badge>
+              )}
               {isLive && (
                 <Badge className="bg-green-500 text-white hover:bg-green-600 border-green-600 animate-pulse text-[10px] px-1.5 py-0">
                   Live
