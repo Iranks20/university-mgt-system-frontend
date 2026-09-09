@@ -160,7 +160,12 @@ export default function WeeklyAttendanceMatrixPanel({
                 <Label className="text-xs text-muted-foreground">Week to</Label>
                 <Input type="date" className="w-[150px] h-9" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
-              <Button variant="outline" className="h-9" onClick={handleExport} disabled={exporting || !report?.students.length}>
+              <Button
+                variant="outline"
+                className="h-9 gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                onClick={handleExport}
+                disabled={exporting || !report?.students.length}
+              >
                 <Download className="mr-2 h-4 w-4" />
                 {exporting ? 'Exporting…' : 'Export Excel'}
               </Button>
