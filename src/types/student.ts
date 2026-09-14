@@ -182,6 +182,7 @@ export interface DailyMarkingSlot {
   courseId: string;
   courseName: string;
   courseCode: string;
+  programStreamId?: string | null;
   dayOfWeek: number;
   dayLabel: string;
   dayShort: string;
@@ -195,11 +196,13 @@ export interface DailyMarkingGridStudent {
   studentId: string;
   studentName: string;
   registrationNumber: string;
+  programStreamId?: string | null;
   attendance: Record<string, string | null>;
 }
 
 export interface DailyMarkingGrid {
   programIntakeId: string;
+  programStreamId?: string | null;
   programIntakeLabel: string;
   programName: string;
   programCode: string;

@@ -285,6 +285,7 @@ export const studentService = {
   getDailyMarkingGrid: async (params: {
     programIntakeId: string;
     date: string;
+    programStreamId?: string;
   }): Promise<DailyMarkingGrid | null> => {
     const res = await api.get<DailyMarkingGrid | { data: DailyMarkingGrid }>(
       '/students/attendance/daily-marking-grid',
