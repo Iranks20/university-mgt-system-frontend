@@ -11,6 +11,7 @@ import {
   parseAttendanceStatus,
 } from '@/components/AttendanceStatusSelect';
 import { studentService } from '@/services';
+import { academicService } from '@/services/academic.service';
 import type { AttendanceStatus } from '@/lib/attendance-metrics';
 import type { AttendanceStatusOrUnset } from '@/components/AttendanceStatusSelect';
 import {
@@ -60,10 +61,26 @@ export default function DailyAttendanceGrid({
   const [cellMap, setCellMap] = useState<Record<string, AttendanceStatusOrUnset>>({});
   const [studentSortField, setStudentSortField] = useState<StudentSortField>('studentName');
   const [studentSortDirection, setStudentSortDirection] = useState<StudentSortDirection>('asc');
+  const [programStreams, setProgramStreams] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [selectedStreamId, setSelectedStreamId] = useState<string>('__all__');
 
   const cellKey = (studentId: string, classId: string) => `${studentId}|${classId}`;
   const slotAllowsAttendance = (slot: DailyMarkingGrid['slots'][number]) =>
     slot.attendanceAllowed !== false;
+
+  useEffect(() => {
+    const programId = intakeScope.programId;
+    if (!programId || programId === PROGRAM_INTAKE_ALL) {
+      setProgramStreams([]);
+      setSelectedStreamId('__all__');
+      return;
+    }
+    academicService
+      .getProgramStreams(programId)
+      .then((rows) => setProgramStreams(rows.map((r) => ({ id: r.id, code: r.code, name: r.name }))))
+      .catch(() => setProgramStreams([]));
+    setSelectedStreamId('__all__');
+  }, [intakeScope.programId]);
 
   const loadGrid = useCallback(async () => {
     if (!intakeScope.isComplete) {
@@ -75,6 +92,7 @@ export default function DailyAttendanceGrid({
       const data = await studentService.getDailyMarkingGrid({
         programIntakeId: intakeScope.programIntakeId,
         date: markDate,
+        ...(selectedStreamId !== '__all__' ? { programStreamId: selectedStreamId } : {}),
       });
       if (!data) {
         setGrid(null);
@@ -105,7 +123,7 @@ export default function DailyAttendanceGrid({
     } finally {
       setLoading(false);
     }
-  }, [intakeScope.programIntakeId, intakeScope.isComplete, markDate]);
+  }, [intakeScope.programIntakeId, intakeScope.isComplete, markDate, selectedStreamId]);
 
   useEffect(() => {
     if (!prefill) return;
@@ -238,8 +256,8 @@ export default function DailyAttendanceGrid({
 
   const sortLabel =
     studentSortField === 'studentName'
-      ? `Student name (${studentSortDirection === 'asc' ? 'AùZ' : 'ZùA'})`
-      : `Reg. no. (${studentSortDirection === 'asc' ? 'AùZ' : 'ZùA'})`;
+      ? `Student name (${studentSortDirection === 'asc' ? 'A?Z' : 'Z?A'})`
+      : `Reg. no. (${studentSortDirection === 'asc' ? 'A?Z' : 'Z?A'})`;
 
   return (
     <Card className="border-[#015F2B]/20">
@@ -262,10 +280,30 @@ export default function DailyAttendanceGrid({
           showReset
           onReset={resetFilters}
           trailing={
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Date</Label>
-              <Input type="date" className="w-[150px] h-9" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
-            </div>
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input type="date" className="w-[150px] h-9" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
+              </div>
+              {programStreams.length > 0 ? (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Specialization</Label>
+                  <Select value={selectedStreamId} onValueChange={setSelectedStreamId}>
+                    <SelectTrigger className="w-[200px] h-9">
+                      <SelectValue placeholder="All students" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All students in cohort</SelectItem>
+                      {programStreams.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </>
           }
           actionButton={{
             label: 'Load grid',
@@ -279,10 +317,10 @@ export default function DailyAttendanceGrid({
           <>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-gray-900">{grid.programIntakeLabel}</span>
-              {' ù '}
+              {' ? '}
               {grid.dayName} ({grid.date})
-              {' ù '}
-              {grid.students.length} students ù {grid.slots.length} course units ù {sortLabel}
+              {' ? '}
+              {grid.students.length} students ? {grid.slots.length} course units ? {sortLabel}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button

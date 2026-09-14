@@ -45,6 +45,7 @@ import { getApiErrorMessage } from '@/lib/api';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
 import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
 import { StudentStatusDialog } from '@/components/admin/StudentStatusDialog';
+import { ProgramStreamsDialog } from '@/components/admin/ProgramStreamsDialog';
 import { studentStatusBadgeClass, studentStatusLabel } from '@/lib/student-lifecycle';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -148,7 +149,7 @@ function StudentsTab({
   const [departments, setDepartments] = useState<{ id: string; name: string; code?: string; schoolId?: string; schoolName?: string }[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
   const [addPreviewCourses, setAddPreviewCourses] = useState<any[]>([]);
   const [addPreviewLoading, setAddPreviewLoading] = useState(false);
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
@@ -161,6 +162,7 @@ function StudentsTab({
     schoolId: '',
     departmentId: '',
     programId: '',
+    programStreamId: '',
     year: 'Year 1',
     semester: '1',
     newPassword: '',
@@ -171,6 +173,7 @@ function StudentsTab({
   const [statusDialogTargets, setStatusDialogTargets] = useState<StudentRow[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
   const [programs, setPrograms] = useState<any[]>([]);
+  const [programStreams, setProgramStreams] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [programsLoading, setProgramsLoading] = useState(false);
   const [previewCourses, setPreviewCourses] = useState<any[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -353,6 +356,18 @@ function StudentsTab({
   }, [addOpen, editOpen, addForm.departmentId, editForm.departmentId]);
 
   useEffect(() => {
+    const programId = addOpen ? addForm.programId : editOpen ? editForm.programId : '';
+    if (!programId) {
+      setProgramStreams([]);
+      return;
+    }
+    academicService
+      .getProgramStreams(programId)
+      .then((rows) => setProgramStreams(rows.map((r) => ({ id: r.id, code: r.code, name: r.name }))))
+      .catch(() => setProgramStreams([]));
+  }, [addOpen, editOpen, addForm.programId, editForm.programId]);
+
+  useEffect(() => {
     if (addForm.programId) {
       const prog = programs.find((p: any) => p.id === addForm.programId);
       const duration = prog?.duration ?? 4;
@@ -509,6 +524,7 @@ function StudentsTab({
         studentNumber: addForm.studentId,
         programId: prog.id,
         program: prog.name,
+        programStreamId: addForm.programStreamId || null,
         year,
         semester,
         departmentId: prog.departmentId ?? addForm.departmentId,
@@ -549,7 +565,7 @@ function StudentsTab({
       
       await loadStudents(1);
       
-      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
       setAddOpen(false);
@@ -953,6 +969,7 @@ function StudentsTab({
                           schoolId: dept?.schoolId ?? '',
                           departmentId: studentData?.departmentId ?? dept?.id ?? '',
                           programId: studentData?.programId ?? '',
+                          programStreamId: (studentData as any)?.programStreamId ?? '',
                           year: `Year ${student.year}`,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
@@ -1118,7 +1135,7 @@ function StudentsTab({
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                     </div>
                   ) : (
-                    <Select value={addForm.programId} onValueChange={v => setAddForm(f => ({ ...f, programId: v }))} required>
+                    <Select value={addForm.programId} onValueChange={v => setAddForm(f => ({ ...f, programId: v, programStreamId: '' }))} required>
                       <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
                       <SelectContent className="max-h-[300px]">
                         {addForm.departmentId ? (
@@ -1137,6 +1154,27 @@ function StudentsTab({
                     </Select>
                   )}
                 </div>
+                {programStreams.length > 0 ? (
+                  <div className="space-y-2 min-w-0">
+                    <Label>Specialization</Label>
+                    <Select
+                      value={addForm.programStreamId || '__none__'}
+                      onValueChange={(v) => setAddForm((f) => ({ ...f, programStreamId: v === '__none__' ? '' : v }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="None (shared / pre-specialization)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None (shared / pre-specialization)</SelectItem>
+                        {programStreams.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name} ({s.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="space-y-2 min-w-0">
                 <Label>Year</Label>
                 <Select value={addForm.year} onValueChange={v => setAddForm(f => ({ ...f, year: v }))}>
@@ -1474,6 +1512,7 @@ function StudentsTab({
                 programId: prog.id,
                 program: prog.name,
                 departmentId: prog.departmentId ?? editForm.departmentId,
+                programStreamId: editForm.programStreamId || null,
                 year,
                 semester,
                 ...(newPw ? { tempPassword: newPw } : {}),
@@ -1676,7 +1715,7 @@ function StudentsTab({
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                       </div>
                     ) : (
-                      <Select value={editForm.programId} onValueChange={v => setEditForm(f => ({ ...f, programId: v }))} required>
+                      <Select value={editForm.programId} onValueChange={v => setEditForm(f => ({ ...f, programId: v, programStreamId: '' }))} required>
                         <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
                         <SelectContent className="max-h-[300px]">
                           {editForm.departmentId ? (
@@ -1695,6 +1734,27 @@ function StudentsTab({
                       </Select>
                     )}
                   </div>
+                  {programStreams.length > 0 ? (
+                    <div className="space-y-2 min-w-0">
+                      <Label>Specialization</Label>
+                      <Select
+                        value={editForm.programStreamId || '__none__'}
+                        onValueChange={(v) => setEditForm((f) => ({ ...f, programStreamId: v === '__none__' ? '' : v }))}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="None (shared / pre-specialization)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">None (shared / pre-specialization)</SelectItem>
+                          {programStreams.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name} ({s.code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
                   <div className="space-y-2 min-w-0">
                   <Label>Year</Label>
                   <Select value={editForm.year} onValueChange={v => setEditForm(f => ({ ...f, year: v }))}>
@@ -4289,6 +4349,8 @@ function SchoolsTab() {
   const [editingLevel, setEditingLevel] = useState<LevelRow | null>(null);
   const [editingDept, setEditingDept] = useState<DepartmentRow | null>(null);
   const [editingProgram, setEditingProgram] = useState<ProgramRow | null>(null);
+  const [streamsDialogOpen, setStreamsDialogOpen] = useState(false);
+  const [streamsProgram, setStreamsProgram] = useState<ProgramRow | null>(null);
   const [selectedSchoolForDept, setSelectedSchoolForDept] = useState<string>('');
   const [selectedDeptForProgram, setSelectedDeptForProgram] = useState<string>('');
   const [schoolForm, setSchoolForm] = useState({ name: '', dean: '' });
@@ -4956,6 +5018,17 @@ function SchoolsTab() {
                                                               </Button>
                                                               <span className="font-medium text-sm">{prog.name} ({prog.code})</span>
                                                               <div className="flex gap-1">
+                                                                <Button
+                                                                  variant="ghost"
+                                                                  size="sm"
+                                                                  className="h-7 text-xs"
+                                                                  onClick={() => {
+                                                                    setStreamsProgram(prog);
+                                                                    setStreamsDialogOpen(true);
+                                                                  }}
+                                                                >
+                                                                  Streams
+                                                                </Button>
                                                                 <Button variant="ghost" size="sm" className="h-7" onClick={() => openEditProgram(prog)}><Edit className="h-3 w-3" /></Button>
                                                                 <Button variant="ghost" size="sm" className="h-7 text-red-600" onClick={async () => {
                                                                   if (confirm(`Delete degree program "${prog.name}"?`)) {
@@ -5654,6 +5727,12 @@ function SchoolsTab() {
         </DialogContent>
       </Dialog>
 
+      <ProgramStreamsDialog
+        open={streamsDialogOpen}
+        onOpenChange={setStreamsDialogOpen}
+        program={streamsProgram}
+      />
+
       <Dialog open={addCourseOpen} onOpenChange={(open) => {
         setAddCourseOpen(open);
         if (!open) setEditingCourse(null);
@@ -5766,15 +5845,17 @@ function ClassesTab({
     lecturerIds: [] as string[],
     primaryLecturerId: '',
     cohortProgramIntakeIds: [] as string[],
+    programStreamId: '',
     venueId: '', 
     dayOfWeek: '1', 
     startTime: '08:00', 
     endTime: '10:00', 
     capacity: 50 
   });
-  const [adminCourses, setAdminCourses] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [adminCourses, setAdminCourses] = useState<{ id: string; code: string; name: string; programId?: string | null }[]>([]);
   const [venues, setVenues] = useState<{ id: string; name: string; code: string }[]>([]);
   const [programIntakeOptions, setProgramIntakeOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [classStreams, setClassStreams] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const classIntakeScope = useProgramIntakeScope({ showSchool: false, intakeField: 'type' });
   const [scopeEnabled, setScopeEnabled] = useState<boolean>(false);
   const [scopeLoading, setScopeLoading] = useState<boolean>(false);
@@ -5840,7 +5921,14 @@ function ClassesTab({
         venuePage += 1;
       }
 
-      setAdminCourses(allCourses.map((c: any) => ({ id: c.id, code: c.code ?? '', name: c.name ?? '' })));
+      setAdminCourses(
+        allCourses.map((c: any) => ({
+          id: c.id,
+          code: c.code ?? '',
+          name: c.name ?? '',
+          programId: c.programId ?? null,
+        }))
+      );
       setVenues(allVenues.map((v: any) => ({ id: v.id, name: v.name, code: v.code || '' })));
       const [intakes, programsRes] = await Promise.all([
         academicService.getProgramIntakes(),
@@ -5870,6 +5958,19 @@ function ClassesTab({
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
   }, []);
+
+  useEffect(() => {
+    const course = adminCourses.find((c) => c.id === form.courseId);
+    const programId = course?.programId;
+    if (!programId) {
+      setClassStreams([]);
+      return;
+    }
+    academicService
+      .getProgramStreams(programId)
+      .then((rows) => setClassStreams(rows.map((r) => ({ id: r.id, code: r.code, name: r.name }))))
+      .catch(() => setClassStreams([]));
+  }, [form.courseId, adminCourses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5990,6 +6091,7 @@ function ClassesTab({
       lecturerIds: [],
       primaryLecturerId: '',
       cohortProgramIntakeIds: [],
+      programStreamId: '',
       venueId: '', 
       dayOfWeek: '1', 
       startTime: '08:00', 
@@ -6015,6 +6117,7 @@ function ClassesTab({
         cohortProgramIntakeIds:
           ((classDetails as any)?.cohortProgramIntakeIds ||
             ((classDetails as any)?.programIntakeId ? [(classDetails as any).programIntakeId] : [])) as string[],
+        programStreamId: ((classDetails as any)?.programStreamId || '') as string,
         venueId: (classDetails as any)?.venueId || '', 
         dayOfWeek: String((classDetails as any)?.dayOfWeek ?? 1), 
         startTime: (classDetails as any)?.startTime || '08:00', 
@@ -6030,6 +6133,7 @@ function ClassesTab({
         lecturerIds: cls.lecturerId ? [cls.lecturerId] : [],
         primaryLecturerId: cls.lecturerId || '',
         cohortProgramIntakeIds: [],
+        programStreamId: '',
         venueId: '', 
         dayOfWeek: '1', 
         startTime: '08:00', 
@@ -6078,6 +6182,7 @@ function ClassesTab({
           primaryLecturerId: primaryLecturerId || undefined,
           programIntakeIds: form.cohortProgramIntakeIds,
           programIntakeId: form.cohortProgramIntakeIds[0] || undefined,
+          programStreamId: form.programStreamId || null,
           venueId: form.venueId || undefined,
           dayOfWeek: parseInt(form.dayOfWeek, 10),
           startTime: form.startTime,
@@ -6093,6 +6198,7 @@ function ClassesTab({
           primaryLecturerId: primaryLecturerId || undefined,
           programIntakeIds: form.cohortProgramIntakeIds,
           programIntakeId: form.cohortProgramIntakeIds[0] || undefined,
+          programStreamId: form.programStreamId || null,
           venueId: form.venueId || '',
           capacity: form.capacity,
           dayOfWeek: parseInt(form.dayOfWeek, 10),
@@ -6490,13 +6596,34 @@ function ClassesTab({
                     label: `${co.code} – ${co.name}`,
                   }))}
                   value={form.courseId || undefined}
-                  onValueChange={(v) => setForm((f) => ({ ...f, courseId: v }))}
+                  onValueChange={(v) => setForm((f) => ({ ...f, courseId: v, programStreamId: '' }))}
                   placeholder="Select course"
                   searchPlaceholder="Search courses..."
                   emptyText="No course found."
                   initialDisplayCount={10}
                 />
             </div>
+            {classStreams.length > 0 ? (
+              <div className="space-y-2">
+                <Label>Specialization stream</Label>
+                <Select
+                  value={form.programStreamId || '__none__'}
+                  onValueChange={(v) => setForm((f) => ({ ...f, programStreamId: v === '__none__' ? '' : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Shared (all students in cohort)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Shared (all students in cohort)</SelectItem>
+                    {classStreams.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label>Lecturer *</Label>
               <Combobox

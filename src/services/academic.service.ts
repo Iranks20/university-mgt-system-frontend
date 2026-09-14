@@ -160,6 +160,7 @@ type ClassUpsertPayload = {
   primaryLecturerId?: string | null;
   programIntakeId?: string | null;
   programIntakeIds?: string[];
+  programStreamId?: string | null;
   venueId?: string | null;
   dayOfWeek?: number | null;
   startTime?: string | null;
@@ -367,6 +368,38 @@ export const academicService = {
       console.error('Error deleting program:', error);
       throw error;
     }
+  },
+
+  getProgramStreams: async (
+    programId: string,
+    options?: { includeInactive?: boolean }
+  ): Promise<Array<{ id: string; programId: string; code: string; name: string; minYear: number | null; isActive: boolean }>> => {
+    try {
+      const params = options?.includeInactive ? { includeInactive: true } : {};
+      const res = await api.get<any>(`/academic/programs/${programId}/streams`, params as any);
+      return Array.isArray(res) ? res : (res?.data ?? []);
+    } catch (error) {
+      console.error('Error fetching program streams:', error);
+      return [];
+    }
+  },
+
+  createProgramStream: async (
+    programId: string,
+    payload: { code: string; name: string; minYear?: number | null; isActive?: boolean }
+  ): Promise<any> => {
+    return api.post(`/academic/programs/${programId}/streams`, payload);
+  },
+
+  updateProgramStream: async (
+    id: string,
+    payload: Partial<{ code: string; name: string; minYear: number | null; isActive: boolean }>
+  ): Promise<any> => {
+    return api.put(`/academic/program-streams/${id}`, payload);
+  },
+
+  deleteProgramStream: async (id: string): Promise<any> => {
+    return api.delete(`/academic/program-streams/${id}`);
   },
 
   getCourses: async (params?: { departmentId?: string; programId?: string; level?: number; semester?: number; unassigned?: boolean; page?: number; limit?: number }): Promise<{ data: Course[]; total: number; page: number; pageSize: number }> => {
