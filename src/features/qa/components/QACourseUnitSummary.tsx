@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox } from '@/components/ui/combobox';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
@@ -11,8 +11,6 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { exportCourseUnitSummaryReport } from '@/utils/excel';
 import type { QACourseUnitSummary as QACourseUnitSummaryRow } from '@/types/qa';
-
-type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
 const PAGE_SIZE = 20;
 const ALL = 'All';
@@ -59,7 +57,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   const [selectedClass, setSelectedClass] = useState<string>(ALL);
   const [selectedCourseUnit, setSelectedCourseUnit] = useState<string>(ALL);
   const [selectedLecturer, setSelectedLecturer] = useState<string>(ALL);
-  const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [page, setPage] = useState(1);
@@ -77,20 +76,10 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   };
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
-    if (scopedDateRange) return scopedDateRange;
-    const now = new Date();
-    if (dateRangeKey === 'all') return undefined;
-    if (dateRangeKey === 'last_30_days') {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 30);
-      return { dateFrom: from.toISOString().slice(0, 10), dateTo: now.toISOString().slice(0, 10) };
-    }
-    if (dateRangeKey === 'this_term') {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 3);
-      return { dateFrom: from.toISOString().slice(0, 10), dateTo: now.toISOString().slice(0, 10) };
-    }
-    return undefined;
+    const from = dateFrom.trim() || undefined;
+    const to = dateTo.trim() || undefined;
+    if (!from && !to) return undefined;
+    return { dateFrom: from, dateTo: to };
   };
 
   const buildReportParams = () => {
@@ -128,16 +117,21 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   }, [selectedSchool, schoolRecords]);
 
   useEffect(() => {
+    if (!scopedDateRange) return;
+    setDateFrom(scopedDateRange.dateFrom);
+    setDateTo(scopedDateRange.dateTo);
+  }, [scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
+
+  useEffect(() => {
     loadReports();
   }, [
     selectedSchool,
     selectedDepartment,
-    dateRangeKey,
+    dateFrom,
+    dateTo,
     selectedClass,
     selectedCourseUnit,
     selectedLecturer,
-    scopedDateRange?.dateFrom,
-    scopedDateRange?.dateTo,
   ]);
 
   useEffect(() => {
@@ -145,7 +139,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
     setSelectedClass(ALL);
     setSelectedCourseUnit(ALL);
     setSelectedLecturer(ALL);
-  }, [selectedSchool, dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
+  }, [selectedSchool]);
 
   useEffect(() => {
     setSelectedClass(ALL);
@@ -158,7 +152,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   }, [
     selectedSchool,
     selectedDepartment,
-    dateRangeKey,
+    dateFrom,
+    dateTo,
     selectedClass,
     selectedCourseUnit,
     selectedLecturer,
@@ -216,9 +211,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   }, [
     selectedSchool,
     selectedDepartment,
-    dateRangeKey,
-    scopedDateRange?.dateFrom,
-    scopedDateRange?.dateTo,
+    dateFrom,
+    dateTo,
   ]);
 
   const schoolComboboxOptions = useMemo(
@@ -258,12 +252,12 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   }, [rows, page]);
 
   const getDateRangeLabel = (): string => {
-    if (scopedDateRange?.dateFrom && scopedDateRange?.dateTo) {
-      return `${scopedDateRange.dateFrom} to ${scopedDateRange.dateTo}`;
-    }
-    if (dateRangeKey === 'all') return 'All time';
-    if (dateRangeKey === 'last_30_days') return 'Last 30 days';
-    return 'Last 3 months';
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
+    if (from && to) return `${from} to ${to}`;
+    if (from) return `From ${from}`;
+    if (to) return `Until ${to}`;
+    return 'All time';
   };
 
   const handleExport = async () => {
@@ -311,24 +305,46 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
           Teaching outcomes by course unit within each class (lecturers combined per class)
           {selectedSchool !== ALL ? ` · ${selectedSchool}` : ''}
           {selectedDepartment !== ALL ? ` · ${selectedDepartment}` : ''}
+          {dateFrom || dateTo ? ` · ${getDateRangeLabel()}` : ''}
           {activeFilterCount > 0
             ? ` · ${activeFilterCount} detail filter${activeFilterCount === 1 ? '' : 's'} applied`
             : ''}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-wrap gap-2 items-center mb-6">
-          {!scopedDateRange ? (
-            <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All time</SelectItem>
-                <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                <SelectItem value="this_term">Last 3 months</SelectItem>
-              </SelectContent>
-            </Select>
+        <div className="flex flex-wrap gap-2 items-end mb-6">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Date from</label>
+            <Input
+              type="date"
+              className="w-[150px]"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Date to</label>
+            <Input
+              type="date"
+              className="w-[150px]"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          {dateFrom || dateTo ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mb-0.5"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+              }}
+            >
+              Clear dates
+            </Button>
           ) : null}
           <Combobox
             className="w-[220px]"
