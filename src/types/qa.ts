@@ -31,6 +31,8 @@ export interface QALectureRecord {
   remarks?: string | null; // QA free-text comment explaining the chosen status
   substituteLecturerId?: string | null;
   substituteLecturerName?: string | null;
+  coLecturerIds?: string[];
+  coLecturers?: Array<{ id: string; name: string }>;
   checkInTime?: string;
   checkOutTime?: string;
   checkInTimestamp?: Date;
