@@ -137,6 +137,7 @@ export default function LectureRecords() {
   const [selectedDeliveryMode, setSelectedDeliveryMode] = useState<DeliveryMode>('InPerson');
   const [selectedSubstituteId, setSelectedSubstituteId] = useState<string>('');
   const [selectedSubstituteName, setSelectedSubstituteName] = useState<string>('');
+  const [selectedCoLecturerIds, setSelectedCoLecturerIds] = useState<string[]>([]);
   const [selectedDepartmentName, setSelectedDepartmentName] = useState('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [lecturerAssignments, setLecturerAssignments] = useState<{
@@ -657,10 +658,31 @@ export default function LectureRecords() {
     selectedDepartmentName,
   ]);
 
+  const modalCoLecturerOptions = useMemo(() => {
+    if (!useClassLecturerPool || classLecturerPoolLoading) return [];
+    return classLecturerPool.filter(
+      (entry) =>
+        entry.id !== selectedLecturerId &&
+        entry.id !== selectedSubstituteId
+    );
+  }, [
+    useClassLecturerPool,
+    classLecturerPoolLoading,
+    classLecturerPool,
+    selectedLecturerId,
+    selectedSubstituteId,
+  ]);
+
   const modalSubstituteOptions = useMemo(
-    () => modalLecturerOptions.filter((entry) => entry.id !== selectedLecturerId),
-    [modalLecturerOptions, selectedLecturerId]
+    () => lecturerOptions.filter((entry) => entry.id !== selectedLecturerId),
+    [lecturerOptions, selectedLecturerId]
   );
+
+  useEffect(() => {
+    if (selectedCoLecturerIds.length === 0) return;
+    const allowed = new Set(modalCoLecturerOptions.map((o) => o.id));
+    setSelectedCoLecturerIds((prev) => prev.filter((id) => allowed.has(id)));
+  }, [modalCoLecturerOptions]);
 
   const normalizeName = (value?: string | null) =>
     (value || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -977,6 +999,7 @@ export default function LectureRecords() {
       remarks: remarksRaw ? remarksRaw : null,
       substituteLecturerId:
         commentValue === 'SUBSTITUTED' && selectedSubstituteId ? selectedSubstituteId : null,
+      coLecturerIds: selectedCoLecturerIds,
       checkInTime: checkInTime || undefined,
       checkOutTime: checkOutTime || undefined,
       lessonTimeout: lessonTimeout,
@@ -996,6 +1019,7 @@ export default function LectureRecords() {
       setSelectedLecturerId('');
       setSelectedSubstituteId('');
       setSelectedSubstituteName('');
+      setSelectedCoLecturerIds([]);
       setSelectedComment('TAUGHT');
       setSelectedDeliveryMode('InPerson');
     } catch (error) {
@@ -1049,6 +1073,12 @@ export default function LectureRecords() {
     } else {
       setSelectedSubstituteName('');
     }
+    const coFromRecord = Array.isArray(record.coLecturers)
+      ? record.coLecturers.map((c) => c.id).filter(Boolean)
+      : Array.isArray(record.coLecturerIds)
+        ? record.coLecturerIds.filter(Boolean)
+        : [];
+    setSelectedCoLecturerIds(coFromRecord);
 
     const staffIdFromRecord = record.lecturerId;
     const normalizedRecordName = normalizeName(record.lecturerName);
@@ -1188,6 +1218,7 @@ export default function LectureRecords() {
     setSelectedDeliveryMode('InPerson');
     setSelectedSubstituteId('');
     setSelectedSubstituteName('');
+    setSelectedCoLecturerIds([]);
     clearClassLecturerPool();
     setIsDialogOpen(true);
   };
@@ -1610,8 +1641,13 @@ export default function LectureRecords() {
                       <TableCell className="whitespace-nowrap font-medium">
                         {formatDate(record.date)}
                       </TableCell>
-                      <TableCell className="font-medium max-w-[200px] truncate" title={record.lecturerName}>
-                        {record.lecturerName}
+                      <TableCell className="font-medium max-w-[220px]" title={record.lecturerName}>
+                        <div className="truncate">{record.lecturerName}</div>
+                        {Array.isArray(record.coLecturers) && record.coLecturers.length > 0 ? (
+                          <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                            + {record.coLecturers.map((c) => c.name).join(', ')}
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell className="max-w-[140px] truncate" title={record.class || (record as any).className || ''}>
                         {record.class || (record as any).className || '-'}
@@ -1748,6 +1784,14 @@ export default function LectureRecords() {
                       <p className="text-xs text-muted-foreground">Lecturer</p>
                       <p className="font-medium text-gray-900">{detailsRecord.lecturerName || '—'}</p>
                     </div>
+                    {Array.isArray(detailsRecord.coLecturers) && detailsRecord.coLecturers.length > 0 ? (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs text-muted-foreground">Co-teaching lecturers</p>
+                        <p className="font-medium text-gray-900">
+                          {detailsRecord.coLecturers.map((c) => c.name).join(', ')}
+                        </p>
+                      </div>
+                    ) : null}
                     <div>
                       <p className="text-xs text-muted-foreground">Department</p>
                       <p className="font-medium text-gray-900">{detailsRecord.department || '—'}</p>
@@ -2136,6 +2180,11 @@ export default function LectureRecords() {
                         const opt = modalLecturerOptions.find((l) => l.id === id);
                         setSelectedLecturerId(id);
                         setSelectedLecturerName(opt?.name || '');
+                        setSelectedCoLecturerIds((prev) => prev.filter((coId) => coId !== id));
+                        if (selectedSubstituteId === id) {
+                          setSelectedSubstituteId('');
+                          setSelectedSubstituteName('');
+                        }
                         if (selectedClassId) {
                           return;
                         }
@@ -2157,7 +2206,7 @@ export default function LectureRecords() {
                         useClassLecturerPool && classLecturerPoolLoading
                           ? 'Loading class lecturers…'
                           : useClassLecturerPool
-                            ? 'No lecturers in this class pool.'
+                            ? 'No lecturers assigned to this class.'
                             : 'No lecturer found.'
                       }
                       initialDisplayCount={useClassLecturerPool ? 50 : 10}
@@ -2165,10 +2214,46 @@ export default function LectureRecords() {
                   {useClassLecturerPool ? (
                     <p className="text-xs text-muted-foreground">
                       Showing lecturers assigned to the selected class
-                      {classLecturerPool.length === 1 ? ' (only one in pool)' : ''}.
+                      {classLecturerPool.length === 1 ? ' (only one assigned)' : ''}.
                     </p>
                   ) : selectedClassId ? (
-                    <p className="text-xs text-amber-800">Loading class lecturer pool…</p>
+                    <p className="text-xs text-amber-800">Loading class lecturers…</p>
+                  ) : null}
+                  {modalCoLecturerOptions.length > 0 ? (
+                    <div className="rounded-md border p-3 space-y-2">
+                      <Label>OTHER LECTURERS WHO TAUGHT</Label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {modalCoLecturerOptions.map((lecturer) => {
+                          const checked = selectedCoLecturerIds.includes(lecturer.id);
+                          return (
+                            <label
+                              key={lecturer.id}
+                              className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/40"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(value) => {
+                                  const on = value === true;
+                                  setSelectedCoLecturerIds((prev) =>
+                                    on
+                                      ? [...new Set([...prev, lecturer.id])]
+                                      : prev.filter((id) => id !== lecturer.id)
+                                  );
+                                }}
+                              />
+                              <span>
+                                <span className="font-medium">{lecturer.name}</span>
+                                {lecturer.departmentName ? (
+                                  <span className="block text-xs text-muted-foreground">
+                                    {lecturer.departmentName}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -2221,6 +2306,7 @@ export default function LectureRecords() {
                             setSelectedDeliveryMode(normalizeDeliveryMode(cls.deliveryMode));
                           }
                           const pool = await loadClassLecturerPool(value);
+                          setSelectedCoLecturerIds([]);
                           applySinglePoolLecturerIfNeeded(pool, { onlyWhenEmpty: currentRecordId === null });
                         }}
                       required
@@ -2415,13 +2501,11 @@ export default function LectureRecords() {
                         }}
                         placeholder="Select substitute lecturer"
                         searchPlaceholder="Search lecturers by name or department..."
-                        emptyText={
-                          useClassLecturerPool ? 'No other lecturers in this class pool.' : 'No lecturer found.'
-                        }
-                        initialDisplayCount={useClassLecturerPool ? 50 : 10}
+                        emptyText="No lecturer found."
+                        initialDisplayCount={50}
                       />
                       <p className="text-xs text-muted-foreground">
-                        Who actually taught this session in place of {selectedLecturerName || 'the scheduled lecturer'}?
+                        Who actually taught this session in place of {selectedLecturerName || 'the scheduled lecturer'}? Search any lecturer in the system.
                       </p>
               </div>
                   )}
