@@ -4,11 +4,12 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { clinicalService } from '@/services/clinical.service';
-import { clinicalSessionStatusBadge } from './clinical-ui';
+import { clinicalSessionStatusBadge, clinicalSessionTypeBadge } from './clinical-ui';
 import { ClinicalTableCard } from './ClinicalTableCard';
 import { ClinicalInstructorPicker, instructorPickToSessionPayload } from './ClinicalInstructorPicker';
 
@@ -19,9 +20,10 @@ type SessionRow = {
   date: string;
   topic: string;
   status: string;
-  instructorNameSnapshot?: string;
+  sessionType?: 'Supervised' | 'Independent' | string;
+  instructorNameSnapshot?: string | null;
   clinicalSite?: { name?: string };
-  clinicalInstructor?: { fullName?: string };
+  clinicalInstructor?: { fullName?: string } | null;
 };
 
 type SessionsSectionProps = {
@@ -37,6 +39,7 @@ type SessionsSectionProps = {
 const emptyForm = () => ({
   clinicalSiteId: '',
   clinicalRotationId: '',
+  sessionType: 'Supervised' as 'Supervised' | 'Independent',
   instructorPick: '',
   topic: '',
   date: '',
@@ -44,6 +47,14 @@ const emptyForm = () => ({
   endTime: '',
   notes: '',
 });
+
+function sessionInstructorLabel(s: SessionRow): string {
+  return (
+    s.instructorNameSnapshot ||
+    s.clinicalInstructor?.fullName ||
+    (s.sessionType === 'Independent' ? 'No instructor' : '—')
+  );
+}
 
 export function SessionsSection({
   sessions,
@@ -60,6 +71,8 @@ export function SessionsSection({
   const [deleteTarget, setDeleteTarget] = useState<SessionRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const instructorLabelsRef = useRef(new Map<string, string>());
+  const isIndependent = form.sessionType === 'Independent';
+  const actionColSpan = canVerify || canRecord ? 7 : 6;
 
   const openAdd = () => {
     setForm(emptyForm());
@@ -73,7 +86,7 @@ export function SessionsSection({
       return;
     }
     const instructorPayload = instructorPickToSessionPayload(form.instructorPick, instructorLabelsRef.current);
-    if (!instructorPayload.clinicalInstructorId) {
+    if (!isIndependent && !instructorPayload.clinicalInstructorId) {
       toast.error('Select an instructor');
       return;
     }
@@ -82,7 +95,8 @@ export function SessionsSection({
       await clinicalService.createSession({
         clinicalSiteId: form.clinicalSiteId,
         clinicalRotationId: form.clinicalRotationId || null,
-        clinicalInstructorId: instructorPayload.clinicalInstructorId,
+        sessionType: form.sessionType,
+        clinicalInstructorId: instructorPayload.clinicalInstructorId ?? null,
         staffId: null,
         instructorName: null,
         topic: form.topic.trim(),
@@ -149,6 +163,7 @@ export function SessionsSection({
               <TableHead>Date</TableHead>
               <TableHead>Topic</TableHead>
               <TableHead>Site</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Instructor</TableHead>
               <TableHead>Status</TableHead>
               {(canVerify || canRecord) && <TableHead className="text-right">Action</TableHead>}
@@ -157,7 +172,7 @@ export function SessionsSection({
           <TableBody>
             {sessions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canVerify || canRecord ? 6 : 5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={actionColSpan} className="py-10 text-center text-muted-foreground">
                   No sessions recorded.
                 </TableCell>
               </TableRow>
@@ -167,7 +182,8 @@ export function SessionsSection({
                   <TableCell>{String(s.date).slice(0, 10)}</TableCell>
                   <TableCell className="font-medium">{s.topic}</TableCell>
                   <TableCell>{s.clinicalSite?.name || '—'}</TableCell>
-                  <TableCell>{s.instructorNameSnapshot || s.clinicalInstructor?.fullName || '—'}</TableCell>
+                  <TableCell>{clinicalSessionTypeBadge(s.sessionType || 'Supervised')}</TableCell>
+                  <TableCell>{sessionInstructorLabel(s)}</TableCell>
                   <TableCell>{clinicalSessionStatusBadge(s.status)}</TableCell>
                   {(canVerify || canRecord) && (
                     <TableCell className="text-right space-x-1">
@@ -207,7 +223,9 @@ export function SessionsSection({
           <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Record clinical session</DialogTitle>
-              <DialogDescription>Log a teaching session at a clinical site.</DialogDescription>
+              <DialogDescription>
+                Log a supervised teaching session or an independent clinical activity at a site.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={save} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -231,7 +249,7 @@ export function SessionsSection({
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <Label>Rotation (optional)</Label>
+                    <Label>Rotation</Label>
                     {form.clinicalRotationId ? (
                       <button
                         type="button"
@@ -260,7 +278,42 @@ export function SessionsSection({
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Instructor</Label>
+                <LabelWithInfo info="Supervised sessions require a clinical instructor. Independent sessions (e.g. patient review) do not.">
+                  Session type
+                </LabelWithInfo>
+                <Select
+                  value={form.sessionType}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      sessionType: v as 'Supervised' | 'Independent',
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Supervised">Supervised (instructor required)</SelectItem>
+                    <SelectItem value="Independent">Independent (no instructor needed)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <LabelWithInfo info="Register instructors under Clinicals → Instructors. Optional for independent sessions.">
+                    {isIndependent ? 'Instructor (optional)' : 'Instructor'}
+                  </LabelWithInfo>
+                  {isIndependent && form.instructorPick ? (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                      onClick={() => setForm((f) => ({ ...f, instructorPick: '' }))}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
                 <ClinicalInstructorPicker
                   value={form.instructorPick}
                   onValueChange={(pick, label) => {
@@ -268,9 +321,6 @@ export function SessionsSection({
                     setForm((f) => ({ ...f, instructorPick: pick }));
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Instructors come from Clinicals → Instructors. Add new ones there first.
-                </p>
               </div>
               <div className="space-y-2">
                 <Label>Session topic</Label>
