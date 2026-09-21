@@ -22,3 +22,10 @@ export function clinicalSessionStatusBadge(status: string) {
   }
   return <Badge variant="secondary">{status}</Badge>;
 }
+
+export function clinicalSessionTypeBadge(sessionType: string) {
+  if (sessionType === 'Independent') {
+    return <Badge variant="outline">Independent</Badge>;
+  }
+  return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-100">Supervised</Badge>;
+}

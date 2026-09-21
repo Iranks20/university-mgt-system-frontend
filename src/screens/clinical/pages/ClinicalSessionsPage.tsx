@@ -18,7 +18,7 @@ export default function ClinicalSessionsPage() {
   const title = verifyOnly ? 'Verify Sessions' : 'Clinical Sessions';
   const description = verifyOnly
     ? 'Review and verify sessions submitted by QA clinicals.'
-    : 'Record ad-hoc teaching sessions at clinical sites.';
+    : 'Record supervised teaching or independent clinical activities at clinical sites.';
 
   const load = useCallback(async () => {
     setLoading(true);

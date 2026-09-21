@@ -495,6 +495,7 @@ export const clinicalService = {
     clinicalInstructorId?: string | null;
     staffId?: string | null;
     instructorName?: string | null;
+    sessionType?: 'Supervised' | 'Independent';
     topic: string;
     date: string;
     startTime?: string | null;
