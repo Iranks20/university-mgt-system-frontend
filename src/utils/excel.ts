@@ -9,7 +9,7 @@
 
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
+import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QADepartmentSummary, QALecturerSummaryReport, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
 import { mapImportStatusToComment, normalizeLectureComment } from '@/lib/lecture-outcome';
 import { deliveryModeLabel } from '@/lib/delivery-mode';
 import type {
@@ -873,6 +873,91 @@ export function exportSchoolSummaryReport(
   XLSX.utils.book_append_sheet(wb, ws, 'School Summary');
 
   const defaultFilename = `QA_School_Summary_${formatDate(new Date())}.xlsx`;
+  const finalFilename = filename || defaultFilename;
+
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, finalFilename);
+}
+
+export function exportDepartmentSummaryReport(
+  summaries: QADepartmentSummary[],
+  filename?: string
+): void {
+  const data = [
+    [
+      'SCHOOL',
+      'DEPARTMENT',
+      'NO. TAUGHT',
+      'PHYSICAL CLASSES',
+      'ONLINE LECTURES',
+      'No. OF SDL',
+      'LECTURER GAVE ASSIGNMENT IN LECTURE TIME',
+      "NO. MISSED BY LECTURER'S",
+      'NO. MISSED BY STUDENTS',
+      'NO. MISSED DUE TO OTHER PROGRAMS & PUBLIC HOLIDAYS',
+      'TOTAL LEARNING ACTIVITY',
+      'TOTAL UNTAUGHT',
+      'TOTAL MISSED',
+      'SUBSTITUTED',
+    ],
+    ...summaries.map((summary) => [
+      summary.school,
+      summary.department,
+      summary.totalNoTaught,
+      summary.physicalClasses ?? 0,
+      summary.onlineLectures ?? 0,
+      summary.noSdl ?? 0,
+      summary.assignment ?? 0,
+      summary.missedByLecturer ?? 0,
+      summary.missedByStudents ?? 0,
+      summary.missedOtherProgramsHolidays ?? 0,
+      summary.totalLearningActivity ?? 0,
+      summary.noUntaught,
+      summary.totalMissed ?? 0,
+      summary.noSubstituted ?? 0,
+    ]),
+    [
+      'TOTAL',
+      '',
+      summaries.reduce((sum, s) => sum + s.totalNoTaught, 0),
+      summaries.reduce((sum, s) => sum + (s.physicalClasses ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.onlineLectures ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSdl ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.assignment ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedByLecturer ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedByStudents ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.missedOtherProgramsHolidays ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.totalLearningActivity ?? 0), 0),
+      summaries.reduce((sum, s) => sum + s.noUntaught, 0),
+      summaries.reduce((sum, s) => sum + (s.totalMissed ?? 0), 0),
+      summaries.reduce((sum, s) => sum + (s.noSubstituted ?? 0), 0),
+    ],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  ws['!cols'] = [
+    { wch: 25 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Department Summary');
+
+  const defaultFilename = `QA_Department_Summary_${formatDate(new Date())}.xlsx`;
   const finalFilename = filename || defaultFilename;
 
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

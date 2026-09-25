@@ -1,11 +1,12 @@
 import api from '@/lib/api';
-import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
+import type { QALectureRecord, QALecturerSummary, QASchoolSummary, QADepartmentSummary, QALecturerSummaryReport, QAFilter, QALecturerRecord, QACourseUnitSummary } from '@/types/qa';
 import { isLectureTaught, isLectureUntaught, mapImportStatusToComment } from '@/lib/lecture-outcome';
 import type { DeliveryMode } from '@/lib/delivery-mode';
 import { parseTimeLostToMinutes, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
 
 async function fetchAllClassNames(params?: {
   schoolId?: string;
+  departmentId?: string;
   academicTermId?: string;
   classStatus?: 'active' | 'inactive' | 'all';
 }): Promise<string[]> {
@@ -20,6 +21,7 @@ async function fetchAllClassNames(params?: {
       limit: String(pageSize),
     };
     if (params?.schoolId) query.schoolId = params.schoolId;
+    if (params?.departmentId) query.departmentId = params.departmentId;
     if (params?.academicTermId) query.academicTermId = params.academicTermId;
     if (params?.classStatus) query.classStatus = params.classStatus;
 
@@ -39,7 +41,58 @@ async function fetchAllClassNames(params?: {
     if (page > 50) break;
   }
 
-  return [...names].sort((a, b) => a.localeCompare(b));
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+async function fetchAllClassOptions(params?: {
+  schoolId?: string;
+  departmentId?: string;
+  academicTermId?: string;
+  classStatus?: 'active' | 'inactive' | 'all';
+}): Promise<Array<{ name: string; courseId: string | null; courseName: string; courseCode: string }>> {
+  const byName = new Map<string, { name: string; courseId: string | null; courseName: string; courseCode: string }>();
+  let page = 1;
+  let total = Infinity;
+  const pageSize = 200;
+
+  while ((page - 1) * pageSize < total) {
+    const query: Record<string, string> = {
+      page: String(page),
+      limit: String(pageSize),
+    };
+    if (params?.schoolId) query.schoolId = params.schoolId;
+    if (params?.departmentId) query.departmentId = params.departmentId;
+    if (params?.academicTermId) query.academicTermId = params.academicTermId;
+    if (params?.classStatus) query.classStatus = params.classStatus;
+
+    const res = await api.get<
+      | Array<{ name: string; courseId?: string | null; course?: { name?: string; code?: string } | null }>
+      | {
+          data: Array<{ name: string; courseId?: string | null; course?: { name?: string; code?: string } | null }>;
+          total?: number;
+        }
+    >('/academic/classes', query);
+
+    const rows = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+    total = Array.isArray(res) ? rows.length : typeof res?.total === 'number' ? res.total : rows.length;
+
+    for (const row of rows) {
+      const name = row?.name?.trim();
+      if (!name || byName.has(name)) continue;
+      byName.set(name, {
+        name,
+        courseId: row.courseId ?? null,
+        courseName: row.course?.name?.trim() || '',
+        courseCode: row.course?.code?.trim() || '',
+      });
+    }
+
+    if (rows.length === 0) break;
+    page += 1;
+    if (page > 50) break;
+  }
+
+  return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function toDateQueryParam(value?: Date | string): string | undefined {
@@ -66,6 +119,7 @@ function buildLectureRecordQueryParams(
   if (filter.search) params.search = filter.search;
   if (filter.comment) params.comment = filter.comment;
   if (filter.checkInStatus) params.checkInStatus = filter.checkInStatus;
+  if (filter.selfMarkedPending) params.selfMarkedPending = 'true';
   if (filter.status) params.status = filter.status;
   if (filter.deliveryMode) params.deliveryMode = filter.deliveryMode;
   if (filter.academicTermId) params.academicTermId = filter.academicTermId;
@@ -145,6 +199,7 @@ export const qaService = {
     taughtCount: number;
     untaughtCount: number;
     pendingCount: number;
+    selfMarkedPendingCount: number;
     substitutedCount: number;
     compensationCount: number;
     missedByLecturerCount: number;
@@ -168,6 +223,7 @@ export const qaService = {
         taughtCount: Number(data?.taughtCount ?? 0),
         untaughtCount: Number(data?.untaughtCount ?? 0),
         pendingCount: Number(data?.pendingCount ?? 0),
+        selfMarkedPendingCount: Number(data?.selfMarkedPendingCount ?? 0),
         substitutedCount: Number(data?.substitutedCount ?? 0),
         compensationCount: Number(data?.compensationCount ?? 0),
         missedByLecturerCount: Number(data?.missedByLecturerCount ?? 0),
@@ -189,6 +245,7 @@ export const qaService = {
         taughtCount: 0,
         untaughtCount: 0,
         pendingCount: 0,
+        selfMarkedPendingCount: 0,
         substitutedCount: 0,
         compensationCount: 0,
         missedByLecturerCount: 0,
@@ -331,6 +388,20 @@ export const qaService = {
       return Array.isArray(raw) ? raw : (raw as { data?: QASchoolSummary[] })?.data ?? [];
     } catch (error) {
       console.error('Error fetching school summary report:', error);
+      return [];
+    }
+  },
+
+  getDepartmentSummaryReport: async (params?: { dateFrom?: string; dateTo?: string }): Promise<QADepartmentSummary[]> => {
+    try {
+      const query = params?.dateFrom && params?.dateTo ? { dateFrom: params.dateFrom, dateTo: params.dateTo } : {};
+      const raw = await api.get<QADepartmentSummary[] | { data: QADepartmentSummary[] }>(
+        '/qa/department-summary-report',
+        query as Record<string, string>
+      );
+      return Array.isArray(raw) ? raw : (raw as { data?: QADepartmentSummary[] })?.data ?? [];
+    } catch (error) {
+      console.error('Error fetching department summary report:', error);
       return [];
     }
   },
@@ -512,7 +583,11 @@ export const qaService = {
    */
   getClassesBySchool: async (
     school: string,
-    params?: { academicTermId?: string; classStatus?: 'active' | 'inactive' | 'all' }
+    params?: {
+      academicTermId?: string;
+      classStatus?: 'active' | 'inactive' | 'all';
+      departmentId?: string;
+    }
   ): Promise<string[]> => {
     try {
       const schools = await api.get<Array<{ id: string; name: string }>>('/academic/schools');
@@ -522,11 +597,26 @@ export const qaService = {
 
       return fetchAllClassNames({
         schoolId: schoolObj.id,
+        departmentId: params?.departmentId,
         academicTermId: params?.academicTermId,
         classStatus: params?.classStatus,
       });
     } catch (error) {
       console.error('Error fetching classes by school:', error);
+      return [];
+    }
+  },
+
+  getClassFilterOptions: async (params?: {
+    schoolId?: string;
+    departmentId?: string;
+    academicTermId?: string;
+    classStatus?: 'active' | 'inactive' | 'all';
+  }): Promise<Array<{ name: string; courseId: string | null; courseName: string; courseCode: string }>> => {
+    try {
+      return fetchAllClassOptions(params);
+    } catch (error) {
+      console.error('Error fetching class filter options:', error);
       return [];
     }
   },
@@ -629,6 +719,10 @@ export const qaService = {
 
   checkOut: async (classId: string): Promise<QALectureRecord> => {
     return await api.post<QALectureRecord>('/qa/check-out', { classId });
+  },
+
+  approveSelfMarkedLecture: async (recordId: string): Promise<QALectureRecord> => {
+    return await api.post<QALectureRecord>(`/qa/lecture-records/${recordId}/approve-self-marked`);
   },
 
   updateCheckOut: async (recordId: string, checkOutTime: string): Promise<QALectureRecord> => {

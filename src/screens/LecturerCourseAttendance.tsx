@@ -1,37 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, Download } from "lucide-react";
-import { academicService, enrollmentService, studentService, qaService } from '@/services';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { UserCheck, RefreshCw } from 'lucide-react';
+import { academicService, enrollmentService, qaService, studentService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
-import { exportLectureRecordsToCSV } from '@/utils/excel';
 import { toast } from 'sonner';
 import { computeAttendanceFromRecords } from '@/lib/attendance-metrics';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { isLectureTaught, lectureCommentLabel } from '@/lib/lecture-outcome';
+import {
+  SessionAttendanceDialog,
+  type SessionAttendanceTarget,
+} from '@/features/student';
+import type { QALectureRecord } from '@/types/qa';
+
+type CourseCard = {
+  classId: string;
+  name: string;
+  code: string;
+  className: string;
+  students: number;
+  avgAttendance: string | null;
+  hasAvgAttendanceData: boolean;
+  lastSession: string;
+};
+
+function toDateKey(value: string | Date | undefined | null): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value.slice(0, 10);
+  return value.toISOString().slice(0, 10);
+}
+
+function todayKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 export default function LecturerCourseAttendance() {
   const { user } = useAuth();
   const { termFilter, academicTermId, classStatusHint, termStartDate, termEndDate, onTermChange } =
     useAcademicTermFilterState();
-  const [courses, setCourses] = useState<any[]>([]);
+  const [courses, setCourses] = useState<CourseCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<any>(null);
+  const [markDate, setMarkDate] = useState(todayKey());
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [markableSessions, setMarkableSessions] = useState<
+    Array<{
+      classId: string;
+      className: string;
+      courseUnit: string;
+      comment: string;
+      timeForStarting: string;
+      date: string;
+    }>
+  >([]);
+  const [awaitingSessions, setAwaitingSessions] = useState<
+    Array<{ classId: string; className: string; courseUnit: string; comment: string; date: string }>
+  >([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogTarget, setDialogTarget] = useState<SessionAttendanceTarget | null>(null);
 
-  useEffect(() => {
-    loadLecturerCourses();
-  }, [user, termFilter, academicTermId, classStatusHint, termStartDate, termEndDate]);
-
-  const loadLecturerCourses = async () => {
+  const loadCourses = async () => {
     if (!user?.id) return;
-    
     try {
       setLoading(true);
-      
       const timetable = await academicService.getTimetable({
         ...(academicTermId ? { academicTermId } : {}),
         classStatus: classStatusHint,
@@ -40,28 +80,19 @@ export default function LecturerCourseAttendance() {
         setCourses([]);
         return;
       }
-      
-      const lecturerClasses = timetable;
-      
+
       const coursesWithStats = await Promise.all(
-        lecturerClasses.map(async (classData: any) => {
-          const enrollments = await enrollmentService.getClassEnrollments(classData.id, { roster: true });
+        timetable.map(async (classData: any) => {
+          const enrollments = await enrollmentService.getClassEnrollments(classData.id, {
+            roster: true,
+          });
           const studentIds = enrollments.map((e: any) => e.studentId);
-          
-          const allRecords = await qaService.getLectureRecords({
-            ...(termStartDate ? { startDate: termStartDate } : {}),
-            ...(termEndDate ? { endDate: termEndDate } : {}),
-          } as any);
-          const recordsArray = Array.isArray(allRecords) ? allRecords : (allRecords as any)?.data || [];
-          const lectureRecords = recordsArray.filter((r: any) => 
-            r.className === classData.name || r.class === classData.name
-          );
-          
+
           let totalAttendance = 0;
           let totalSessions = 0;
           let hasAttendanceData = false;
-          
-          for (const studentId of studentIds) {
+
+          for (const studentId of studentIds.slice(0, 40)) {
             try {
               const attendance = await studentService.getStudentAttendance(studentId, {
                 classId: classData.id,
@@ -74,304 +105,297 @@ export default function LecturerCourseAttendance() {
                 totalAttendance += metrics.attended;
                 totalSessions += metrics.expected;
               }
-            } catch (error) {
+            } catch {
               continue;
             }
           }
-          
-          const avgAttendance = hasAttendanceData && totalSessions > 0 
-            ? Math.round((totalAttendance / totalSessions) * 100) 
-            : null;
-          
-          const sortedRecords = [...lectureRecords].sort((a: any, b: any) => {
-            const dateA = a.date ? new Date(a.date).getTime() : 0;
-            const dateB = b.date ? new Date(b.date).getTime() : 0;
-            return dateB - dateA;
-          });
-          
-          const recentSessions = await Promise.all(
-            sortedRecords
-              .slice(0, 5)
-              .map(async (record: any) => {
-                const date = record.date ? new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-                
-                let present: number | null = null;
-                let absent: number | null = null;
-                let late: number | null = null;
-                
-                try {
-                  const sessionDate = record.date ? new Date(record.date).toISOString().split('T')[0] : null;
-                  if (sessionDate && classData.id) {
-                    const attendancePromises = studentIds.map(async (studentId: string) => {
-                      try {
-                        const attendance = await studentService.getStudentAttendance(studentId, {
-                          classId: classData.id,
-                          startDate: sessionDate,
-                          endDate: sessionDate,
-                        });
-                        return attendance.length > 0 ? attendance[0] : null;
-                      } catch (error) {
-                        return null;
-                      }
-                    });
-                    
-                    const attendanceResults = await Promise.all(attendancePromises);
-                    const presentRecords = attendanceResults.filter((a: any) => a && a.status === 'Present');
-                    const lateRecords = attendanceResults.filter((a: any) => a && a.status === 'Late');
-                    const absentRecords = attendanceResults.filter((a: any) => a && a.status === 'Absent');
-                    
-                    late = lateRecords.length;
-                    present = presentRecords.length + lateRecords.length;
-                    absent = absentRecords.length;
-                  } else {
-                    present = null;
-                    absent = null;
-                    late = null;
-                  }
-                } catch (error) {
-                  console.warn(`Error fetching attendance for session ${record.id}:`, error);
-                  present = null;
-                  absent = null;
-                  late = null;
-                }
-                
-                return {
-                  date,
-                  topic: record.courseUnit || record.class || record.className || '—',
-                  present: present ?? null,
-                  absent: absent ?? null,
-                  late: late ?? null,
-                  hasRealData: present !== null && absent !== null,
-                  recordId: record.id,
-                };
-              })
-          );
-          
+
+          const avgAttendance =
+            hasAttendanceData && totalSessions > 0
+              ? `${Math.round((totalAttendance / totalSessions) * 100)}%`
+              : null;
+
           return {
-            code: classData.course?.code || '',
-            name: classData.course?.name || classData.name,
-            students: enrollments.length,
-            avgAttendance: avgAttendance !== null ? `${avgAttendance}%` : '—',
-            hasAvgAttendanceData: avgAttendance !== null,
-            lastSession: lectureRecords.length > 0 && lectureRecords[0].date 
-              ? new Date(lectureRecords[0].date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-              : '—',
             classId: classData.id,
-            recentSessions,
-          };
+            name: classData.course?.name || classData.name || 'Course',
+            code: classData.course?.code || '—',
+            className: classData.name || 'Class',
+            students: enrollments.length,
+            avgAttendance,
+            hasAvgAttendanceData: hasAttendanceData && totalSessions > 0,
+            lastSession: '—',
+          } as CourseCard;
         })
       );
-      
+
       setCourses(coursesWithStats);
     } catch (error) {
       console.error('Error loading lecturer courses:', error);
+      setCourses([]);
+      toast.error('Failed to load assigned courses');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleExportReport = async (course: typeof courses[0]) => {
+  const loadMarkableSessions = async () => {
+    setSessionsLoading(true);
     try {
-      const records = await qaService.getLectureRecords({ 
-        courseCode: course.code,
-        lecturerName: user?.name,
-        ...(termStartDate ? { startDate: termStartDate } : {}),
-        ...(termEndDate ? { endDate: termEndDate } : {}),
-      } as any);
-      const recordList = Array.isArray(records) ? records : (records as any)?.data || [];
-      if (recordList.length > 0) {
-        exportLectureRecordsToCSV(recordList, `Course_${course.code}_${new Date().toISOString().split('T')[0]}.xlsx`);
-      } else {
-        toast.warning('No lecture records found for this course.');
-      }
-    } catch (error: any) {
-      console.error('Export failed:', error);
-      toast.error(`Failed to export report: ${error?.message || 'Unknown error'}`);
+      const { data } = await qaService.getMyLectureRecords();
+      const forDate = (data || []).filter((r: QALectureRecord) => toDateKey(r.date) === markDate);
+      const taught = forDate
+        .filter((r) => isLectureTaught(r.comment) && (r as any).classId)
+        .map((r) => ({
+          classId: String((r as any).classId),
+          className: r.class || (r as any).className || 'Class',
+          courseUnit: r.courseUnit || '—',
+          comment: String(r.comment || ''),
+          timeForStarting: r.timeForStarting || '',
+          date: markDate,
+        }));
+      const awaiting = forDate
+        .filter((r) => !isLectureTaught(r.comment) && (r as any).classId)
+        .map((r) => ({
+          classId: String((r as any).classId),
+          className: r.class || (r as any).className || 'Class',
+          courseUnit: r.courseUnit || '—',
+          comment: String(r.comment || ''),
+          date: markDate,
+        }));
+
+      const uniqueTaught = new Map<string, (typeof taught)[number]>();
+      taught.forEach((s) => {
+        const key = `${s.classId}|${s.date}|${s.timeForStarting}`;
+        if (!uniqueTaught.has(key)) uniqueTaught.set(key, s);
+      });
+      setMarkableSessions([...uniqueTaught.values()]);
+      setAwaitingSessions(awaiting);
+    } catch (error) {
+      console.error('Error loading markable sessions:', error);
+      setMarkableSessions([]);
+      setAwaitingSessions([]);
+    } finally {
+      setSessionsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadCourses();
+  }, [user, termFilter, academicTermId, classStatusHint, termStartDate, termEndDate]);
+
+  useEffect(() => {
+    loadMarkableSessions();
+  }, [markDate, user?.id]);
+
+  const openMarkDialog = (session: { classId: string; className: string; date: string }) => {
+    setDialogTarget({
+      classId: session.classId,
+      className: session.className,
+      date: session.date,
+    });
+    setDialogOpen(true);
+  };
+
+  const openMarkForClass = (course: CourseCard) => {
+    setDialogTarget({
+      classId: course.classId,
+      className: course.className,
+      date: markDate,
+    });
+    setDialogOpen(true);
+  };
+
+  const markableClassIds = useMemo(
+    () => new Set(markableSessions.map((s) => s.classId)),
+    [markableSessions]
+  );
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Course Attendance</h1>
-          <p className="text-gray-500">Track and manage attendance for your assigned courses.</p>
         </div>
-        <AcademicTermFilter
-          value={termFilter}
-          onChange={onTermChange}
-          triggerClassName="w-[240px]"
-        />
+        <AcademicTermFilter value={termFilter} onChange={onTermChange} triggerClassName="w-[240px]" />
         <div className="flex items-center justify-center py-12">
-          <p className="text-gray-500">Loading courses...</p>
+          <p className="text-gray-500">Loading…</p>
         </div>
       </div>
     );
   }
 
+  const hasNothing =
+    courses.length === 0 && markableSessions.length === 0 && awaitingSessions.length === 0;
+
   return (
     <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Course Attendance</h1>
-          <p className="text-gray-500">Track and manage attendance for your assigned courses.</p>
+          <p className="text-gray-500">Mark attendance for your classes after a lecture is recorded as taught.</p>
         </div>
-
-        <AcademicTermFilter
-          value={termFilter}
-          onChange={onTermChange}
-          triggerClassName="w-[240px]"
-        />
-
-        {courses.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-gray-500">No courses assigned.</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <AcademicTermFilter value={termFilter} onChange={onTermChange} triggerClassName="w-[240px]" />
+          <div className="space-y-1">
+            <Label htmlFor="mark-date" className="text-xs text-muted-foreground">
+              Date
+            </Label>
+            <Input
+              id="mark-date"
+              type="date"
+              value={markDate}
+              onChange={(e) => setMarkDate(e.target.value)}
+              className="w-[160px]"
+            />
           </div>
-        ) : (
-        <div className="grid gap-6">
-          {courses.map((course) => (
-            <Card key={course.code}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-lg text-[#015F2B]">{course.name}</CardTitle>
-                  <CardDescription>{course.code}</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => handleExportReport(course)}>
-                  <Download className="mr-2 h-4 w-4" /> Export Report
-                </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => {
+              loadMarkableSessions();
+              loadCourses();
+            }}
+          >
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </Button>
+        </div>
+      </div>
+
+      {sessionsLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Loading sessions…</p>
+      ) : hasNothing ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          No classes or sessions to show for this term and date.
+        </p>
+      ) : (
+        <>
+          {(markableSessions.length > 0 || awaitingSessions.length > 0) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Sessions · {markDate}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                   <div className="bg-gray-50 p-3 rounded-md">
-                      <p className="text-sm text-gray-500">Enrolled Students</p>
-                      <p className="text-xl font-bold">{course.students}</p>
-                   </div>
-                   <div className="bg-gray-50 p-3 rounded-md">
-                      <p className="text-sm text-gray-500">Average Attendance</p>
-                      {course.hasAvgAttendanceData ? (
-                        <p className="text-xl font-bold text-[#015F2B]">{course.avgAttendance}</p>
-                      ) : (
-                        <p className="text-xl font-bold text-gray-400">—</p>
-                      )}
-                   </div>
-                   <div className="bg-gray-50 p-3 rounded-md">
-                      <p className="text-sm text-gray-500">Last Session</p>
-                      <p className="text-xl font-bold">{course.lastSession}</p>
-                   </div>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">Recent Sessions</h4>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Topic</TableHead>
-                        <TableHead>Present</TableHead>
-                        <TableHead>Absent</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {course.recentSessions && course.recentSessions.length > 0 ? (
-                        course.recentSessions.map((session: any, idx: number) => (
-                          <TableRow key={idx}>
-                            <TableCell>{session.date}</TableCell>
-                            <TableCell>{session.topic}</TableCell>
+              <CardContent className="space-y-4">
+                {markableSessions.length > 0 && (
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Class</TableHead>
+                          <TableHead>Course unit</TableHead>
+                          <TableHead>Time</TableHead>
+                          <TableHead>Outcome</TableHead>
+                          <TableHead className="text-right" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {markableSessions.map((session) => (
+                          <TableRow key={`${session.classId}-${session.timeForStarting}`}>
+                            <TableCell className="font-medium">{session.className}</TableCell>
+                            <TableCell>{session.courseUnit}</TableCell>
+                            <TableCell>{session.timeForStarting || '—'}</TableCell>
                             <TableCell>
-                              {session.hasRealData && session.present !== null ? (
-                                <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200">{session.present}</Badge>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {session.hasRealData && session.absent !== null ? (
-                                <Badge variant="outline" className="text-red-600 bg-red-50 border-red-200">{session.absent}</Badge>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
+                              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                                {lectureCommentLabel(session.comment)}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button 
-                                variant="ghost" 
+                              <Button
                                 size="sm"
-                                onClick={() => {
-                                  setSelectedSession({ ...session, courseName: course.name, courseCode: course.code });
-                                  setDetailsOpen(true);
-                                }}
+                                className="bg-[#015F2B] hover:bg-[#014022] gap-2"
+                                onClick={() => openMarkDialog(session)}
                               >
-                                <Eye className="h-4 w-4" />
+                                <UserCheck className="h-4 w-4" /> Mark students
                               </Button>
                             </TableCell>
                           </TableRow>
-                        ))
-                      ) : (
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                {awaitingSessions.length > 0 && (
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-gray-500">No recent sessions</TableCell>
+                          <TableHead>Class</TableHead>
+                          <TableHead>Course unit</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {awaitingSessions.map((session, idx) => (
+                          <TableRow key={`${session.classId}-await-${idx}`}>
+                            <TableCell>{session.className}</TableCell>
+                            <TableCell>{session.courseUnit}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{lectureCommentLabel(session.comment)}</Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ))}
-        </div>
-        )}
+          )}
 
-        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <DialogContent className="w-[98vw] max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Session Details</DialogTitle>
-              <DialogDescription>
-                Attendance details for {selectedSession?.courseName} - {selectedSession?.topic}
-              </DialogDescription>
-            </DialogHeader>
-            {selectedSession && (
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Date</p>
-                    <p className="text-lg font-semibold">{selectedSession.date}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Topic</p>
-                    <p className="text-lg font-semibold">{selectedSession.topic}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Present</p>
-                    {selectedSession.hasRealData && selectedSession.present !== null ? (
-                      <p className="text-xl font-bold text-green-600">{selectedSession.present}</p>
-                    ) : (
-                      <p className="text-xl font-bold text-gray-400">—</p>
+          {courses.length > 0 && (
+            <div className="grid gap-4">
+              {courses.map((course) => (
+                <Card key={course.classId}>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2 gap-3">
+                    <div>
+                      <CardTitle className="text-lg text-[#015F2B]">{course.name}</CardTitle>
+                      <CardDescription>
+                        {course.code} · {course.className}
+                      </CardDescription>
+                    </div>
+                    {markableClassIds.has(course.classId) && (
+                      <Button
+                        size="sm"
+                        className="bg-[#015F2B] hover:bg-[#014022] gap-2"
+                        onClick={() => openMarkForClass(course)}
+                      >
+                        <UserCheck className="h-4 w-4" /> Mark students
+                      </Button>
                     )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Absent</p>
-                    {selectedSession.hasRealData && selectedSession.absent !== null ? (
-                      <p className="text-xl font-bold text-red-600">{selectedSession.absent}</p>
-                    ) : (
-                      <p className="text-xl font-bold text-gray-400">—</p>
-                    )}
-                  </div>
-                </div>
-                {selectedSession.hasRealData && selectedSession.present !== null && selectedSession.absent !== null && (
-                  <div className="pt-4 border-t">
-                    <p className="text-sm text-gray-500">
-                      Total enrolled: {selectedSession.present + selectedSession.absent}
-                    </p>
-                  </div>
-                )}
-                {!selectedSession.hasRealData && (
-                  <div className="pt-4 border-t">
-                    <p className="text-sm text-gray-400 italic">
-                      Attendance data not available for this session. Real attendance records are required.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-gray-50 p-3 rounded-md">
+                        <p className="text-sm text-gray-500">Enrolled</p>
+                        <p className="text-xl font-bold">{course.students}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-md">
+                        <p className="text-sm text-gray-500">Avg attendance</p>
+                        {course.hasAvgAttendanceData ? (
+                          <p className="text-xl font-bold text-[#015F2B]">{course.avgAttendance}</p>
+                        ) : (
+                          <p className="text-xl font-bold text-gray-400">—</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <SessionAttendanceDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        target={dialogTarget}
+        onSaved={() => {
+          loadMarkableSessions();
+          loadCourses();
+        }}
+      />
+    </div>
   );
 }

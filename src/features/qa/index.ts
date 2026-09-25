@@ -8,3 +8,4 @@ export * from './components/QAAttendanceTable';
 export * from './components/QALecturerSummary';
 export * from './components/QACourseUnitSummary';
 export * from './components/QASchoolSummary';
+export * from './components/QADepartmentSummary';

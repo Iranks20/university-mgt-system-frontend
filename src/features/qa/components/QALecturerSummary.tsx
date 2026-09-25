@@ -7,8 +7,10 @@ import { Combobox } from '@/components/ui/combobox';
 import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
-import { exportLecturerSummaryTableView } from '@/utils/excel';
-import type { QALecturerSummary, QALecturerSummaryReport } from '@/types/qa';
+import {
+  buildCourseUnitsByClass,
+  resolveCascadedCourseUnits,
+} from '@/lib/qa-filter-cascade';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
@@ -142,7 +144,8 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
     classes: string[];
     courseUnits: string[];
     lecturers: string[];
-  }>({ classes: [], courseUnits: [], lecturers: [] });
+    courseUnitsByClass: Record<string, string[]>;
+  }>({ classes: [], courseUnits: [], lecturers: [], courseUnitsByClass: {} });
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -158,9 +161,10 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
           classes: Array.from(new Set(rows.map((r) => r.class).filter(Boolean))).sort(),
           courseUnits: Array.from(new Set(rows.map((r) => r.courseUnit).filter(Boolean))).sort(),
           lecturers: Array.from(new Set(rows.map((r) => r.lecturerName).filter(Boolean))).sort(),
+          courseUnitsByClass: buildCourseUnitsByClass(rows),
         });
       } catch {
-        setOptionCatalog({ classes: [], courseUnits: [], lecturers: [] });
+        setOptionCatalog({ classes: [], courseUnits: [], lecturers: [], courseUnitsByClass: {} });
       }
     };
     loadOptions();
@@ -171,6 +175,10 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
     scopedDateRange?.dateFrom,
     scopedDateRange?.dateTo,
   ]);
+
+  useEffect(() => {
+    setSelectedCourseUnit(ALL);
+  }, [selectedClass]);
 
   const schoolFilterOptions = useMemo(() => {
     const fromReports = reports.map((report) => report.school);
@@ -192,12 +200,22 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
     () => [{ value: ALL, label: 'All Classes' }, ...optionCatalog.classes.map((cls) => ({ value: cls, label: cls }))],
     [optionCatalog.classes]
   );
+  const cascadedCourseUnits = useMemo(
+    () =>
+      resolveCascadedCourseUnits({
+        selectedClass,
+        allCourseUnits: optionCatalog.courseUnits,
+        courseUnitsByClass: optionCatalog.courseUnitsByClass,
+        allValue: ALL,
+      }),
+    [selectedClass, optionCatalog.courseUnits, optionCatalog.courseUnitsByClass]
+  );
   const courseUnitComboboxOptions = useMemo(
     () => [
       { value: ALL, label: 'All Course Units' },
-      ...optionCatalog.courseUnits.map((unit) => ({ value: unit, label: unit })),
+      ...cascadedCourseUnits.map((unit) => ({ value: unit, label: unit })),
     ],
-    [optionCatalog.courseUnits]
+    [cascadedCourseUnits]
   );
   const lecturerComboboxOptions = useMemo(
     () => [

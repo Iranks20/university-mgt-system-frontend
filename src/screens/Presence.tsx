@@ -1,5 +1,6 @@
 import Components from "../components"
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import { MapPin, CheckCircle, Loader2, ArrowRight, LogIn, LogOut, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +12,8 @@ import { useRole } from '@/components/RoleProvider';
 import { qaService, studentService, staffService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { AcademicTermFilter } from '@/components/AcademicTermFilter';
+import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
 
 export default function Presence() {
   return <PresenceContent />;
@@ -19,6 +22,9 @@ export default function Presence() {
 function PresenceContent() {
   const { role } = useRole();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const preferredClassId = searchParams.get('classId') || undefined;
+  const { academicTermId, classStatusHint, onTermChange, termFilter } = useAcademicTermFilterState();
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -26,8 +32,17 @@ function PresenceContent() {
   const [studentAttendanceKnown, setStudentAttendanceKnown] = useState(false);
   const [attendanceWasAlreadyRecorded, setAttendanceWasAlreadyRecorded] = useState(false);
   const [lectureRecordId, setLectureRecordId] = useState<string | null>(null);
-  type CurrentClass = { id?: string; course: string; code: string; venue: string; time: string; lecturer: string };
-  const [currentClass, setCurrentClass] = useState<CurrentClass | null>(null);
+  type SessionClass = {
+    id?: string;
+    course: string;
+    code: string;
+    venue: string;
+    time: string;
+    lecturer: string;
+    isLive?: boolean;
+  };
+  const [currentClass, setCurrentClass] = useState<SessionClass | null>(null);
+  const [todaySessions, setTodaySessions] = useState<SessionClass[]>([]);
   const [currentClassLoading, setCurrentClassLoading] = useState(true);
   const [currentClassError, setCurrentClassError] = useState<string | null>(null);
   const [checkInOutLoading, setCheckInOutLoading] = useState(false);
@@ -66,24 +81,48 @@ function PresenceContent() {
       setCurrentClassLoading(true);
       setCurrentClassError(null);
       try {
-        const data = await (await import('@/services/academic.service')).academicService.getCurrentClass();
-        if (data) {
+        const data = await (await import('@/services/academic.service')).academicService.getCurrentClass({
+          ...(academicTermId ? { academicTermId } : {}),
+          classStatus: classStatusHint,
+          ...(preferredClassId ? { classId: preferredClassId } : {}),
+        });
+        const sessions = data.todaySessions || [];
+        setTodaySessions(sessions);
+        const selected =
+          data.current ||
+          (preferredClassId ? sessions.find((s) => s.id === preferredClassId) : null) ||
+          sessions.find((s) => s.isLive) ||
+          null;
+        if (selected) {
           setCurrentClass({
-            id: data.id,
-            course: data.course,
-            code: data.code,
-            venue: data.venue,
-            time: data.time,
-            lecturer: data.lecturer,
+            id: selected.id,
+            course: selected.course,
+            code: selected.code,
+            venue: selected.venue,
+            time: selected.time,
+            lecturer: selected.lecturer,
+            isLive: selected.isLive,
           });
+          if (!selected.isLive && sessions.length > 0) {
+            setCurrentClassError(
+              'Selected class is outside the live check-in window (±15 min). Pick a live session below, or wait until it starts.'
+            );
+          } else {
+            setCurrentClassError(null);
+          }
         } else {
           setCurrentClass(null);
-          setCurrentClassError('No class is currently in session. You can check in from 15 minutes before the scheduled start until 15 minutes after it ends.');
+          setCurrentClassError(
+            sessions.length > 0
+              ? 'No class is currently in the live window. You can check in from 15 minutes before the scheduled start until 15 minutes after it ends.'
+              : 'No classes scheduled for you today in this term. Check your timetable or switch the academic term filter.'
+          );
         }
       } catch (error) {
         console.error('Error loading current class:', error);
         setCurrentClassError('Unable to load current session. Please refresh the page.');
         setCurrentClass(null);
+        setTodaySessions([]);
       } finally {
         setCurrentClassLoading(false);
       }
@@ -91,7 +130,7 @@ function PresenceContent() {
     load();
     const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [academicTermId, classStatusHint, preferredClassId]);
 
   useEffect(() => {
     const checkStudentAlreadyMarked = async () => {
@@ -205,7 +244,7 @@ function PresenceContent() {
         if (result.alreadyCheckedIn) {
           toast.info('You are already checked in for this class.');
         } else {
-          toast.success('Check-in recorded');
+          toast.success('Check-in submitted for QA approval');
         }
       } catch (error: any) {
         const msg = error?.message || 'Check-in failed';
@@ -382,10 +421,82 @@ function PresenceContent() {
           <p className="text-gray-500">Verify your physical presence on campus.</p>
         </div>
 
+        {(role === 'Lecturer' || role === 'Student') && (
+          <div className="mb-4 flex justify-center">
+            <AcademicTermFilter
+              value={termFilter}
+              showLabel={false}
+              onChange={onTermChange}
+              triggerClassName="w-[240px]"
+            />
+          </div>
+        )}
+
+        {role === 'Lecturer' && todaySessions.length > 0 && (
+          <Card className="mb-4 border shadow-sm">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm">Today&apos;s classes</CardTitle>
+              <CardDescription className="text-xs">
+                Select a live session to check in. Check-in opens ±15 minutes around the scheduled time.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-2">
+              {todaySessions.map((session) => {
+                const selected = currentClass?.id === session.id;
+                return (
+                  <button
+                    key={`${session.id}-${session.time}`}
+                    type="button"
+                    className={`w-full text-left rounded-md border px-3 py-2 text-sm transition-colors ${
+                      selected
+                        ? 'border-[#015F2B] bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                    onClick={async () => {
+                      setCurrentClass(session);
+                      setCurrentClassError(
+                        session.isLive
+                          ? null
+                          : 'This class is outside the live check-in window (±15 min).'
+                      );
+                      if (role === 'Lecturer' && session.id) {
+                        try {
+                          const record = await qaService.getTodayRecordForClass(session.id);
+                          syncLecturerStateFromRecord(record);
+                        } catch {
+                          syncLecturerStateFromRecord(null);
+                        }
+                      } else {
+                        syncLecturerStateFromRecord(null);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-gray-900">{session.course}</span>
+                      {session.isLive ? (
+                        <Badge className="bg-green-500 text-white hover:bg-green-600 border-green-600">Live</Badge>
+                      ) : (
+                        <Badge variant="outline">Scheduled</Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {session.time} · {session.venue}
+                    </div>
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="border-2 shadow-lg relative overflow-hidden">
           <CardHeader className="text-center">
             <CardTitle className="text-lg">Current Session</CardTitle>
-            <CardDescription>You are marking attendance for:</CardDescription>
+            <CardDescription>
+              {role === 'Lecturer'
+                ? 'Check-in is sent to QA as Pending until approved.'
+                : 'You are marking attendance for:'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {currentClassLoading ? (
@@ -393,7 +504,7 @@ function PresenceContent() {
                 <Loader2 className="h-8 w-8 animate-spin" />
                 <p className="text-sm">Loading current session...</p>
               </div>
-            ) : currentClassError ? (
+            ) : currentClassError && !currentClass ? (
               <Alert variant="destructive">
                 <AlertTitle>{currentClassError}</AlertTitle>
               </Alert>
@@ -403,14 +514,23 @@ function PresenceContent() {
                 <p className="text-sm mt-1">There is no class currently in session. Attendance can only be marked during scheduled class times.</p>
               </div>
             ) : (
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200 text-center">
+            <div className={`p-4 rounded-lg border text-center ${currentClass.isLive !== false ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
                <div className="flex items-center justify-center gap-2 mb-2">
-                 <Badge className="bg-green-500 text-white hover:bg-green-600 border-green-600 animate-pulse">
-                   Live Session
-                 </Badge>
+                 {currentClass.isLive !== false ? (
+                   <Badge className="bg-green-500 text-white hover:bg-green-600 border-green-600 animate-pulse">
+                     Live Session
+                   </Badge>
+                 ) : (
+                   <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50">
+                     Outside live window
+                   </Badge>
+                 )}
                </div>
                <h3 className="font-bold text-lg text-[#015F2B]">{currentClass.course}</h3>
                <p className="text-sm text-gray-500 mb-2">{currentClass.code}</p>
+               {currentClassError && currentClass.isLive === false && (
+                 <p className="text-xs text-amber-800 mb-2">{currentClassError}</p>
+               )}
                <div className="flex items-center justify-center gap-2 mt-3">
                  <Badge variant="outline" className="font-medium border-gray-300">
                    <MapPin className="mr-1 h-3 w-3" />
@@ -454,7 +574,11 @@ function PresenceContent() {
                             <Button
                               type="button"
                               onClick={handleCheckIn}
-                              disabled={checkInOutLoading || locationLoading}
+                              disabled={
+                                checkInOutLoading ||
+                                locationLoading ||
+                                currentClass?.isLive === false
+                              }
                               variant="default"
                               className="bg-[#015F2B] hover:bg-[#014022]"
                               size="sm"

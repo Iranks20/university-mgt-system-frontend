@@ -517,6 +517,7 @@ export const academicService = {
   getClasses: async (params?: {
     courseId?: string;
     schoolId?: string;
+    departmentId?: string;
     programIntakeId?: string;
     academicTermId?: string;
     page?: number;
@@ -528,6 +529,7 @@ export const academicService = {
       const query = new URLSearchParams();
       if (params?.courseId) query.set('courseId', params.courseId);
       if (params?.schoolId) query.set('schoolId', params.schoolId);
+      if (params?.departmentId) query.set('departmentId', params.departmentId);
       if (params?.programIntakeId) query.set('programIntakeId', params.programIntakeId);
       if (params?.academicTermId) query.set('academicTermId', params.academicTermId);
       if (params?.page != null) query.set('page', String(params.page));
@@ -746,13 +748,53 @@ export const academicService = {
     }
   },
 
-  getCurrentClass: async (): Promise<{ id: string; course: string; code: string; venue: string; time: string; lecturer: string } | null> => {
+  getCurrentClass: async (opts?: {
+    academicTermId?: string;
+    classStatus?: 'active' | 'inactive' | 'all';
+    classId?: string;
+  }): Promise<{
+    current: {
+      id: string;
+      course: string;
+      code: string;
+      venue: string;
+      time: string;
+      lecturer: string;
+      startTime?: string;
+      endTime?: string;
+      isLive?: boolean;
+    } | null;
+    todaySessions: Array<{
+      id: string;
+      course: string;
+      code: string;
+      venue: string;
+      time: string;
+      lecturer: string;
+      startTime?: string;
+      endTime?: string;
+      isLive?: boolean;
+    }>;
+  }> => {
     try {
-      const response = await api.get<any>('/academic/current-class');
-      return response ?? null;
+      const params: Record<string, string> = {};
+      if (opts?.academicTermId) params.academicTermId = opts.academicTermId;
+      if (opts?.classStatus) params.classStatus = opts.classStatus;
+      if (opts?.classId) params.classId = opts.classId;
+      const response = await api.get<any>('/academic/current-class', params);
+      if (!response) {
+        return { current: null, todaySessions: [] };
+      }
+      if (response.current !== undefined || Array.isArray(response.todaySessions)) {
+        return {
+          current: response.current ?? null,
+          todaySessions: Array.isArray(response.todaySessions) ? response.todaySessions : [],
+        };
+      }
+      return { current: response, todaySessions: response ? [response] : [] };
     } catch (error) {
       console.error('Error fetching current class:', error);
-      return null;
+      return { current: null, todaySessions: [] };
     }
   },
 

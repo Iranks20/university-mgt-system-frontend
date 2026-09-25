@@ -554,8 +554,8 @@ export default function Timetable() {
     };
   }, [role]);
 
-  const goToMarkPresence = () => {
-    navigate('/presence');
+  const goToMarkPresence = (classId?: string) => {
+    navigate(classId ? `/presence?classId=${encodeURIComponent(classId)}` : '/presence');
   };
 
   const resetQaFilters = () => {
@@ -1093,7 +1093,7 @@ export default function Timetable() {
                                     size="sm" 
                                     variant="default"
                                     className="w-full bg-[#015F2B] hover:bg-[#014022] h-7 text-xs"
-                                    onClick={goToMarkPresence}
+                                    onClick={() => goToMarkPresence(item.id)}
                                   >
                                     <MapPin className="h-3 w-3 mr-1" />
                                     {hasCheckedIn && !hasCheckedOut ? 'Continue on Presence' : 'Mark Presence'}
@@ -1165,7 +1165,7 @@ export default function Timetable() {
 
 function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: { 
   item: TimetableItem; 
-  onMarkPresence: () => void;
+  onMarkPresence: (classId?: string) => void;
   onOpenDetails?: (item: TimetableItem) => void;
   checkInData?: { checkIn: string; checkOut?: string };
 }) {
@@ -1231,7 +1231,7 @@ function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: {
                     size="sm" 
                     variant="default"
                     className="bg-[#015F2B] hover:bg-[#014022]"
-                    onClick={onMarkPresence}
+                    onClick={() => onMarkPresence(item.id)}
                   >
                     <MapPin className="h-3 w-3 mr-1" />
                     {hasCheckedIn && !hasCheckedOut ? 'Continue on Presence' : 'Mark Presence'}

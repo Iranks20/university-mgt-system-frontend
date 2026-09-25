@@ -84,6 +84,23 @@ export interface QASchoolSummary {
   totalMissed?: number;
 }
 
+export interface QADepartmentSummary {
+  department: string;
+  school: string;
+  totalNoTaught: number;
+  noUntaught: number;
+  physicalClasses?: number;
+  onlineLectures?: number;
+  missedByLecturer?: number;
+  missedByStudents?: number;
+  missedOtherProgramsHolidays?: number;
+  assignment?: number;
+  noSdl?: number;
+  noSubstituted?: number;
+  totalLearningActivity?: number;
+  totalMissed?: number;
+}
+
 /**
  * Lecturer Summary Report by School (2.csv format)
  * First row: School name
@@ -166,6 +183,7 @@ export interface QAFilter {
   search?: string;
   comment?: string;
   checkInStatus?: string;
+  selfMarkedPending?: boolean;
   academicTermId?: string;
   page?: number;
   limit?: number;

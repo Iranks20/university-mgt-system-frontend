@@ -336,3 +336,25 @@ describe('qaService.getSchoolSummaryReport', () => {
     expect(result).toEqual(mockData);
   });
 });
+
+describe('qaService.getDepartmentSummaryReport', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should fetch department summary with optional date range', async () => {
+    const mockData = [
+      { department: 'Computer Science', school: 'Science', totalNoTaught: 20, noUntaught: 2 },
+    ];
+    (api.get as any).mockResolvedValue(mockData);
+    const result = await qaService.getDepartmentSummaryReport({
+      dateFrom: '2025-01-01',
+      dateTo: '2025-01-31',
+    });
+    expect(api.get).toHaveBeenCalledWith('/qa/department-summary-report', {
+      dateFrom: '2025-01-01',
+      dateTo: '2025-01-31',
+    });
+    expect(result).toEqual(mockData);
+  });
+});

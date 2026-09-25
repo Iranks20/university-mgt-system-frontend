@@ -11,6 +11,10 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { exportCourseUnitSummaryReport } from '@/utils/excel';
 import type { QACourseUnitSummary as QACourseUnitSummaryRow } from '@/types/qa';
+import {
+  buildCourseUnitsByClass,
+  resolveCascadedCourseUnits,
+} from '@/lib/qa-filter-cascade';
 
 const PAGE_SIZE = 20;
 const ALL = 'All';
@@ -68,7 +72,8 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
     classes: string[];
     courseUnits: string[];
     lecturers: string[];
-  }>({ classes: [], courseUnits: [], lecturers: [] });
+    courseUnitsByClass: Record<string, string[]>;
+  }>({ classes: [], courseUnits: [], lecturers: [], courseUnitsByClass: {} });
 
   const openDetails = (row: QACourseUnitSummaryRow) => {
     setDetailRow(row);
@@ -148,6 +153,10 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
   }, [selectedDepartment]);
 
   useEffect(() => {
+    setSelectedCourseUnit(ALL);
+  }, [selectedClass]);
+
+  useEffect(() => {
     setPage(1);
   }, [
     selectedSchool,
@@ -202,9 +211,12 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
           classes: Array.from(classSet).sort(),
           courseUnits: Array.from(courseUnitSet).sort(),
           lecturers: Array.from(lecturerSet).sort(),
+          courseUnitsByClass: buildCourseUnitsByClass(
+            data.map((row) => ({ class: row.class, courseUnit: row.courseUnit }))
+          ),
         });
       } catch {
-        setOptionCatalog({ classes: [], courseUnits: [], lecturers: [] });
+        setOptionCatalog({ classes: [], courseUnits: [], lecturers: [], courseUnitsByClass: {} });
       }
     };
     loadOptions();
@@ -230,12 +242,22 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
     () => [{ value: ALL, label: 'All Classes' }, ...optionCatalog.classes.map((cls) => ({ value: cls, label: cls }))],
     [optionCatalog.classes]
   );
+  const cascadedCourseUnits = useMemo(
+    () =>
+      resolveCascadedCourseUnits({
+        selectedClass,
+        allCourseUnits: optionCatalog.courseUnits,
+        courseUnitsByClass: optionCatalog.courseUnitsByClass,
+        allValue: ALL,
+      }),
+    [selectedClass, optionCatalog.courseUnits, optionCatalog.courseUnitsByClass]
+  );
   const courseUnitComboboxOptions = useMemo(
     () => [
       { value: ALL, label: 'All Course Units' },
-      ...optionCatalog.courseUnits.map((unit) => ({ value: unit, label: unit })),
+      ...cascadedCourseUnits.map((unit) => ({ value: unit, label: unit })),
     ],
-    [optionCatalog.courseUnits]
+    [cascadedCourseUnits]
   );
   const lecturerComboboxOptions = useMemo(
     () => [
