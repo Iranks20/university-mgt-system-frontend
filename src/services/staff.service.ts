@@ -31,6 +31,30 @@ export const staffService = {
     }
   },
 
+  getAssignedClasses: async (
+    staffId: string
+  ): Promise<
+    Array<{
+      id: string;
+      name: string;
+      courseName: string;
+      courseCode: string;
+      dayOfWeek: number | null;
+      startTime: string | null;
+      endTime: string | null;
+      venueName: string;
+      isPrimary: boolean;
+    }>
+  > => {
+    try {
+      const response = await api.get<{ data: any[] }>(`/staff/${staffId}/assigned-classes`);
+      return Array.isArray(response) ? response : response?.data ?? [];
+    } catch (error) {
+      console.error('Error fetching assigned classes:', error);
+      return [];
+    }
+  },
+
   createStaff: async (staffData: Omit<Staff, 'id' | 'hireDate'>): Promise<Staff> => {
     try {
       return await api.post<Staff>('/staff', staffData);

@@ -16,8 +16,11 @@ export const RECORDABLE_LECTURE_COMMENT_OPTIONS = [
   ...UNTAUGHT_COMMENT_VALUES,
 ] as const;
 
+export const SELF_MARKED_PENDING_FILTER = 'SELF_MARKED_PENDING';
+
 export const LECTURE_COMMENT_LABELS: Record<string, string> = {
   PENDING: 'Pending (awaiting QA)',
+  SELF_MARKED_PENDING: 'Self-marked (awaiting QA)',
   TAUGHT: 'TAUGHT',
   SUBSTITUTED: 'SUBSTITUTED',
   COMPENSATION: 'COMPENSATION',
@@ -42,6 +45,13 @@ export const LEGACY_LECTURE_COMMENT_MAP: Record<string, string> = {
 export function normalizeLectureComment(comment: string | null | undefined): string {
   const normalized = (comment || 'TAUGHT').trim().toUpperCase().replace(/\s+/g, '_');
   return LEGACY_LECTURE_COMMENT_MAP[normalized] || normalized;
+}
+
+export function isSelfMarkedPending(record: {
+  comment?: string | null;
+  checkInTime?: string | null;
+}): boolean {
+  return normalizeLectureComment(record.comment) === 'PENDING' && Boolean(record.checkInTime);
 }
 
 export function lectureCommentLabel(comment: string | null | undefined): string {

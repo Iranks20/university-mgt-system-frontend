@@ -41,9 +41,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   LECTURE_COMMENT_LABELS,
   RECORDABLE_LECTURE_COMMENT_OPTIONS,
+  SELF_MARKED_PENDING_FILTER,
   normalizeLectureComment,
   lectureCommentLabel,
   isLectureTaught,
+  isSelfMarkedPending,
 } from '@/lib/lecture-outcome';
 import {
   DELIVERY_MODE_OPTIONS,
@@ -58,6 +60,7 @@ import { termScopeQueryParam } from '@/lib/academic-term-scope';
 import { calculateLectureTimeLost, calculateLectureLessonTimeout, resolveLectureTimeLost } from '@/lib/lecture-time-metrics';
 import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
+import { buildCourseUnitsForClass } from '@/lib/qa-filter-cascade';
 
 const COMMENT_FILTER_LABELS = LECTURE_COMMENT_LABELS;
 
@@ -98,12 +101,19 @@ export default function LectureRecords() {
   const lectureImportFileRef = useRef<HTMLInputElement>(null);
   const [allLecturers, setAllLecturers] = useState<string[]>([]);
   const [allClasses, setAllClasses] = useState<string[]>([]);
+  const [classOptions, setClassOptions] = useState<
+    Array<{ name: string; courseId: string | null; courseName: string; courseCode: string }>
+  >([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
   const [courseUnitOptions, setCourseUnitOptions] = useState<string[]>([]);
+  const [departmentCourseUnitOptions, setDepartmentCourseUnitOptions] = useState<string[]>([]);
   const [selectedLecturerName, setSelectedLecturerName] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
+  const [sortBy, setSortBy] = useState<'date' | 'timeForStarting'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const commentOptions = [...RECORDABLE_LECTURE_COMMENT_OPTIONS];
+  const outcomeFilterOptions = [SELF_MARKED_PENDING_FILTER, ...RECORDABLE_LECTURE_COMMENT_OPTIONS];
   const [timetableSeedDate, setTimetableSeedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [timetableSeedLoading, setTimetableSeedLoading] = useState(false);
   const [sessionAttendanceOpen, setSessionAttendanceOpen] = useState(false);
@@ -154,6 +164,7 @@ export default function LectureRecords() {
     taughtCount: number;
     untaughtCount: number;
     pendingCount: number;
+    selfMarkedPendingCount: number;
     onTimeCount: number;
     onTimeRatePct: number;
     hasFilters: boolean;
@@ -183,15 +194,7 @@ export default function LectureRecords() {
   }, []);
 
   useEffect(() => {
-    if (schoolFilter !== 'All') {
-      loadClasses(schoolFilter);
-    } else {
-      loadAllClasses();
-    }
-  }, [schoolFilter, termFilter, academicTermId, classStatusHint]);
-
-  useEffect(() => {
-    const loadDepartmentsAndCourses = async () => {
+    const loadDepartments = async () => {
       try {
         const schoolId =
           schoolFilter === 'All'
@@ -205,11 +208,41 @@ export default function LectureRecords() {
         if (departmentFilter !== 'All' && !names.includes(departmentFilter)) {
           setDepartmentFilter('All');
         }
+      } catch (error) {
+        console.error('Error loading department filters:', error);
+        setDepartmentOptions([]);
+      }
+    };
+    loadDepartments();
+  }, [schoolFilter, schoolRecords]);
 
+  useEffect(() => {
+    const loadClassAndCourseOptions = async () => {
+      try {
+        const schoolId =
+          schoolFilter === 'All'
+            ? undefined
+            : schoolRecords.find((s) => s.name === schoolFilter)?.id;
+        const depts = await academicService.getDepartments(schoolId);
         const departmentId =
           departmentFilter === 'All'
             ? undefined
             : depts.find((d) => d.name === departmentFilter)?.id;
+
+        const options = await qaService.getClassFilterOptions({
+          schoolId,
+          departmentId,
+          ...classTermParams,
+        });
+        setClassOptions(options);
+        const classNames = options.map((opt) => opt.name);
+        setClasses(classNames);
+        if (!schoolId && !departmentId) {
+          setAllClasses(classNames);
+        }
+        if (classFilter !== 'All' && !classNames.includes(classFilter)) {
+          setClassFilter('All');
+        }
 
         let courseNames: string[] = [];
         if (departmentId) {
@@ -227,18 +260,28 @@ export default function LectureRecords() {
         }
 
         const uniqueCourses = Array.from(new Set(courseNames)).sort((a, b) => a.localeCompare(b));
-        setCourseUnitOptions(uniqueCourses);
-        if (courseUnitFilter !== 'All' && !uniqueCourses.includes(courseUnitFilter)) {
-          setCourseUnitFilter('All');
-        }
+        setDepartmentCourseUnitOptions(uniqueCourses);
       } catch (error) {
-        console.error('Error loading department/course filters:', error);
-        setDepartmentOptions([]);
-        setCourseUnitOptions([]);
+        console.error('Error loading class/course filters:', error);
+        setClassOptions([]);
+        setClasses([]);
+        setDepartmentCourseUnitOptions([]);
       }
     };
-    loadDepartmentsAndCourses();
-  }, [schoolFilter, departmentFilter, schoolRecords]);
+    loadClassAndCourseOptions();
+  }, [schoolFilter, departmentFilter, schoolRecords, termFilter, academicTermId, classStatusHint]);
+
+  useEffect(() => {
+    const units = buildCourseUnitsForClass(
+      classFilter === 'All' ? null : classFilter,
+      classOptions,
+      departmentCourseUnitOptions
+    );
+    setCourseUnitOptions(units);
+    if (courseUnitFilter !== 'All' && !units.includes(courseUnitFilter)) {
+      setCourseUnitFilter('All');
+    }
+  }, [classFilter, classOptions, departmentCourseUnitOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +315,8 @@ export default function LectureRecords() {
     deliveryModeFilter,
     termFilter,
     academicTermId,
+    sortBy,
+    sortOrder,
   ]);
 
   useEffect(() => {
@@ -292,6 +337,8 @@ export default function LectureRecords() {
     page,
     termFilter,
     academicTermId,
+    sortBy,
+    sortOrder,
   ]);
 
   useEffect(() => {
@@ -314,16 +361,23 @@ export default function LectureRecords() {
   ]);
 
   useEffect(() => {
-    setClassFilter('All');
-  }, [schoolFilter, termFilter, academicTermId]);
-
-  useEffect(() => {
     setDepartmentFilter('All');
+    setClassFilter('All');
+    setCourseUnitFilter('All');
   }, [schoolFilter]);
 
   useEffect(() => {
+    setClassFilter('All');
     setCourseUnitFilter('All');
   }, [departmentFilter]);
+
+  useEffect(() => {
+    setCourseUnitFilter('All');
+  }, [classFilter]);
+
+  useEffect(() => {
+    setClassFilter('All');
+  }, [termFilter, academicTermId]);
   useEffect(() => {
     if (sessionAttendanceOpen && sessionRecord) {
       setSessionLoading(true);
@@ -737,7 +791,7 @@ export default function LectureRecords() {
     }
   };
 
-  const classFilterOptions = schoolFilter !== 'All' ? classes : allClasses;
+  const classFilterOptions = classes;
 
   const buildBaseFilter = () => {
     const filter: any = {};
@@ -747,7 +801,11 @@ export default function LectureRecords() {
     if (debouncedSearchTerm.trim()) filter.search = debouncedSearchTerm.trim();
     if (classFilter !== 'All') filter.class = classFilter;
     if (courseUnitFilter !== 'All') filter.courseCode = courseUnitFilter;
-    if (commentFilter !== 'All') filter.comment = commentFilter;
+    if (commentFilter === SELF_MARKED_PENDING_FILTER) {
+      filter.selfMarkedPending = true;
+    } else if (commentFilter !== 'All') {
+      filter.comment = commentFilter;
+    }
     if (statusFilter !== 'All') filter.checkInStatus = statusFilter;
     if (attendanceStatusFilter !== 'All') filter.status = attendanceStatusFilter;
     if (deliveryModeFilter !== 'All') filter.deliveryMode = deliveryModeFilter;
@@ -764,8 +822,8 @@ export default function LectureRecords() {
         ...buildBaseFilter(),
         page,
         limit: pageSize,
-        sortBy: 'date',
-        sortOrder: 'desc',
+        sortBy,
+        sortOrder,
       };
 
       const response = await qaService.getLectureRecords(filter);
@@ -812,6 +870,7 @@ export default function LectureRecords() {
   const taughtCount = summary?.taughtCount ?? 0;
   const untaughtCount = summary?.untaughtCount ?? 0;
   const pendingCount = summary?.pendingCount ?? 0;
+  const selfMarkedPendingCount = summary?.selfMarkedPendingCount ?? 0;
   const onTimeRatePct = summary?.onTimeRatePct ?? 0;
   const summaryTotalRecords = summary?.totalRecords ?? 0;
   const summaryHasFilters = summary?.hasFilters ?? false;
@@ -829,6 +888,8 @@ export default function LectureRecords() {
     setDeliveryModeFilter('All');
     setDateFrom('');
     setDateTo('');
+    setSortBy('date');
+    setSortOrder('desc');
     onTermChange({
       value: TERM_FILTER_ACTIVE,
       academicTermId: undefined,
@@ -837,6 +898,24 @@ export default function LectureRecords() {
       dateFrom: '',
       dateTo: '',
     });
+  };
+
+  const toggleStartTimeSort = () => {
+    if (sortBy !== 'timeForStarting') {
+      setSortBy('timeForStarting');
+      setSortOrder('asc');
+      return;
+    }
+    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+  };
+
+  const toggleDateSort = () => {
+    if (sortBy !== 'date') {
+      setSortBy('date');
+      setSortOrder('desc');
+      return;
+    }
+    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
   };
 
   const hasFiltersApplied =
@@ -1431,11 +1510,24 @@ export default function LectureRecords() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white border-amber-100">
+        <Card
+          className="bg-white border-amber-100 cursor-pointer hover:border-amber-300 transition-colors"
+          onClick={() => {
+            setCommentFilter(SELF_MARKED_PENDING_FILTER);
+            setPage(1);
+          }}
+        >
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">{summaryHasFilters ? 'Pending (filtered)' : 'Pending (all-time)'}</p>
-              <h3 className="text-2xl font-bold text-amber-700">{summaryLoading ? '—' : pendingCount}</h3>
+              <p className="text-sm font-medium text-muted-foreground">
+                {summaryHasFilters ? 'Self-marked pending (filtered)' : 'Self-marked pending'}
+              </p>
+              <h3 className="text-2xl font-bold text-amber-700">
+                {summaryLoading ? '—' : selfMarkedPendingCount}
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                All pending: {summaryLoading ? '—' : pendingCount} · click to filter
+              </p>
             </div>
             <div className="h-10 w-10 bg-amber-50 rounded-full flex items-center justify-center text-amber-700">
               <CalendarIcon size={20} />
@@ -1537,7 +1629,7 @@ export default function LectureRecords() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All outcomes</SelectItem>
-                  {commentOptions.map((comment) => (
+                  {outcomeFilterOptions.map((comment) => (
                     <SelectItem key={comment} value={comment}>
                       {COMMENT_FILTER_LABELS[comment] ?? comment}
                     </SelectItem>
@@ -1611,12 +1703,44 @@ export default function LectureRecords() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>DATE</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={toggleDateSort}
+                      className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] -ml-1 px-1 py-0.5 rounded"
+                      title="Sort by date"
+                    >
+                      DATE
+                      {sortBy === 'date' ? (
+                        sortOrder === 'asc' ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                        )
+                      ) : null}
+                    </button>
+                  </TableHead>
                   <TableHead>LECTURER&apos;S NAME</TableHead>
                   <TableHead>CLASS</TableHead>
                   <TableHead>COURSE UNIT</TableHead>
                   <TableHead>DELIVERY</TableHead>
-                  <TableHead className="whitespace-nowrap">TIME FOR STARTING</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={toggleStartTimeSort}
+                      className="inline-flex items-center gap-1 font-medium hover:text-[#015F2B] -ml-1 px-1 py-0.5 rounded"
+                      title="Sort by start time (morning ↔ afternoon)"
+                    >
+                      TIME FOR STARTING
+                      {sortBy === 'timeForStarting' ? (
+                        sortOrder === 'asc' ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-[#015F2B]" aria-hidden />
+                        )
+                      ) : null}
+                    </button>
+                  </TableHead>
                   <TableHead>ATTENDANCE</TableHead>
                   <TableHead>STATUS</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -1681,7 +1805,9 @@ export default function LectureRecords() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                         <Badge variant={getCommentBadgeVariant(record.comment)}>
-                            {lectureCommentLabel(record.comment)}
+                            {isSelfMarkedPending(record)
+                              ? LECTURE_COMMENT_LABELS.SELF_MARKED_PENDING
+                              : lectureCommentLabel(record.comment)}
                         </Badge>
                           {record.comment === 'SUBSTITUTED' && (record.substituteLecturerName || record.substituteLecturerId) && (
                             <span className="text-xs text-muted-foreground">
@@ -1708,6 +1834,22 @@ export default function LectureRecords() {
                             <DropdownMenuItem onClick={() => record.id && openEdit(record.id)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
+                            {record.id && isSelfMarkedPending(record) && (
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    await qaService.approveSelfMarkedLecture(record.id!);
+                                    toast.success('Self-marked lecture approved as Taught');
+                                    await loadRecords();
+                                    await loadSummary();
+                                  } catch (error: any) {
+                                    toast.error(error?.message || 'Failed to approve lecture');
+                                  }
+                                }}
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" /> Approve self-mark
+                              </DropdownMenuItem>
+                            )}
                             {(record as any).classId && isLectureTaught(record.comment) && (
                               <DropdownMenuItem onClick={() => openSessionAttendance(record)}>
                                 <UserCheck className="mr-2 h-4 w-4" /> Record student attendance

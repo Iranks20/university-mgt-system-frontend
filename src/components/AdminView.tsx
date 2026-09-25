@@ -70,7 +70,16 @@ type StudentRow = {
   departmentId?: string;
   semester?: number;
 };
-type StaffRow = { id: string; name: string; email: string; role: string; dept: string; departmentId?: string; status: string };
+type StaffRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  dept: string;
+  departmentId?: string;
+  status: string;
+  assignedClassCount?: number;
+};
 type ClassRow = {
   id: string;
   name: string;
@@ -2304,7 +2313,7 @@ function StaffTab({
               await staffService.updateStaff(editingStaff.id, {
                 firstName,
                 lastName,
-                email: editForm.email,
+                email: editForm.email.trim(),
                 role: editForm.role as any,
                 departmentId: editForm.dept,
               });
@@ -2315,7 +2324,11 @@ function StaffTab({
               toast.success(isStaffRoleTab ? 'Staff member updated successfully' : 'Non teaching staff member updated successfully');
             } catch (error: any) {
               console.error('Error updating staff:', error);
-              toast.error(`Failed to update staff: ${error?.message || 'Unknown error'}`);
+              const validationMessage =
+                error?.errors?.errors?.[0]?.message ||
+                error?.errors?.[0]?.message ||
+                error?.message;
+              toast.error(`Failed to update staff: ${validationMessage || 'Unknown error'}`);
             }
           }}>
             <div className="grid gap-4 py-4">
@@ -2431,11 +2444,31 @@ type AssignClassRow = {
   endTime: string | null;
   venueName: string;
   lecturerId: string | null;
+  lecturerIds: string[];
   lecturerName: string;
+};
+
+type AssignedClassSummaryRow = {
+  id: string;
+  name: string;
+  courseName: string;
+  courseCode: string;
+  dayOfWeek: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  venueName: string;
+  isPrimary: boolean;
 };
 
 function mapApiClassToAssignRow(c: any): AssignClassRow {
   const lecturer = c.lecturer;
+  const lecturerIds = Array.isArray(c.lecturerIds)
+    ? c.lecturerIds.filter(Boolean)
+    : Array.isArray(c.lecturerPool)
+      ? c.lecturerPool.map((p: any) => p.lecturerId).filter(Boolean)
+      : c.lecturerId
+        ? [c.lecturerId]
+        : [];
   return {
     id: c.id,
     name: c.name ?? '',
@@ -2446,6 +2479,7 @@ function mapApiClassToAssignRow(c: any): AssignClassRow {
     endTime: c.endTime ?? null,
     venueName: c.venue?.name ?? '',
     lecturerId: c.lecturerId ?? null,
+    lecturerIds: [...new Set(lecturerIds)],
     lecturerName: lecturer ? `${lecturer.firstName || ''} ${lecturer.lastName || ''}`.trim() || '—' : '—',
   };
 }
@@ -2496,6 +2530,8 @@ function LecturersTab({
   const [assignClassesLoading, setAssignClassesLoading] = useState(false);
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignClassSearch, setAssignClassSearch] = useState('');
+  const [assignedClassesSummary, setAssignedClassesSummary] = useState<AssignedClassSummaryRow[]>([]);
+  const [assignedClassesLoading, setAssignedClassesLoading] = useState(false);
   const assignScope = useProgramIntakeScope({ enabled: assignOpen, intakeField: 'type', showSchool: true });
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
@@ -2503,6 +2539,8 @@ function LecturersTab({
   const [editOpen, setEditOpen] = useState(false);
   const [editingLecturer, setEditingLecturer] = useState<StaffRow | null>(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', dept: '', newPassword: '' });
+  const [editAssignedClasses, setEditAssignedClasses] = useState<AssignedClassSummaryRow[]>([]);
+  const [editAssignedClassesLoading, setEditAssignedClassesLoading] = useState(false);
   const [addTempPasswordVisible, setAddTempPasswordVisible] = useState(false);
   const [editPasswordVisible, setEditPasswordVisible] = useState(false);
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
@@ -2576,14 +2614,52 @@ function LecturersTab({
     setSelectedClassIds([]);
   };
 
+  const loadAssignedClassesSummary = async (lecturerId: string) => {
+    setAssignedClassesLoading(true);
+    try {
+      const rows = await staffService.getAssignedClasses(lecturerId);
+      setAssignedClassesSummary(rows);
+    } catch {
+      setAssignedClassesSummary([]);
+    } finally {
+      setAssignedClassesLoading(false);
+    }
+  };
+
   const openAssign = (lecturer: StaffRow) => {
     setSelectedLecturer(lecturer);
     setSelectedClassIds([]);
     setAssignClasses([]);
     setAssignClassSearch('');
+    setAssignedClassesSummary([]);
     assignScope.reset();
     setAssignOpen(true);
+    void loadAssignedClassesSummary(lecturer.id);
   };
+
+  const openEditLecturer = async (lecturer: StaffRow) => {
+    setEditingLecturer(lecturer);
+    setEditForm({
+      name: lecturer.name,
+      email: lecturer.email,
+      dept: lecturer.departmentId ?? lecturer.dept,
+      newPassword: '',
+    });
+    setEditPasswordVisible(false);
+    setEditOpen(true);
+    setEditAssignedClassesLoading(true);
+    try {
+      const rows = await staffService.getAssignedClasses(lecturer.id);
+      setEditAssignedClasses(rows);
+    } catch {
+      setEditAssignedClasses([]);
+    } finally {
+      setEditAssignedClassesLoading(false);
+    }
+  };
+
+  const classHasLecturer = (cls: AssignClassRow, lecturerId: string) =>
+    cls.lecturerId === lecturerId || cls.lecturerIds.includes(lecturerId);
 
   const loadAssignClassesForScope = async () => {
     if (!selectedLecturer) return;
@@ -2606,7 +2682,7 @@ function LecturersTab({
       }
       const loaded = await fetchAllClassesForIntake(resolved.id);
       setAssignClasses(loaded);
-      setSelectedClassIds(loaded.filter((c) => c.lecturerId === selectedLecturer.id).map((c) => c.id));
+      setSelectedClassIds(loaded.filter((c) => classHasLecturer(c, selectedLecturer.id)).map((c) => c.id));
       if (loaded.length === 0) {
         toast.info('No classes in this intake scope. Add classes in Timetable Builder or Classes tab.');
       }
@@ -2660,13 +2736,27 @@ function LecturersTab({
       let updated = 0;
       for (const cls of assignClasses) {
         const shouldAssign = selectedClassIds.includes(cls.id);
-        if (shouldAssign && cls.lecturerId !== lecturerId) {
-          await academicService.updateClass(cls.id, { lecturerId });
-          updated += 1;
-        } else if (!shouldAssign && cls.lecturerId === lecturerId) {
-          await academicService.updateClass(cls.id, { lecturerId: null });
-          updated += 1;
-        }
+        const currentlyAssigned = classHasLecturer(cls, lecturerId);
+        if (shouldAssign === currentlyAssigned) continue;
+
+        const nextLecturerIds = shouldAssign
+          ? [...new Set([...cls.lecturerIds, lecturerId])]
+          : cls.lecturerIds.filter((id) => id !== lecturerId);
+        const nextPrimary =
+          shouldAssign
+            ? lecturerId
+            : cls.lecturerId === lecturerId
+              ? nextLecturerIds[0] ?? null
+              : cls.lecturerId && nextLecturerIds.includes(cls.lecturerId)
+                ? cls.lecturerId
+                : nextLecturerIds[0] ?? null;
+
+        await academicService.updateClass(cls.id, {
+          lecturerIds: nextLecturerIds,
+          primaryLecturerId: nextPrimary,
+          lecturerId: nextPrimary,
+        });
+        updated += 1;
       }
       setClasses((prev) =>
         prev.map((c) => {
@@ -2681,11 +2771,13 @@ function LecturersTab({
           return c;
         })
       );
+      await loadStaff(staffPage, { role: 'Lecturer', search: searchTerm.trim() || undefined });
       await loadClasses(1);
       window.dispatchEvent(new CustomEvent('class-updated'));
       setAssignOpen(false);
       setSelectedLecturer(null);
       setAssignClasses([]);
+      setAssignedClassesSummary([]);
       toast.success(
         updated > 0
           ? `Class assignments saved (${updated} updated).`
@@ -2765,7 +2857,7 @@ function LecturersTab({
                   </TableRow>
                 ) : (
                   lecturers.map((lecturer) => {
-                    const assignedClasses = classes.filter(c => c.lecturerId === lecturer.id);
+                    const assignedCount = lecturer.assignedClassCount ?? 0;
                     return (
                       <TableRow key={lecturer.id}>
                         <TableCell className="font-medium">
@@ -2784,7 +2876,7 @@ function LecturersTab({
                           <Badge variant={lecturer.status === 'Active' ? 'outline' : 'secondary'} className={lecturer.status==='Active' ? 'text-[#015F2B] border-[#015F2B]/20 bg-[#015F2B]/5' : ''}>{lecturer.status}</Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">{assignedClasses.length} {assignedClasses.length === 1 ? 'class' : 'classes'}</Badge>
+                          <Badge variant="secondary">{assignedCount} {assignedCount === 1 ? 'class' : 'classes'}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -2793,12 +2885,9 @@ function LecturersTab({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => openAssign(lecturer)}><BookMarked className="mr-2 h-4 w-4" /> Assign classes</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => {
-                                setEditingLecturer(lecturer);
-                                setEditForm({ name: lecturer.name, email: lecturer.email, dept: lecturer.departmentId ?? lecturer.dept, newPassword: '' });
-                                setEditPasswordVisible(false);
-                                setEditOpen(true);
-                              }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void openEditLecturer(lecturer)}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit
+                              </DropdownMenuItem>
                               <DropdownMenuItem className="text-red-600" onClick={async () => {
                                 if (confirm(`Delete lecturer "${lecturer.name}"?`)) {
                                   try {
@@ -2917,6 +3006,7 @@ function LecturersTab({
           if (!open) {
             setEditPasswordVisible(false);
             setEditingLecturer(null);
+            setEditAssignedClasses([]);
           }
         }}
       >
@@ -2935,20 +3025,25 @@ function LecturersTab({
               await staffService.updateStaff(editingLecturer.id, {
                 firstName,
                 lastName,
-                email: editForm.email,
+                email: editForm.email.trim(),
                 role: 'Lecturer' as any,
                 departmentId: editForm.dept,
                 ...(newPw ? { tempPassword: newPw } : {}),
               } as any);
               
-              await loadStaff(staffPage);
+              await loadStaff(staffPage, { role: 'Lecturer', search: searchTerm.trim() || undefined });
               setEditOpen(false);
               setEditingLecturer(null);
+              setEditAssignedClasses([]);
               setEditPasswordVisible(false);
               toast.success('Lecturer updated successfully');
             } catch (error: any) {
               console.error('Error updating lecturer:', error);
-              toast.error(`Failed to update lecturer: ${error?.message || 'Unknown error'}`);
+              const validationMessage =
+                error?.errors?.errors?.[0]?.message ||
+                error?.errors?.[0]?.message ||
+                error?.message;
+              toast.error(`Failed to update lecturer: ${validationMessage || 'Unknown error'}`);
             }
           }}>
             <div className="grid gap-4 py-4">
@@ -3006,6 +3101,31 @@ function LecturersTab({
                   </Button>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label>Classes assigned ({editAssignedClasses.length})</Label>
+                {editAssignedClassesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading assigned classes...
+                  </div>
+                ) : editAssignedClasses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No classes assigned to this lecturer.</p>
+                ) : (
+                  <div className="rounded-md border max-h-48 overflow-auto divide-y">
+                    {editAssignedClasses.map((cls) => (
+                      <div key={cls.id} className="px-3 py-2 text-sm">
+                        <div className="font-medium">
+                          {cls.courseCode ? `${cls.courseCode} · ` : ''}
+                          {cls.courseName || cls.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {cls.name}
+                          {cls.isPrimary ? ' · Primary' : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -3059,6 +3179,31 @@ function LecturersTab({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Currently assigned ({assignedClassesSummary.length})</Label>
+              {assignedClassesLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading assigned classes...
+                </div>
+              ) : assignedClassesSummary.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No classes assigned yet.</p>
+              ) : (
+                <div className="rounded-md border max-h-40 overflow-auto divide-y">
+                  {assignedClassesSummary.map((cls) => (
+                    <div key={cls.id} className="px-3 py-2 text-sm">
+                      <div className="font-medium">
+                        {cls.courseCode ? `${cls.courseCode} · ` : ''}
+                        {cls.courseName || cls.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {cls.name}
+                        {cls.isPrimary ? ' · Primary' : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <ProgramIntakeScopeFilter
               scope={assignScope}
               intakeField="type"
@@ -3114,9 +3259,9 @@ function LecturersTab({
                               ? `${cls.startTime ?? ''}${cls.startTime && cls.endTime ? ' – ' : ''}${cls.endTime ?? ''}`
                               : '—';
                           const otherLecturer =
-                            cls.lecturerId &&
                             selectedLecturer &&
-                            cls.lecturerId !== selectedLecturer.id;
+                            !classHasLecturer(cls, selectedLecturer.id) &&
+                            (cls.lecturerId || cls.lecturerIds.length > 0);
                           return (
                             <TableRow key={cls.id}>
                               <TableCell>
@@ -3175,6 +3320,7 @@ function LecturersTab({
                 setSelectedLecturer(null);
                 setSelectedClassIds([]);
                 setAssignClasses([]);
+                setAssignedClassesSummary([]);
               }}
             >
               Cancel
@@ -8626,6 +8772,7 @@ export default function AdminView({
           dept: s.departmentName || s.departmentId || '',
           departmentId: s.departmentId,
           status: s.status || 'Active',
+          assignedClassCount: typeof s.assignedClassCount === 'number' ? s.assignedClassCount : 0,
         })) : []);
         setStaffTotal(res.total ?? 0);
         setStaffPage(res.page ?? page);

@@ -16,7 +16,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { QASchoolSummary, QALecturerSummary, QACourseUnitSummary } from '@/features/qa';
+import { QASchoolSummary, QADepartmentSummary, QALecturerSummary, QACourseUnitSummary } from '@/features/qa';
 import { analyticsService } from '@/services/analytics.service';
 import { reportService } from '@/services/report.service';
 import { qaService } from '@/services/qa.service';
@@ -596,9 +596,14 @@ export default function Reports() {
 
   const lecturerDeptOptions = useMemo(() => {
     return Array.from(
-      new Set(lecturerTableData.map((l) => l.department).filter((d) => d && d !== '—' && d !== 'N/A'))
+      new Set(
+        lecturerTableData
+          .filter((l) => schoolFilter === 'all' || l.school === schoolFilter)
+          .map((l) => l.department)
+          .filter((d) => d && d !== '—' && d !== 'N/A')
+      )
     ).sort();
-  }, [lecturerTableData]);
+  }, [lecturerTableData, schoolFilter]);
 
   const lecturerSchoolComboboxOptions = useMemo(
     () => [
@@ -1100,6 +1105,7 @@ export default function Reports() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="reconciliation">Teaching Reconciliation</TabsTrigger>
             <TabsTrigger value="school-summary">School Summary</TabsTrigger>
+            <TabsTrigger value="department-summary">Department Summary</TabsTrigger>
             <TabsTrigger value="lecturer-summary">Lecturer Summary</TabsTrigger>
             <TabsTrigger value="course-unit-summary">Course Unit Summary</TabsTrigger>
             <TabsTrigger value="schools">School Performance</TabsTrigger>
@@ -1199,6 +1205,10 @@ export default function Reports() {
           {/* SCHOOL SUMMARY TAB - Matches 1.csv format */}
           <TabsContent value="school-summary" className="space-y-4">
             <QASchoolSummary scopedDateRange={reportsScopedDates} />
+          </TabsContent>
+
+          <TabsContent value="department-summary" className="space-y-4">
+            <QADepartmentSummary scopedDateRange={reportsScopedDates} />
           </TabsContent>
 
           {/* LECTURER SUMMARY TAB - Matches 2.csv format */}

@@ -144,6 +144,7 @@ export interface Staff {
   userId?: string | null;
   userRole?: string;
   tempPassword?: string;
+  assignedClassCount?: number;
 }
 
 export interface Lecturer extends Staff {
