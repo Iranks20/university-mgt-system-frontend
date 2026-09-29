@@ -11,10 +11,12 @@ import {
   buildCourseUnitsByClass,
   resolveCascadedCourseUnits,
 } from '@/lib/qa-filter-cascade';
+import type { QALecturerSummary as QALecturerSummaryRow, QALecturerSummaryReport } from '@/types/qa';
+import { exportLecturerSummaryTableView } from '@/utils/excel';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
-type LecturerTableRow = QALecturerSummary & { school: string };
+type LecturerTableRow = QALecturerSummaryRow & { school: string };
 
 const PAGE_SIZE = 20;
 const ALL = 'All';

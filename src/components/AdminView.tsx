@@ -2462,11 +2462,13 @@ type AssignedClassSummaryRow = {
 
 function mapApiClassToAssignRow(c: any): AssignClassRow {
   const lecturer = c.lecturer;
-  const lecturerIds = Array.isArray(c.lecturerIds)
-    ? c.lecturerIds.filter(Boolean)
+  const lecturerIds: string[] = Array.isArray(c.lecturerIds)
+    ? c.lecturerIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
     : Array.isArray(c.lecturerPool)
-      ? c.lecturerPool.map((p: any) => p.lecturerId).filter(Boolean)
-      : c.lecturerId
+      ? c.lecturerPool
+          .map((p: any) => p.lecturerId)
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+      : typeof c.lecturerId === 'string' && c.lecturerId
         ? [c.lecturerId]
         : [];
   return {
