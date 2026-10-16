@@ -24,7 +24,7 @@ import { CommitteeWorkspacePanel } from '../components/CommitteeWorkspacePanel';
 const DEFAULT_COMMITTEE = GRADUATION_COMMITTEES[0]?.slug ?? 'steering';
 
 export default function GraduationCommitteesPage() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const committeeSlug = searchParams.get('committee') || DEFAULT_COMMITTEE;
   const sectionParam = searchParams.get('section') as CommitteeWorkspaceSection | null;
@@ -36,7 +36,6 @@ export default function GraduationCommitteesPage() {
 
   const access = buildGraduationAccess({
     permissions: user?.permissions,
-    role: userRole,
   });
 
   const meta = GRADUATION_COMMITTEE_BY_SLUG[committeeSlug];

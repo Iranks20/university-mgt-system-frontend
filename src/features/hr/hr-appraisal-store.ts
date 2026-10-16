@@ -45,11 +45,6 @@ export async function getHrAppraisalCycles(): Promise<HrAppraisalCycle[]> {
   return hrAppraisalService.getCycles();
 }
 
-export async function getHrAppraisalReviews(): Promise<HrAppraisalReview[]> {
-  const result = await hrAppraisalService.getReviews({ limit: 200 });
-  return result.data;
-}
-
 export async function getHrAppraisalReviewById(id: string): Promise<HrAppraisalReview | undefined> {
   const review = await hrAppraisalService.getReview(id);
   return review ?? undefined;
@@ -115,10 +110,6 @@ export async function saveAppraisalTemplate(
   id?: string
 ): Promise<AppraisalFormTemplate> {
   return hrAppraisalService.saveTemplate(buildTemplateApiPayload(template), id);
-}
-
-export async function getCompletedAppraisalArchives(): Promise<HrAppraisalReview[]> {
-  return hrAppraisalService.getArchives();
 }
 
 export async function getCalibrationForCycle(cycleId: string) {

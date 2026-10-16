@@ -14,7 +14,8 @@ export type UserRole =
   | 'HR'
   | 'Management'
   | 'Admin'
-  | 'Graduation';
+  | 'Graduation'
+  | 'Timekeeper';
 
 export interface User {
   id: string;
@@ -124,6 +125,32 @@ export interface Timetable {
 }
 
 // ==================== STAFF DOMAIN ====================
+export type StaffCategory = 'Academic' | 'Administrative' | 'Support' | 'Clinical';
+
+export type AcademicRank =
+  | 'TeachingAssistant'
+  | 'AssistantLecturer'
+  | 'Lecturer'
+  | 'SeniorLecturer'
+  | 'AssociateProfessor'
+  | 'Professor';
+
+export const STAFF_CATEGORY_OPTIONS: Array<{ value: StaffCategory; label: string }> = [
+  { value: 'Academic', label: 'Academic (teaching)' },
+  { value: 'Administrative', label: 'Administrative' },
+  { value: 'Support', label: 'Support / technical' },
+  { value: 'Clinical', label: 'Clinical' },
+];
+
+export const ACADEMIC_RANK_OPTIONS: Array<{ value: AcademicRank; label: string }> = [
+  { value: 'TeachingAssistant', label: 'Teaching Assistant' },
+  { value: 'AssistantLecturer', label: 'Assistant Lecturer' },
+  { value: 'Lecturer', label: 'Lecturer' },
+  { value: 'SeniorLecturer', label: 'Senior Lecturer' },
+  { value: 'AssociateProfessor', label: 'Associate Professor' },
+  { value: 'Professor', label: 'Professor' },
+];
+
 export interface Staff {
   id: string;
   staffNumber: string;
@@ -131,15 +158,27 @@ export interface Staff {
   lastName: string;
   email: string;
   phone?: string;
-  departmentId: string;
+  departmentId: string | null;
   schoolId?: string | null;
+  orgUnitId?: string | null;
   role: string;
+  staffCategory?: StaffCategory;
+  academicRank?: AcademicRank | null;
+  academicRankLabel?: string | null;
+  gender?: string | null;
+  hasPhd?: boolean;
   employmentType: string;
   status?: string;
   hireDate: Date | string;
   supervisorId?: string | null;
   supervisorName?: string | null;
+  supervisorSource?: 'explicit' | 'department' | 'organisation' | 'missing';
+  hasResolvedSupervisor?: boolean;
   departmentName?: string | null;
+  schoolName?: string | null;
+  orgUnitName?: string | null;
+  placementLabel?: string | null;
+  leadershipRoles?: string[];
   departmentHeadStaffId?: string | null;
   userId?: string | null;
   userRole?: string;

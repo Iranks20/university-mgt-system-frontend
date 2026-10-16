@@ -3,13 +3,14 @@ import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
-  ChevronDown, AlertTriangle, Layers,
+  ChevronDown, AlertTriangle, Layers, ScanLine, History,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import kcuUniversityLogo from '@/assets/images/kcu-university-logo.png';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { useRole } from './RoleProvider';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, type SessionPayload } from '../contexts/AuthContext';
+import { PASSWORD_POLICY_SUMMARY, passwordPolicyProblem } from '@/lib/password-policy';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { notificationService, type Notification } from '@/services/notification.service';
 import {
   DropdownMenu,
@@ -24,17 +25,8 @@ import { Label } from '@/components/ui/label';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { navAllowed, graduationNavAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
-
-function roleLabel(r: string): string {
-  if (r === 'QA') return 'QA Officer';
-  if (r === 'QAClinicals') return 'QA Clinicals';
-  if (r === 'ClinicalCoordinator') return 'Clinical Coordinator';
-  if (r === 'Staff') return 'Non-Teaching Staff';
-  if (r === 'HR') return 'HR Officer';
-  if (r === 'Graduation') return 'Graduation Management';
-  return r;
-}
+import { navAllowed, shouldNestClinicalNavItems, shouldNestHrNavItems } from '@/lib/nav-permissions';
+import { formatRoleLabel } from '@/lib/role-labels';
 
 const GRADUATION_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/graduation/dashboard' },
@@ -43,23 +35,34 @@ const GRADUATION_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Registrations', icon: GraduationCap, path: '/graduation/registrations' },
 ];
 
-function buildGraduationOnlyNav(): SidebarItem[] {
-  return GRADUATION_NAV_CHILDREN.map((child) => ({
-    type: 'single' as const,
-    label: child.label,
-    path: child.path,
-    icon: child.icon,
-  }));
-}
-
 function isPathUnderGraduationSection(pathname: string): boolean {
   return pathname === '/graduation' || pathname.startsWith('/graduation/');
+}
+
+function hasAnyPermission(perms: string[], codes: string[]): boolean {
+  const have = new Set(perms);
+  return codes.some((c) => have.has(c));
+}
+
+function filterGraduationChildren(userPermissions: string[], allow: (path: string) => boolean): SidebarChild[] {
+  const have = new Set(userPermissions);
+  return GRADUATION_NAV_CHILDREN.filter((c) => {
+    if (!allow(c.path)) return false;
+    if (c.path === '/graduation/event') {
+      return have.has('graduation.manage') || have.has('admin.console');
+    }
+    if (c.path === '/graduation/registrations') {
+      return have.has('graduation.registrations') || have.has('admin.console');
+    }
+    return true;
+  });
 }
 
 const ADMIN_USERS_CHILD_PATHS = [
   '/admin-students',
   '/admin-student-info-forms',
   '/admin-lecturers',
+  '/admin-administration',
   '/admin-users',
   '/admin-roles',
   '/admin-audit-log',
@@ -157,7 +160,8 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Students', icon: Users, path: '/admin-students' },
   { label: 'Student info forms', icon: ClipboardList, path: '/admin-student-info-forms' },
   { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
-  { label: 'System accounts', icon: UserCog, path: '/admin-users' },
+  { label: 'Administration', icon: Building, path: '/admin-administration' },
+  { label: 'Account security', icon: UserCog, path: '/admin-users' },
   { label: 'Roles & Permissions', icon: KeyRound, path: '/admin-roles' },
   { label: 'Audit log', icon: FileText, path: '/admin-audit-log' },
 ];
@@ -165,6 +169,7 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
 const HR_MODULE_NAV_CHILDREN: SidebarChild[] = [
   { label: 'HR Dashboard', icon: LayoutDashboard, path: '/hr/dashboard' },
   { label: 'Employees', icon: Users, path: '/hr/employees' },
+  { label: 'Organisation Structure', icon: Building, path: '/hr/organisation' },
   { label: 'Staff Attendance', icon: Clock, path: '/hr/attendance' },
   { label: 'Onboarding', icon: UserPlus, path: '/hr/onboarding' },
   { label: 'HR Documents', icon: FileText, path: '/hr/documents' },
@@ -172,13 +177,9 @@ const HR_MODULE_NAV_CHILDREN: SidebarChild[] = [
   { label: 'HR Reports', icon: BarChart, path: '/hr/reports' },
 ];
 
-const HR_ROLE_NAV_CHILDREN: SidebarChild[] = [
-  ...HR_MODULE_NAV_CHILDREN,
-  { label: 'My Appraisal', icon: ClipboardList, path: '/staff-appraisal' },
-  { label: 'Settings', icon: Settings, path: '/admin-settings' },
-];
-
 const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon }> = [
+  { label: 'Attendance Desk', path: '/attendance-desk', icon: ScanLine },
+  { label: 'My Entries', path: '/attendance-entries', icon: History },
   { label: 'Timetable', path: '/timetable', icon: Calendar },
   { label: 'Timetable Builder', path: '/timetable-builder', icon: Calendar },
   { label: 'Lecture Records', path: '/lecture-records', icon: BookOpen },
@@ -229,11 +230,8 @@ function pushFolderIfAny(
   }
 }
 
-function buildManagementNav(userPermissions: string[], role: string): SidebarItem[] {
-  const allow = (path: string) =>
-    path.startsWith('/graduation')
-      ? graduationNavAllowed(userPermissions, path, role)
-      : navAllowed(userPermissions, path);
+function buildManagementNav(userPermissions: string[]): SidebarItem[] {
+  const allow = (path: string) => navAllowed(userPermissions, path);
 
   const items: SidebarItem[] = [];
 
@@ -314,11 +312,8 @@ function buildManagementNav(userPermissions: string[], role: string): SidebarIte
   return items;
 }
 
-function buildAdminNav(userPermissions: string[], role: string): SidebarItem[] {
-  const allow = (path: string) =>
-    path.startsWith('/graduation')
-      ? graduationNavAllowed(userPermissions, path, role)
-      : navAllowed(userPermissions, path);
+function buildAdminNav(userPermissions: string[]): SidebarItem[] {
+  const allow = (path: string) => navAllowed(userPermissions, path);
 
   const items: SidebarItem[] = [];
 
@@ -379,22 +374,16 @@ function buildAdminNav(userPermissions: string[], role: string): SidebarItem[] {
   const clinicalChildren = ADMIN_CLINICAL_NAV_CHILDREN.filter((c) => allow(c.path));
   pushFolderIfAny(items, 'clinicals', 'Clinicals', Briefcase, clinicalChildren);
 
-  const have = new Set(userPermissions);
-  const graduationChildren = GRADUATION_NAV_CHILDREN.filter((c) => {
-    if (c.path === '/graduation/dashboard') return false;
-    if (!allow(c.path)) return false;
-    if (c.path === '/graduation/event') {
-      return have.has('graduation.manage') || have.has('admin.console');
-    }
-    if (c.path === '/graduation/registrations') {
-      return have.has('graduation.registrations') || have.has('admin.console');
-    }
-    return true;
-  });
+  const hrChildren = HR_MODULE_NAV_CHILDREN.filter((c) => allow(c.path));
+  pushFolderIfAny(items, 'human-resources', 'Human Resources', UsersRound, hrChildren);
+
+  const graduationChildren = filterGraduationChildren(userPermissions, allow).filter(
+    (c) => c.path !== '/graduation/dashboard'
+  );
   pushFolderIfAny(items, 'graduation', 'Graduation', GraduationCap, graduationChildren);
 
   const adminUserChildren = ADMIN_USERS_NAV_CHILDREN.filter((c) => allow(c.path));
-  pushFolderIfAny(items, 'users', 'Users & access', Users, adminUserChildren);
+  pushFolderIfAny(items, 'users', 'People & access', Users, adminUserChildren);
 
   pushFolderIfAny(
     items,
@@ -410,39 +399,45 @@ function buildAdminNav(userPermissions: string[], role: string): SidebarItem[] {
   return items;
 }
 
-function buildNavFromPermissions(userPermissions: string[], role: string): SidebarItem[] {
-  if (role === 'Graduation') {
-    return buildGraduationOnlyNav();
-  }
+function flattenNav(items: SidebarItem[]): SidebarChild[] {
+  return items.flatMap((item) =>
+    item.type === 'single' ? [{ label: item.label, icon: item.icon, path: item.path }] : item.children
+  );
+}
 
-  if (role === 'HR') {
-    const allowHr = (path: string) => navAllowed(userPermissions, path, role);
-    return HR_ROLE_NAV_CHILDREN.filter((entry) => allowHr(entry.path)).map((entry) => ({
-      type: 'single' as const,
-      label: entry.label,
-      icon: entry.icon,
-      path: entry.path,
-    }));
-  }
+function mergeLayoutWithExtras(layout: SidebarItem[], general: SidebarItem[]): SidebarItem[] {
+  const covered = new Set(flattenNav(layout).map((entry) => navTarget(entry.path).pathname));
+  const extras = flattenNav(general).filter((entry) => {
+    const pathname = navTarget(entry.path).pathname;
+    return pathname !== '/dashboard' && !covered.has(pathname);
+  });
+  const items = [...layout];
+  pushFolderIfAny(items, 'additional-access', 'Additional access', KeyRound, extras);
+  return items;
+}
 
-  if (role === 'Management') {
-    return buildManagementNav(userPermissions, role);
+function buildNavFromPermissions(userPermissions: string[]): SidebarItem[] {
+  const general = buildGeneralNav(userPermissions);
+  if (hasAnyPermission(userPermissions, ['admin.console'])) {
+    return mergeLayoutWithExtras(buildAdminNav(userPermissions), general);
   }
-
-  if (role === 'Admin') {
-    return buildAdminNav(userPermissions, role);
+  if (
+    hasAnyPermission(userPermissions, ['analytics.mgmt_overview']) &&
+    !hasAnyPermission(userPermissions, ['students.self'])
+  ) {
+    return mergeLayoutWithExtras(buildManagementNav(userPermissions), general);
   }
+  return general;
+}
 
-  const allow = (path: string) =>
-    path.startsWith('/graduation')
-      ? graduationNavAllowed(userPermissions, path, role)
-      : navAllowed(userPermissions, path);
+function buildGeneralNav(userPermissions: string[]): SidebarItem[] {
+  const allow = (path: string) => navAllowed(userPermissions, path);
   const items: SidebarItem[] = [
     { type: 'single', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   ];
 
   const clinicalChildren = ADMIN_CLINICAL_NAV_CHILDREN.filter((c) => allow(c.path));
-  const nestClinicalNav = shouldNestClinicalNavItems(role);
+  const nestClinicalNav = shouldNestClinicalNavItems(userPermissions);
   if (clinicalChildren.length > 0) {
     if (nestClinicalNav && clinicalChildren.length > 1) {
       items.push({
@@ -460,7 +455,7 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
   }
 
   const hrModuleChildren = HR_MODULE_NAV_CHILDREN.filter((c) => allow(c.path));
-  const nestHrNav = shouldNestHrNavItems(role);
+  const nestHrNav = shouldNestHrNavItems(userPermissions);
   if (hrModuleChildren.length > 0) {
     if (nestHrNav && hrModuleChildren.length > 1) {
       items.push({
@@ -477,31 +472,8 @@ function buildNavFromPermissions(userPermissions: string[], role: string): Sideb
     }
   }
 
-  const graduationChildren = GRADUATION_NAV_CHILDREN.filter((c) => {
-    if (!allow(c.path)) return false;
-    const have = new Set(userPermissions);
-    if (c.path === '/graduation/event') {
-      return role === 'Admin' || have.has('graduation.manage') || have.has('admin.console');
-    }
-    if (c.path === '/graduation/registrations') {
-      return (
-        role === 'Admin' ||
-        role === 'Graduation' ||
-        have.has('graduation.registrations') ||
-        have.has('admin.console')
-      );
-    }
-    return true;
-  });
-  if (graduationChildren.length > 0) {
-    items.push({
-      type: 'folder',
-      id: 'graduation',
-      label: 'Graduation',
-      icon: GraduationCap,
-      children: graduationChildren,
-    });
-  }
+  const graduationChildren = filterGraduationChildren(userPermissions, allow);
+  pushFolderIfAny(items, 'graduation', 'Graduation', GraduationCap, graduationChildren);
 
   for (const entry of FLAT_NAV_CANDIDATES) {
     if (allow(entry.path)) {
@@ -551,10 +523,9 @@ function getHeaderTitle(pathname: string, search: string, items: SidebarItem[]):
 }
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
-  const { role } = useRole();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, applySession } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -665,23 +636,23 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       toast.error('New password and confirmation do not match');
       return;
     }
-    if (newPassword.length < 8) {
-      toast.error('New password must be at least 8 characters');
+    const policyProblem = passwordPolicyProblem(newPassword);
+    if (policyProblem) {
+      toast.error(policyProblem);
       return;
     }
     setChangingPassword(true);
     try {
-      await api.post('/auth/change-password', {
+      const session = await api.post<SessionPayload>('/auth/change-password', {
         currentPassword,
         newPassword,
       });
-      toast.success('Password changed successfully. Please log in again.');
+      applySession(session);
+      toast.success('Password changed. Other devices have been signed out.');
       setChangePasswordOpen(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      await logout();
-      navigate('/login');
     } catch (err: any) {
       toast.error(err?.message ?? 'Failed to change password');
     } finally {
@@ -690,7 +661,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   const userPermissions = user?.permissions || [];
-  const filteredNavItems = buildNavFromPermissions(userPermissions, role);
+  const filteredNavItems = buildNavFromPermissions(userPermissions);
+  const accountTypeLabel = formatRoleLabel(user?.role || 'Staff');
   const displayName = user?.name?.trim() || user?.email || 'User';
   const avatarInitial = (displayName.charAt(0) || 'U').toUpperCase();
   const headerPageTitle = getHeaderTitle(location.pathname, location.search, filteredNavItems);
@@ -795,7 +767,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-              <p className="text-xs text-gray-500 truncate">{roleLabel(role)}</p>
+              <p className="text-xs text-gray-500 truncate">{accountTypeLabel}</p>
             </div>
           </div>
           <button
@@ -846,7 +818,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-              <p className="text-xs text-gray-500 truncate">{roleLabel(role)}</p>
+              <p className="text-xs text-gray-500 truncate">{accountTypeLabel}</p>
             </div>
           </div>
           <button
@@ -937,7 +909,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-2 py-2 border-b border-gray-100">
                   <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-                  <p className="text-xs text-gray-500">{roleLabel(role)}</p>
+                  <p className="text-xs text-gray-500">{accountTypeLabel}</p>
                 </div>
                 <DropdownMenuItem onClick={() => { setChangePasswordOpen(true); }}>
                   <KeyRound className="mr-2 h-4 w-4" />
@@ -991,7 +963,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="newPassword">New password</Label>
+              <LabelWithInfo htmlFor="newPassword" info={PASSWORD_POLICY_SUMMARY}>
+                New password
+              </LabelWithInfo>
               <Input
                 id="newPassword"
                 type="password"

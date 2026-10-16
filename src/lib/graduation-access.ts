@@ -1,235 +1,68 @@
 import type { GraduationCommitteeType } from '@/features/graduation/types';
-
 import type { GraduationModuleAccess } from '@/services/graduation-module.service';
-
-import { hasAnyPermission, routeAllowed } from '@/lib/nav-permissions';
-
-
-
-const GRADUATION_MODULE_ROLES = new Set(['Graduation', 'Admin']);
-
-
+import { hasAnyPermission } from '@/lib/nav-permissions';
 
 export type GraduationAccess = {
-
   canAccessModule: boolean;
-
   canManageEvent: boolean;
-
   canViewRegistrations: boolean;
-
   canViewAllCommittees: boolean;
-
   assignedCommitteeTypes: GraduationCommitteeType[];
-
   canEditCommittee: (type: GraduationCommitteeType) => boolean;
-
   canViewCommittee: (type: GraduationCommitteeType) => boolean;
-
 };
 
+const GRADUATION_MODULE_PERMISSIONS = [
+  'graduation.access',
+  'graduation.registrations',
+  'graduation.committee',
+  'graduation.manage',
+  'admin.console',
+];
 
-
-function hasGraduationPermission(permissions: string[] | undefined, code: string): boolean {
-
-  return (permissions ?? []).includes(code);
-
+export function graduationModuleAllowed(permissions: string[] | undefined): boolean {
+  return hasAnyPermission(permissions ?? [], GRADUATION_MODULE_PERMISSIONS);
 }
 
-
-
-export function isGraduationPortalRole(role?: string | null): boolean {
-
-  return role === 'Graduation';
-
+export function graduationCanManage(permissions: string[] | undefined): boolean {
+  return hasAnyPermission(permissions ?? [], ['graduation.manage', 'admin.console']);
 }
 
-
-
-function accessFromPermissions(params: {
-
-  permissions?: string[];
-
-  role?: string | null;
-
-}): Omit<GraduationAccess, 'canEditCommittee' | 'canViewCommittee'> {
-
-  const permissions = params.permissions ?? [];
-
-  const role = params.role ?? null;
-
-  const portal = isGraduationPortalRole(role);
-
-  const isAdminRole = role === 'Admin';
-
-
-
-  const canAccessByPermission =
-
-    routeAllowed(permissions, '/graduation/dashboard') ||
-
-    hasGraduationPermission(permissions, 'graduation.access') ||
-
-    hasGraduationPermission(permissions, 'graduation.registrations') ||
-
-    hasGraduationPermission(permissions, 'admin.console');
-
-
-
-  const canAccessModule = portal || (role !== null && isAdminRole) || canAccessByPermission;
-
-
-
-  const canManageEvent =
-
-    portal ||
-
-    isAdminRole ||
-
-    hasGraduationPermission(permissions, 'graduation.manage') ||
-
-    hasGraduationPermission(permissions, 'admin.console');
-
-
-
-  const canViewRegistrations =
-
-    portal ||
-
-    canManageEvent ||
-
-    hasGraduationPermission(permissions, 'graduation.registrations') ||
-
-    hasGraduationPermission(permissions, 'admin.console');
-
-
-
-  return {
-
-    canAccessModule,
-
-    canManageEvent,
-
-    canViewRegistrations,
-
-    canViewAllCommittees: portal || canManageEvent,
-
-    assignedCommitteeTypes: [],
-
-  };
-
+export function graduationCanViewRegistrations(permissions: string[] | undefined): boolean {
+  return (
+    graduationCanManage(permissions) ||
+    hasAnyPermission(permissions ?? [], ['graduation.registrations'])
+  );
 }
 
-
+export function graduationHomePath(permissions?: string[]): string | null {
+  return graduationModuleAllowed(permissions) ? '/graduation/dashboard' : null;
+}
 
 export function buildGraduationAccess(params: {
-
   permissions?: string[];
-
-  role?: string | null;
-
   serverAccess?: GraduationModuleAccess | null;
-
 }): GraduationAccess {
-
-  const base = accessFromPermissions(params);
-
-  const portal = isGraduationPortalRole(params.role);
-
+  const canAccessModule = graduationModuleAllowed(params.permissions);
   const server = params.serverAccess;
+  const canManageEvent = server?.canManageEvent ?? graduationCanManage(params.permissions);
+  const canViewAllCommittees = server?.canViewAllCommittees ?? canManageEvent;
+  const canViewRegistrations =
+    server?.canViewRegistrations ?? graduationCanViewRegistrations(params.permissions);
 
+  const canEditCommittee = (_type: GraduationCommitteeType): boolean =>
+    canAccessModule && (canManageEvent || canViewAllCommittees);
 
-
-  const canManageEvent = portal ? true : (server?.canManageEvent ?? base.canManageEvent);
-
-  const canViewAllCommittees = portal ? true : (server?.canViewAllCommittees ?? base.canViewAllCommittees);
-
-  const canViewRegistrations = portal
-
-    ? true
-
-    : (server?.canViewRegistrations ?? base.canViewRegistrations);
-
-
-
-  const canEditCommittee = (_type: GraduationCommitteeType): boolean => {
-
-    if (!base.canAccessModule && !portal) return false;
-
-    if (portal || canManageEvent || canViewAllCommittees) return true;
-
-    return false;
-
-  };
-
-
-
-  const canViewCommittee = (_type: GraduationCommitteeType): boolean => {
-
-    if (!base.canAccessModule && !portal) return false;
-
-    if (portal || canViewAllCommittees || canManageEvent) return true;
-
-    return false;
-
-  };
-
-
+  const canViewCommittee = (_type: GraduationCommitteeType): boolean =>
+    canAccessModule && (canViewAllCommittees || canManageEvent);
 
   return {
-
-    canAccessModule: base.canAccessModule || portal,
-
+    canAccessModule,
     canManageEvent,
-
     canViewRegistrations,
-
     canViewAllCommittees,
-
     assignedCommitteeTypes: [],
-
     canEditCommittee,
-
     canViewCommittee,
-
   };
-
 }
-
-
-
-export function graduationModuleAllowed(permissions: string[], role?: string | null): boolean {
-
-  if (isGraduationPortalRole(role)) return true;
-
-  if (role === 'Admin') return true;
-
-  return hasAnyPermission(permissions, [
-
-    ['graduation.access'],
-
-    ['graduation.registrations'],
-
-    ['graduation.committee'],
-
-    ['graduation.manage'],
-
-    ['admin.console'],
-
-  ]);
-
-}
-
-
-
-export function graduationHomePath(permissions?: string[], role?: string | null): string | null {
-
-  if (isGraduationPortalRole(role)) return '/graduation/dashboard';
-
-  if (!graduationModuleAllowed(permissions ?? [], role)) return null;
-
-  return '/graduation/dashboard';
-
-}
-
-

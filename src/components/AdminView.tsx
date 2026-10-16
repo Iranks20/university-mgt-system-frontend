@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { 
   Users, BookOpen, Calendar, Settings, Database, 
   Plus, Search, Filter, Edit, Trash2, MapPin, Building,
-  MoreHorizontal, FileSpreadsheet, Shield, School, User as UserIcon,
+  MoreHorizontal, FileSpreadsheet, Shield, School,
   Upload, Download, BookMarked, Loader2, ChevronDown, ChevronRight,
-  GraduationCap, Briefcase, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw, UserX
+  GraduationCap, TrendingUp, Eye, EyeOff, AlertCircle, RotateCcw, UserX
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,7 +27,7 @@ import { studentService, staffService, academicService, enrollmentService } from
 import type { CohortPromotionStatusResult } from '@/services';
 import { adminService } from '@/services/admin.service';
 import { timetableService, type TimetableClass } from '@/services/timetable.service';
-import { downloadStudentImportTemplateExcel, downloadStaffImportTemplateExcel, downloadLecturerImportTemplateExcel } from '@/utils/excel';
+import { downloadStudentImportTemplateExcel } from '@/utils/excel';
 import { toast } from 'sonner';
 import { KeyRound } from 'lucide-react';
 import { useNavigate } from 'react-router';
@@ -42,9 +43,12 @@ import {
   type LecturerOption,
 } from '@/lib/class-admin-utils';
 import { getApiErrorMessage } from '@/lib/api';
+import { PASSWORD_POLICY_SUMMARY, passwordPolicyProblem } from '@/lib/password-policy';
+import { TemporaryCredentialsDialog, type TemporaryCredential } from '@/components/TemporaryCredentialsDialog';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
 import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel';
 import { StudentStatusDialog } from '@/components/admin/StudentStatusDialog';
+import { LecturerLoginDialog } from '@/components/admin/LecturerLoginDialog';
 import { ProgramStreamsDialog } from '@/components/admin/ProgramStreamsDialog';
 import { studentStatusBadgeClass, studentStatusLabel } from '@/lib/student-lifecycle';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
@@ -79,7 +83,16 @@ type StaffRow = {
   departmentId?: string;
   status: string;
   assignedClassCount?: number;
+  staffNumber?: string;
+  phone?: string | null;
+  category?: string | null;
+  rankLabel?: string | null;
+  placement?: string | null;
+  supervisorName?: string | null;
+  employmentType?: string | null;
+  userId?: string | null;
 };
+type StaffListQuery = { role?: string; category?: string; excludeCategory?: string; search?: string };
 type ClassRow = {
   id: string;
   name: string;
@@ -158,7 +171,8 @@ function StudentsTab({
   const [departments, setDepartments] = useState<{ id: string; name: string; code?: string; schoolId?: string; schoolName?: string }[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+  const [addForm, setAddForm] = useState({ name: '', email: '', studentId: '', schoolId: '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: '' });
+  const [issuedCredentials, setIssuedCredentials] = useState<TemporaryCredential[]>([]);
   const [addPreviewCourses, setAddPreviewCourses] = useState<any[]>([]);
   const [addPreviewLoading, setAddPreviewLoading] = useState(false);
   const [addSelectedCourseIds, setAddSelectedCourseIds] = useState<string[]>([]);
@@ -574,11 +588,17 @@ function StudentsTab({
       
       await loadStudents(1);
       
-      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: 'TempPassword123!' });
+      setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: '' });
       setAddPreviewCourses([]);
       setAddSelectedCourseIds([]);
       setAddOpen(false);
       toast.success('Student added successfully');
+      const issuedPassword = (newStudent as { temporaryPassword?: string | null }).temporaryPassword;
+      if (issuedPassword) {
+        setIssuedCredentials([
+          { name: addForm.name, login: addForm.email, temporaryPassword: issuedPassword },
+        ]);
+      }
     } catch (error: any) {
       console.error('Error adding student:', error);
       const errorMessage = error?.message || error?.errors?.[0]?.message || 'Failed to add student';
@@ -594,7 +614,24 @@ function StudentsTab({
     try {
       const scope = importScope.programId ? importScope : undefined;
       const result = await studentService.importStudents(file, importCreateAccounts, scope);
-      const resultData = result as { imported: number; failed: number; errors?: string[]; enrolled?: number; enrollmentSkipped?: number; enrollmentErrors?: string[] };
+      const resultData = result as {
+        imported: number;
+        failed: number;
+        errors?: string[];
+        enrolled?: number;
+        enrollmentSkipped?: number;
+        enrollmentErrors?: string[];
+        credentials?: { studentNumber: string; name: string; email: string; temporaryPassword: string }[];
+      };
+      if (resultData.credentials?.length) {
+        setIssuedCredentials(
+          resultData.credentials.map((c) => ({
+            name: `${c.name} (${c.studentNumber})`,
+            login: c.email,
+            temporaryPassword: c.temporaryPassword,
+          }))
+        );
+      }
       const enrolledMsg = (resultData.enrolled ?? 0) > 0 ? `, Enrolled: ${resultData.enrolled}` : '';
       const skippedMsg = (resultData.enrollmentSkipped ?? 0) > 0 ? `, Skipped: ${resultData.enrollmentSkipped}` : '';
       toast.success(`Import completed! Imported: ${resultData.imported}, Failed: ${resultData.failed}${enrolledMsg}${skippedMsg}${resultData.errors && resultData.errors.length > 0 ? `. Errors: ${resultData.errors.slice(0, 3).join(', ')}${resultData.errors.length > 3 ? '...' : ''}` : ''}`);
@@ -610,7 +647,7 @@ function StudentsTab({
     }
   };
 
-  const studentTemplateCsv = 'name,email,studentId,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,TempPassword123!\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,TempPassword123!';
+  const studentTemplateCsv = 'name,email,studentId,password\nJohn Doe,john.doe@student.kcu.ac.ug,2100101,\nJane Smith,jane.smith@student.kcu.ac.ug,2100102,';
 
   const cohortPromotionBadge = cohortScopeSelected ? (
     cohortPromotionLoading ? (
@@ -651,6 +688,11 @@ function StudentsTab({
 
   return (
     <div className="space-y-4">
+      <TemporaryCredentialsDialog
+        credentials={issuedCredentials}
+        onClose={() => setIssuedCredentials([])}
+        title={issuedCredentials.length > 1 ? 'Temporary passwords issued' : undefined}
+      />
       <div className="flex flex-col gap-3">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
@@ -1077,9 +1119,10 @@ function StudentsTab({
                   <Input value={addForm.studentId} onChange={e => setAddForm(f => ({ ...f, studentId: e.target.value }))} required placeholder="e.g. 2100123" className="w-full" />
             </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Temporary password (for first login)</Label>
-                  <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave empty for default" className="w-full" />
-                  <p className="text-xs text-gray-500">Default: TempPassword123! if left empty</p>
+                  <LabelWithInfo info={`Optional. Leave empty and a secure temporary password is generated and shown once after saving. ${PASSWORD_POLICY_SUMMARY} The student must change it at first sign-in.`}>
+                    Temporary password (for first login)
+                  </LabelWithInfo>
+                  <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave empty to generate" className="w-full" autoComplete="new-password" />
               </div>
               </div>
             </div>
@@ -1996,440 +2039,6 @@ function StudentsTab({
 }
 
 // -----------------------------------------------------------------------------
-// SUB-COMPONENT: Staff Management Tab (Non-teaching staff: HR, Administrators, etc.)
-// -----------------------------------------------------------------------------
-function StaffTab({
-  staff,
-  setStaff,
-  staffPage,
-  staffTotal,
-  pageSize,
-  loadStaff,
-  staffTabMode = 'non-teaching',
-}: {
-  staff: StaffRow[];
-  setStaff: React.Dispatch<React.SetStateAction<StaffRow[]>>;
-  staffPage: number;
-  staffTotal: number;
-  pageSize: number;
-  loadStaff: (page: number, options?: { role?: string; search?: string }) => Promise<void>;
-  staffTabMode?: 'non-teaching' | 'staff-role';
-}) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [addOpen, setAddOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [addForm, setAddForm] = useState({ name: '', email: '', role: 'Staff', dept: '', tempPassword: '' });
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'Staff', dept: '' });
-  const [importCreateAccounts, setImportCreateAccounts] = useState(true);
-  const staffFileRef = useRef<HTMLInputElement>(null);
-
-  const isStaffRoleTab = staffTabMode === 'staff-role';
-  const listedStaff = isStaffRoleTab
-    ? staff.filter(s => s.role === 'Staff')
-    : staff.filter(s => s.role !== 'Lecturer');
-  const filteredStaff = listedStaff;
-
-  // Fetch departments on mount
-  useEffect(() => {
-    const loadDepartments = async () => {
-      setDepartmentsLoading(true);
-      try {
-        const depts = await academicService.getDepartments();
-        setDepartments(Array.isArray(depts) ? depts.map((d: any) => ({ id: d.id || d.name, name: d.name })) : []);
-        // Set default department if available
-        if (depts.length > 0 && !addForm.dept) {
-          const firstDept = Array.isArray(depts) ? depts[0] : null;
-          setAddForm(prev => ({ ...prev, dept: firstDept?.id || firstDept?.name || '' }));
-        }
-      } catch (error) {
-        console.error('Error loading departments:', error);
-      } finally {
-        setDepartmentsLoading(false);
-      }
-    };
-    loadDepartments();
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const role = isStaffRoleTab ? 'Staff' : undefined;
-      loadStaff(1, { role, search: searchTerm.trim() || undefined });
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [searchTerm, isStaffRoleTab, loadStaff]);
-
-  const handleAddStaff = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const [firstName, ...lastNameParts] = addForm.name.split(' ');
-      const lastName = lastNameParts.join(' ') || firstName;
-      
-      await staffService.createStaff({
-        firstName,
-        lastName,
-        email: addForm.email,
-        staffNumber: `STF${Date.now()}`, // Generate temporary staff number
-        role: addForm.role as any,
-        departmentId: addForm.dept,
-        employmentType: 'Full-time', // Default to Full-time
-        userRole: addForm.role as any, // Set user role
-        tempPassword: addForm.tempPassword || undefined, // Optional temporary password
-      } as any);
-      
-      await loadStaff(1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined });
-      setAddForm({ name: '', email: '', role: 'Staff', dept: departments[0]?.id || departments[0]?.name || '', tempPassword: '' });
-      setAddOpen(false);
-      toast.success(isStaffRoleTab ? 'Staff member added successfully' : 'Non teaching staff member added successfully');
-    } catch (error: any) {
-      console.error('Error adding staff:', error);
-      toast.error(`Failed to add staff: ${error?.message || 'Unknown error'}`);
-    }
-  };
-
-  const handleStaffImport = async () => {
-    const file = staffFileRef.current?.files?.[0];
-    if (!file) { 
-      toast.error('Please select a CSV or Excel file.');
-      return; 
-    }
-    try {
-      const result = await staffService.importStaff(file, importCreateAccounts);
-      toast.success(`Import completed! Imported: ${result.imported}, Failed: ${result.failed}${result.errors && result.errors.length > 0 ? `. Errors: ${result.errors.slice(0, 3).join(', ')}${result.errors.length > 3 ? '...' : ''}` : ''}`);
-      
-      await loadStaff(1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined });
-      setImportOpen(false);
-    } catch (error: any) {
-      console.error('Error importing staff:', error);
-      toast.error(`Failed to import staff: ${error?.message || 'Unknown error'}`);
-    }
-  };
-
-  const staffTemplateCsv = 'name,email,role,dept\nExample Staff,example@kcu.ac.ug,Staff,Example Department\nHR Manager,hr@kcu.ac.ug,Administrator,Example Department';
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {isStaffRoleTab ? <UserIcon className="h-5 w-5" /> : <Briefcase className="h-5 w-5" />}
-            {isStaffRoleTab ? 'Staff' : 'Non Teaching Staff Management'}
-          </CardTitle>
-          <CardDescription>
-            {isStaffRoleTab
-              ? 'Manage personnel with the Staff employment role.'
-              : 'Manage non-teaching staff members (HR, Administrators, etc.)'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex justify-between gap-4 mb-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search staff..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
-              <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" /> {isStaffRoleTab ? 'Add Staff' : 'Add Non Teaching Staff'}
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Staff Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStaff.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      {isStaffRoleTab
-                        ? 'No staff records found. Add staff members to get started.'
-                        : 'No non teaching staff members found. Add non teaching staff members to get started.'}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredStaff.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback className="bg-blue-100 text-blue-800">{s.name.substring(0,2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium text-gray-900">{s.name}</div>
-                            <div className="text-xs text-muted-foreground">{s.email}</div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{s.role}</TableCell>
-                      <TableCell>{s.dept}</TableCell>
-                      <TableCell>
-                        <Badge variant={s.status === 'Active' ? 'outline' : 'secondary'} className={s.status==='Active' ? 'text-[#015F2B] border-[#015F2B]/20 bg-[#015F2B]/5' : ''}>{s.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                              setEditingStaff(s);
-                              setEditForm({ name: s.name, email: s.email, role: s.role, dept: s.departmentId ?? s.dept });
-                              setEditOpen(true);
-                            }}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600" onClick={async () => {
-                              if (confirm(`Delete staff "${s.name}"?`)) {
-                                try {
-                                  await staffService.deleteStaff(String(s.id));
-                                  setStaff(prev => prev.filter(st => st.id !== s.id));
-                                  toast.success(
-                                    isStaffRoleTab ? 'Staff member deleted successfully' : 'Non teaching staff member deleted successfully'
-                                  );
-                                } catch (error: any) {
-                                  console.error('Error deleting staff:', error);
-                                  toast.error(`Failed to delete staff: ${error?.message || 'Unknown error'}`);
-                                }
-                              }
-                            }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-            {staffTotal > 0 && (
-              <div className="flex items-center justify-between border-t px-4 py-2">
-                <span className="text-sm text-muted-foreground">{staffTotal} total</span>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined })}>Previous</Button>
-                  <span className="text-sm">Page {staffPage} of {Math.max(1, Math.ceil(staffTotal / pageSize))}</span>
-                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1, { role: isStaffRoleTab ? 'Staff' : undefined, search: searchTerm.trim() || undefined })}>Next</Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isStaffRoleTab ? 'Add Staff Member' : 'Add Non Teaching Staff Member'}</DialogTitle>
-            <DialogDescription>
-              {isStaffRoleTab
-                ? 'Create a staff record with the Staff employment role.'
-                : 'Create a record for non-teaching personnel (HR, Administrators, etc.)'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleAddStaff} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Full name</Label>
-                <Input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. John Doe" />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@kcu.ac.ug" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={addForm.role} onValueChange={v => setAddForm(f => ({ ...f, role: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Staff">Staff</SelectItem>
-                    {!isStaffRoleTab && (
-                      <>
-                        <SelectItem value="Administrator">Administrator</SelectItem>
-                        <SelectItem value="QA">QA</SelectItem>
-                        <SelectItem value="Management">Management</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                {departmentsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading departments...
-                  </div>
-                ) : (
-                  <Combobox
-                    options={departments.map((dept) => ({
-                      value: dept.id || dept.name,
-                      label: dept.name,
-                    }))}
-                    value={addForm.dept}
-                    onValueChange={(v) => setAddForm((f) => ({ ...f, dept: v }))}
-                    placeholder="Select department"
-                    searchPlaceholder="Search departments..."
-                    emptyText="No department found."
-                    initialDisplayCount={10}
-                  />
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Temporary password (for first login)</Label>
-              <Input type="password" value={addForm.tempPassword} onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))} placeholder="Leave blank to send reset link" />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">{isStaffRoleTab ? 'Add Staff' : 'Add Non Teaching Staff'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isStaffRoleTab ? 'Edit Staff Member' : 'Edit Non Teaching Staff Member'}</DialogTitle>
-            <DialogDescription>
-              {isStaffRoleTab ? 'Update staff information.' : 'Update non teaching staff information.'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={async (e) => {
-            e.preventDefault();
-            if (!editingStaff) return;
-            try {
-              const [firstName, ...lastNameParts] = editForm.name.split(' ');
-              const lastName = lastNameParts.join(' ') || firstName;
-              
-              await staffService.updateStaff(editingStaff.id, {
-                firstName,
-                lastName,
-                email: editForm.email.trim(),
-                role: editForm.role as any,
-                departmentId: editForm.dept,
-              });
-              
-              await loadStaff(staffPage);
-              setEditOpen(false);
-              setEditingStaff(null);
-              toast.success(isStaffRoleTab ? 'Staff member updated successfully' : 'Non teaching staff member updated successfully');
-            } catch (error: any) {
-              console.error('Error updating staff:', error);
-              const validationMessage =
-                error?.errors?.errors?.[0]?.message ||
-                error?.errors?.[0]?.message ||
-                error?.message;
-              toast.error(`Failed to update staff: ${validationMessage || 'Unknown error'}`);
-            }
-          }}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Full name</Label>
-                  <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. John Doe" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@kcu.ac.ug" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select value={editForm.role} onValueChange={v => setEditForm(f => ({ ...f, role: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Staff">Staff</SelectItem>
-                      {!isStaffRoleTab && (
-                        <>
-                          <SelectItem value="Administrator">Administrator</SelectItem>
-                          <SelectItem value="QA">QA</SelectItem>
-                          <SelectItem value="Management">Management</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  {departmentsLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Loading departments...
-                    </div>
-                  ) : (
-                    <Combobox
-                      options={departments.map((dept) => ({
-                        value: dept.id || dept.name,
-                        label: dept.name,
-                      }))}
-                      value={editForm.dept}
-                      onValueChange={(v) => setEditForm((f) => ({ ...f, dept: v }))}
-                      placeholder="Select department"
-                      searchPlaceholder="Search departments..."
-                      emptyText="No department found."
-                      initialDisplayCount={10}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">{isStaffRoleTab ? 'Update Staff' : 'Update Non Teaching Staff'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isStaffRoleTab ? 'Import Staff' : 'Import Non Teaching Staff'}</DialogTitle>
-            <DialogDescription>
-              {isStaffRoleTab
-                ? 'Upload a CSV or Excel (.xlsx) file with columns: name, email, role, dept. Use role Staff for each row. Optionally create login accounts with a temporary password.'
-                : 'Upload a CSV or Excel (.xlsx) file with columns: name, email, role, dept. Role should be Staff, Administrator, QA, or Management (not Lecturer). Optionally create login accounts with a temporary password.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(staffTemplateCsv)}`} download="staff_template.csv" className="flex items-center gap-2 text-sm text-[#015F2B] hover:underline">
-                <Download className="h-4 w-4" /> Download CSV template
-              </a>
-              <span className="text-muted-foreground">or</span>
-              <button type="button" onClick={downloadStaffImportTemplateExcel} className="flex items-center gap-2 text-sm text-[#015F2B] hover:underline">
-                <Download className="h-4 w-4" /> Download Excel template
-              </button>
-            </div>
-            <div className="space-y-2">
-              <Label>Select file (CSV or Excel)</Label>
-              <Input ref={staffFileRef} type="file" accept=".csv,.xlsx,.xls" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="staff-import-accounts" checked={importCreateAccounts} onCheckedChange={(c) => setImportCreateAccounts(!!c)} />
-              <Label htmlFor="staff-import-accounts">Create login accounts (email + temporary password) for imported non teaching staff</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={handleStaffImport} className="bg-[#015F2B]"><Upload className="mr-2 h-4 w-4" /> Import</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
 // SUB-COMPONENT: Lecturers Management Tab (Teaching staff with class assignment)
 // -----------------------------------------------------------------------------
 const ASSIGN_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -2503,7 +2112,6 @@ async function fetchAllClassesForIntake(programIntakeId: string): Promise<Assign
 
 function LecturersTab({
   staff,
-  setStaff,
   classes,
   setClasses,
   staffPage,
@@ -2513,18 +2121,15 @@ function LecturersTab({
   loadClasses,
 }: {
   staff: StaffRow[];
-  setStaff: React.Dispatch<React.SetStateAction<StaffRow[]>>;
   classes: ClassRow[];
   setClasses: React.Dispatch<React.SetStateAction<ClassRow[]>>;
   staffPage: number;
   staffTotal: number;
   pageSize: number;
-  loadStaff: (page: number, options?: { role?: string; search?: string }) => Promise<void>;
+  loadStaff: (page: number, options?: StaffListQuery) => Promise<void>;
   loadClasses: (page: number) => Promise<void>;
 }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [addOpen, setAddOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [selectedLecturer, setSelectedLecturer] = useState<StaffRow | null>(null);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
@@ -2535,81 +2140,28 @@ function LecturersTab({
   const [assignedClassesSummary, setAssignedClassesSummary] = useState<AssignedClassSummaryRow[]>([]);
   const [assignedClassesLoading, setAssignedClassesLoading] = useState(false);
   const assignScope = useProgramIntakeScope({ enabled: assignOpen, intakeField: 'type', showSchool: true });
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [addForm, setAddForm] = useState({ name: '', email: '', dept: '', tempPassword: '' });
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingLecturer, setEditingLecturer] = useState<StaffRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', dept: '', newPassword: '' });
-  const [editAssignedClasses, setEditAssignedClasses] = useState<AssignedClassSummaryRow[]>([]);
-  const [editAssignedClassesLoading, setEditAssignedClassesLoading] = useState(false);
-  const [addTempPasswordVisible, setAddTempPasswordVisible] = useState(false);
-  const [editPasswordVisible, setEditPasswordVisible] = useState(false);
-  const [importCreateAccounts, setImportCreateAccounts] = useState(true);
-  const lecturerFileRef = useRef<HTMLInputElement>(null);
+  const [viewingLecturer, setViewingLecturer] = useState<StaffRow | null>(null);
+  const [viewAssignedClasses, setViewAssignedClasses] = useState<AssignedClassSummaryRow[]>([]);
+  const [viewAssignedClassesLoading, setViewAssignedClassesLoading] = useState(false);
+  const [loginLecturer, setLoginLecturer] = useState<StaffRow | null>(null);
 
-  const lecturers = staff.filter(s => s.role === 'Lecturer');
-
-  const refreshLecturerData = async () => {
-      setDepartmentsLoading(true);
-      try {
-      await loadStaff(1, { role: 'Lecturer', search: searchTerm.trim() || undefined });
-        const depts = await academicService.getDepartments();
-        setDepartments(Array.isArray(depts) ? depts.map((d: any) => ({ id: d.id || d.name, name: d.name })) : []);
-        if (depts.length > 0 && !addForm.dept) {
-          const firstDept = Array.isArray(depts) ? depts[0] : null;
-          setAddForm(prev => ({ ...prev, dept: firstDept?.id || firstDept?.name || '' }));
-        }
-      } catch (error) {
-      console.error('Error refreshing lecturer data:', error);
-      } finally {
-        setDepartmentsLoading(false);
-      }
-    };
+  const lecturers = staff;
+  const lecturerQuery = (): StaffListQuery => ({ category: 'Academic', search: searchTerm.trim() || undefined });
 
   useEffect(() => {
-    refreshLecturerData();
     const handleImportComplete = () => {
-      refreshLecturerData();
+      void loadStaff(1, lecturerQuery());
     };
     window.addEventListener('timetable-import-complete', handleImportComplete);
     return () => window.removeEventListener('timetable-import-complete', handleImportComplete);
-  }, []);
+  }, [searchTerm, loadStaff]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadStaff(1, { role: 'Lecturer', search: searchTerm.trim() || undefined });
+      loadStaff(1, lecturerQuery());
     }, 250);
     return () => clearTimeout(timer);
   }, [searchTerm, loadStaff]);
-
-  const handleAddLecturer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const [firstName, ...lastNameParts] = addForm.name.split(' ');
-      const lastName = lastNameParts.join(' ') || firstName;
-      
-      await staffService.createStaff({
-        firstName,
-        lastName,
-        email: addForm.email,
-        staffNumber: `LEC${Date.now()}`, // Generate temporary lecturer number
-        role: 'Lecturer' as any,
-        departmentId: addForm.dept,
-        employmentType: 'Full-time',
-        userRole: 'Lecturer', // Set user role
-        tempPassword: addForm.tempPassword || undefined, // Optional temporary password
-      } as any);
-      
-      await refreshLecturerData();
-      setAddForm({ name: '', email: '', dept: departments[0]?.id || departments[0]?.name || '', tempPassword: '' });
-      setAddOpen(false);
-      toast.success('Lecturer added successfully');
-    } catch (error: any) {
-      console.error('Error adding lecturer:', error);
-      toast.error(`Failed to add lecturer: ${error?.message || 'Unknown error'}`);
-    }
-  };
 
   const clearAssignLoadedData = () => {
     setAssignClasses([]);
@@ -2639,24 +2191,16 @@ function LecturersTab({
     void loadAssignedClassesSummary(lecturer.id);
   };
 
-  const openEditLecturer = async (lecturer: StaffRow) => {
-    setEditingLecturer(lecturer);
-    setEditForm({
-      name: lecturer.name,
-      email: lecturer.email,
-      dept: lecturer.departmentId ?? lecturer.dept,
-      newPassword: '',
-    });
-    setEditPasswordVisible(false);
-    setEditOpen(true);
-    setEditAssignedClassesLoading(true);
+  const openViewLecturer = async (lecturer: StaffRow) => {
+    setViewingLecturer(lecturer);
+    setViewAssignedClasses([]);
+    setViewAssignedClassesLoading(true);
     try {
-      const rows = await staffService.getAssignedClasses(lecturer.id);
-      setEditAssignedClasses(rows);
+      setViewAssignedClasses(await staffService.getAssignedClasses(lecturer.id));
     } catch {
-      setEditAssignedClasses([]);
+      setViewAssignedClasses([]);
     } finally {
-      setEditAssignedClassesLoading(false);
+      setViewAssignedClassesLoading(false);
     }
   };
 
@@ -2773,7 +2317,7 @@ function LecturersTab({
           return c;
         })
       );
-      await loadStaff(staffPage, { role: 'Lecturer', search: searchTerm.trim() || undefined });
+      await loadStaff(staffPage, lecturerQuery());
       await loadClasses(1);
       window.dispatchEvent(new CustomEvent('class-updated'));
       setAssignOpen(false);
@@ -2792,41 +2336,18 @@ function LecturersTab({
     }
   };
 
-  const handleLecturerImport = async () => {
-    const file = lecturerFileRef.current?.files?.[0];
-    if (!file) { 
-      toast.error('Please select a CSV or Excel file.');
-      return; 
-    }
-    try {
-      const result = await staffService.importStaff(file, importCreateAccounts);
-      if (result.imported === 0 && result.failed > 0) {
-        const firstError = result.errors && result.errors.length > 0 ? result.errors[0] : 'Please check that your file matches the lecturer import template (name, email, role, dept).';
-        toast.error(`Lecturer import failed. ${firstError}`);
-      } else if (result.failed > 0) {
-        toast.success(`Imported ${result.imported} lecturers. Some rows could not be imported. Please review your file and try again.`);
-      } else {
-        toast.success(`Successfully imported ${result.imported} lecturers.`);
-      }
-      await refreshLecturerData();
-      setImportOpen(false);
-    } catch (error: any) {
-      console.error('Error importing lecturers:', error);
-      toast.error(`Failed to import lecturers: ${error?.message || 'Unknown error'}`);
-    }
-  };
-
-  const lecturerTemplateCsv = 'name,email,role,dept\nDr. Jane Smith,jsmith@kcu.ac.ug,Lecturer,Computer Science';
-
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GraduationCap className="h-5 w-5" />
-            Lecturers Management
+            Lecturers
           </CardTitle>
-          <CardDescription>Manage teaching staff who conduct classes</CardDescription>
+          <CardDescription>
+            Academic staff and the courses they teach. Admin assigns courses and can change a lecturer&apos;s login
+            email and password; HR adds lecturers and edits their other details in Employees.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-between gap-4 mb-4">
@@ -2834,16 +2355,13 @@ function LecturersTab({
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search lecturers..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" /> Import</Button>
-              <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Lecturer</Button>
-            </div>
           </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Lecturer Name</TableHead>
+                  <TableHead>Job title</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Classes Assigned</TableHead>
@@ -2853,8 +2371,8 @@ function LecturersTab({
               <TableBody>
                 {lecturers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No lecturers found. Add lecturers to get started.
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No lecturers found. HR adds lecturers in Employees with the Academic staff category.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -2873,6 +2391,7 @@ function LecturersTab({
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell>{lecturer.role}</TableCell>
                         <TableCell>{lecturer.dept}</TableCell>
                         <TableCell>
                           <Badge variant={lecturer.status === 'Active' ? 'outline' : 'secondary'} className={lecturer.status==='Active' ? 'text-[#015F2B] border-[#015F2B]/20 bg-[#015F2B]/5' : ''}>{lecturer.status}</Badge>
@@ -2886,22 +2405,17 @@ function LecturersTab({
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openAssign(lecturer)}><BookMarked className="mr-2 h-4 w-4" /> Assign classes</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void openEditLecturer(lecturer)}>
-                                <Edit className="mr-2 h-4 w-4" /> Edit
+                              <DropdownMenuItem onClick={() => void openViewLecturer(lecturer)}>
+                                <Eye className="mr-2 h-4 w-4" /> View details
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600" onClick={async () => {
-                                if (confirm(`Delete lecturer "${lecturer.name}"?`)) {
-                                  try {
-                                    await staffService.deleteStaff(String(lecturer.id));
-                                    setStaff(prev => prev.filter(st => st.id !== lecturer.id));
-                                    toast.success('Lecturer deleted successfully');
-                                  } catch (error: any) {
-                                    console.error('Error deleting lecturer:', error);
-                                    toast.error(`Failed to delete lecturer: ${error?.message || 'Unknown error'}`);
-                                  }
-                                }
-                              }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAssign(lecturer)}><BookMarked className="mr-2 h-4 w-4" /> Assign courses</DropdownMenuItem>
+                              <DropdownMenuItem
+                                disabled={!lecturer.userId}
+                                onClick={() => setLoginLecturer(lecturer)}
+                              >
+                                <KeyRound className="mr-2 h-4 w-4" />
+                                {lecturer.userId ? 'Edit login (email, password)' : 'No login yet (HR creates it)'}
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -2915,9 +2429,9 @@ function LecturersTab({
               <div className="flex items-center justify-between border-t px-4 py-2">
                 <span className="text-sm text-muted-foreground">{staffTotal} total</span>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1, { role: 'Lecturer', search: searchTerm.trim() || undefined })}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage <= 1} onClick={() => loadStaff(staffPage - 1, lecturerQuery())}>Previous</Button>
                   <span className="text-sm">Page {staffPage} of {Math.max(1, Math.ceil(staffTotal / pageSize))}</span>
-                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1, { role: 'Lecturer', search: searchTerm.trim() || undefined })}>Next</Button>
+                  <Button variant="outline" size="sm" disabled={staffPage >= Math.ceil(staffTotal / pageSize)} onClick={() => loadStaff(staffPage + 1, lecturerQuery())}>Next</Button>
                 </div>
               </div>
             )}
@@ -2925,195 +2439,60 @@ function LecturersTab({
         </CardContent>
       </Card>
 
-      <Dialog
-        open={addOpen}
-        onOpenChange={(open) => {
-          setAddOpen(open);
-          if (!open) setAddTempPasswordVisible(false);
-        }}
-      >
-        <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Lecturer</DialogTitle>
-            <DialogDescription>Create a lecturer record for teaching staff who conduct classes.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleAddLecturer} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Full name</Label>
-                <Input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Dr. Jane Smith" />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@kcu.ac.ug" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Department</Label>
-              {departmentsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading departments...
-                </div>
-              ) : (
-                <Combobox
-                  options={departments.map((dept) => ({
-                    value: dept.id || dept.name,
-                    label: dept.name,
-                  }))}
-                  value={addForm.dept}
-                  onValueChange={(v) => setAddForm((f) => ({ ...f, dept: v }))}
-                  placeholder="Select department"
-                  searchPlaceholder="Search departments..."
-                  emptyText="No department found."
-                  initialDisplayCount={10}
-                />
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Temporary password (for first login)</Label>
-              <div className="relative">
-                <Input
-                  type={addTempPasswordVisible ? 'text' : 'password'}
-                  className="pr-10"
-                  value={addForm.tempPassword}
-                  onChange={e => setAddForm(f => ({ ...f, tempPassword: e.target.value }))}
-                  placeholder="Leave blank to send reset link"
-                  autoComplete="new-password"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setAddTempPasswordVisible(v => !v)}
-                  aria-label={addTempPasswordVisible ? 'Hide password' : 'Show password'}
-                >
-                  {addTempPasswordVisible ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
-                </Button>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">Add Lecturer</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <LecturerLoginDialog
+        lecturer={loginLecturer}
+        onOpenChange={(open) => !open && setLoginLecturer(null)}
+        onSaved={() => void loadStaff(staffPage, lecturerQuery())}
+      />
 
-      {/* Edit Lecturer Dialog */}
       <Dialog
-        open={editOpen}
+        open={Boolean(viewingLecturer)}
         onOpenChange={(open) => {
-          setEditOpen(open);
           if (!open) {
-            setEditPasswordVisible(false);
-            setEditingLecturer(null);
-            setEditAssignedClasses([]);
+            setViewingLecturer(null);
+            setViewAssignedClasses([]);
           }
         }}
       >
         <DialogContent className="w-[96vw] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Lecturer</DialogTitle>
-            <DialogDescription>Update lecturer information.</DialogDescription>
+            <DialogTitle>{viewingLecturer?.name ?? 'Lecturer'}</DialogTitle>
+            <DialogDescription>
+              Admin can change the login email and password and assign courses. HR edits the other details in
+              Employees.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={async (e) => {
-            e.preventDefault();
-            if (!editingLecturer) return;
-            try {
-              const [firstName, ...lastNameParts] = editForm.name.split(' ');
-              const lastName = lastNameParts.join(' ') || firstName;
-              const newPw = editForm.newPassword.trim();
-              await staffService.updateStaff(editingLecturer.id, {
-                firstName,
-                lastName,
-                email: editForm.email.trim(),
-                role: 'Lecturer' as any,
-                departmentId: editForm.dept,
-                ...(newPw ? { tempPassword: newPw } : {}),
-              } as any);
-              
-              await loadStaff(staffPage, { role: 'Lecturer', search: searchTerm.trim() || undefined });
-              setEditOpen(false);
-              setEditingLecturer(null);
-              setEditAssignedClasses([]);
-              setEditPasswordVisible(false);
-              toast.success('Lecturer updated successfully');
-            } catch (error: any) {
-              console.error('Error updating lecturer:', error);
-              const validationMessage =
-                error?.errors?.errors?.[0]?.message ||
-                error?.errors?.[0]?.message ||
-                error?.message;
-              toast.error(`Failed to update lecturer: ${validationMessage || 'Unknown error'}`);
-            }
-          }}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Full name</Label>
-                  <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Dr. Jane Smith" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} required placeholder="name@kcu.ac.ug" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                {departmentsLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading departments...
+          {viewingLecturer && (
+            <div className="space-y-5">
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                {[
+                  ['Staff number', viewingLecturer.staffNumber],
+                  ['Email', viewingLecturer.email],
+                  ['Phone', viewingLecturer.phone],
+                  ['Job title', viewingLecturer.role],
+                  ['Academic rank', viewingLecturer.rankLabel],
+                  ['Works in', viewingLecturer.placement],
+                  ['Supervisor', viewingLecturer.supervisorName],
+                  ['Employment type', viewingLecturer.employmentType],
+                  ['Status', viewingLecturer.status],
+                ].map(([label, value]) => (
+                  <div key={label} className="space-y-0.5">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-medium break-words">{value || '—'}</dd>
                   </div>
-                ) : (
-                  <Combobox
-                    options={departments.map((dept) => ({
-                      value: dept.id || dept.name,
-                      label: dept.name,
-                    }))}
-                    value={editForm.dept}
-                    onValueChange={(v) => setEditForm((f) => ({ ...f, dept: v }))}
-                    placeholder="Select department"
-                    searchPlaceholder="Search departments..."
-                    emptyText="No department found."
-                    initialDisplayCount={10}
-                  />
-                )}
-              </div>
+                ))}
+              </dl>
               <div className="space-y-2">
-                <Label>New password (optional)</Label>
-                <div className="relative">
-                  <Input
-                    type={editPasswordVisible ? 'text' : 'password'}
-                    className="pr-10"
-                    value={editForm.newPassword}
-                    onChange={e => setEditForm(f => ({ ...f, newPassword: e.target.value }))}
-                    placeholder="Leave blank to keep current password"
-                    autoComplete="new-password"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setEditPasswordVisible(v => !v)}
-                    aria-label={editPasswordVisible ? 'Hide password' : 'Show password'}
-                  >
-                    {editPasswordVisible ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Classes assigned ({editAssignedClasses.length})</Label>
-                {editAssignedClassesLoading ? (
+                <Label>Classes assigned ({viewAssignedClasses.length})</Label>
+                {viewAssignedClassesLoading ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Loading assigned classes...
                   </div>
-                ) : editAssignedClasses.length === 0 ? (
+                ) : viewAssignedClasses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No classes assigned to this lecturer.</p>
                 ) : (
                   <div className="rounded-md border max-h-48 overflow-auto divide-y">
-                    {editAssignedClasses.map((cls) => (
+                    {viewAssignedClasses.map((cls) => (
                       <div key={cls.id} className="px-3 py-2 text-sm">
                         <div className="font-medium">
                           {cls.courseCode ? `${cls.courseCode} · ` : ''}
@@ -3129,42 +2508,35 @@ function LecturersTab({
                 )}
               </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">Update Lecturer</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Import Lecturers</DialogTitle>
-            <DialogDescription>Upload a CSV or Excel (.xlsx) file with columns: name, email, role (must be "Lecturer"), dept. Optionally create login accounts with a temporary password.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(lecturerTemplateCsv)}`} download="lecturers_template.csv" className="flex items-center gap-2 text-sm text-[#015F2B] hover:underline">
-                <Download className="h-4 w-4" /> Download CSV template
-              </a>
-              <span className="text-muted-foreground">or</span>
-              <button type="button" onClick={downloadLecturerImportTemplateExcel} className="flex items-center gap-2 text-sm text-[#015F2B] hover:underline">
-                <Download className="h-4 w-4" /> Download Excel template
-              </button>
-            </div>
-            <div className="space-y-2">
-              <Label>Select file (CSV or Excel)</Label>
-              <Input ref={lecturerFileRef} type="file" accept=".csv,.xlsx,.xls" />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox id="lecturer-import-accounts" checked={importCreateAccounts} onCheckedChange={(c) => setImportCreateAccounts(!!c)} />
-              <Label htmlFor="lecturer-import-accounts">Create login accounts (email + temporary password) for imported lecturers</Label>
-            </div>
-          </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={handleLecturerImport} className="bg-[#015F2B]"><Upload className="mr-2 h-4 w-4" /> Import</Button>
+            <Button type="button" variant="outline" onClick={() => setViewingLecturer(null)}>Close</Button>
+            {viewingLecturer?.userId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const lecturer = viewingLecturer;
+                  setViewingLecturer(null);
+                  setLoginLecturer(lecturer);
+                }}
+              >
+                <KeyRound className="mr-2 h-4 w-4" /> Edit login
+              </Button>
+            )}
+            {viewingLecturer && (
+              <Button
+                type="button"
+                className="bg-[#015F2B]"
+                onClick={() => {
+                  const lecturer = viewingLecturer;
+                  setViewingLecturer(null);
+                  openAssign(lecturer);
+                }}
+              >
+                <BookMarked className="mr-2 h-4 w-4" /> Assign courses
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -3173,16 +2545,17 @@ function LecturersTab({
         <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Assign lecturer to classes
+              Assign courses
               {selectedLecturer ? ` — ${selectedLecturer.name}` : ''}
             </DialogTitle>
-            <DialogDescription className="sr-only">
-              Assign classes for {selectedLecturer?.name ?? 'lecturer'}
+            <DialogDescription>
+              Choose a school and program, load its classes, then tick the courses this lecturer teaches. Each row
+              is one course taught to one class.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Currently assigned ({assignedClassesSummary.length})</Label>
+              <Label>Currently teaching ({assignedClassesSummary.length})</Label>
               {assignedClassesLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading assigned classes...
@@ -4901,13 +4274,11 @@ function SchoolsTab() {
       if (editingSchool) {
         await academicService.updateSchool(editingSchool.id, {
           name: schoolForm.name,
-          dean: schoolForm.dean || undefined,
         });
       } else {
         await academicService.createSchool({
           name: schoolForm.name,
           code: schoolForm.name,
-          dean: schoolForm.dean || undefined,
         });
       }
       await loadSchools();
@@ -5547,10 +4918,6 @@ function SchoolsTab() {
               <Label>School Name *</Label>
               <Input value={schoolForm.name} onChange={e => setSchoolForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. School of Computing & Forensics" />
             </div>
-            <div>
-              <Label>Dean / Head</Label>
-              <Input value={schoolForm.dean} onChange={e => setSchoolForm(f => ({ ...f, dean: e.target.value }))} placeholder="e.g. Dr. John Doe" />
-            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddSchoolOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]">Create School</Button>
@@ -5569,9 +4936,11 @@ function SchoolsTab() {
               <Label>School Name *</Label>
               <Input value={schoolForm.name} onChange={e => setSchoolForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
-            <div>
-              <Label>Dean / Head</Label>
-              <Input value={schoolForm.dean} onChange={e => setSchoolForm(f => ({ ...f, dean: e.target.value }))} placeholder="e.g. Dr. John Doe" />
+            <div className="space-y-1.5">
+              <LabelWithInfo info="HR appoints deans from HR › Organisation Structure. The name shown here updates automatically.">
+                Dean
+              </LabelWithInfo>
+              <Input value={schoolForm.dean || 'Not appointed'} readOnly disabled />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditSchoolOpen(false)}>Cancel</Button>
@@ -7285,7 +6654,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
         if (arr.length === 0 || allLecturers.length >= total) break;
         lecturerPage += 1;
       }
-      setLecturers(allLecturers.filter((s: any) => s.role === 'Lecturer' || !s.role).map((s: any) => ({
+      setLecturers(allLecturers.map((s: any) => ({
         id: s.id,
         name: `${s.firstName} ${s.lastName}`,
       })));
@@ -7817,7 +7186,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                   <dt className="text-muted-foreground">Courses</dt>
                   <dd className="font-medium">{importResult.summary.coursesCreated || 0} created, {importResult.summary.coursesMatched || 0} matched</dd>
                   <dt className="text-muted-foreground">Lecturers</dt>
-                  <dd className="font-medium">{importResult.summary.lecturersCreated || 0} created, {importResult.summary.lecturersMatched || 0} matched</dd>
+                  <dd className="font-medium">{importResult.summary.lecturersMatched || 0} matched, {importResult.summary.lecturersUnmatched || 0} not in staff list</dd>
                   <dt className="text-muted-foreground">Classes</dt>
                   <dd className="font-medium">{importResult.summary.classesCreated || 0} created, {importResult.summary.classesUpdated || 0} updated</dd>
                 </dl>
@@ -8071,281 +7440,6 @@ function StrategicGoalsTab() {
   );
 }
 
-// -----------------------------------------------------------------------------
-// SUB-COMPONENT: Users Management Tab
-// -----------------------------------------------------------------------------
-type UserRow = { id: string; email: string; name: string; role: string; isActive: boolean; lastLoginAt: string | null; createdAt: string };
-function UsersTab() {
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', role: '', isActive: true });
-  const [resetPassword, setResetPassword] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const userList = await adminService.getUsers();
-      const list = Array.isArray(userList) ? userList : (userList as any)?.data ?? [];
-      setUsers(list.map((u: any) => ({
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        isActive: u.isActive,
-        lastLoginAt: u.lastLoginAt,
-        createdAt: u.createdAt,
-        linkedRecord: u.linkedRecord || null, // Include linked record info
-      })));
-    } catch (error) {
-      console.error('Error loading users:', error);
-      toast.error('Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openEdit = (user: UserRow) => {
-    setEditingUser(user);
-    setEditForm({ name: user.name, role: user.role, isActive: user.isActive });
-    setResetPassword(false);
-    setPasswordForm({ newPassword: '', confirmPassword: '' });
-    setEditOpen(true);
-  };
-
-  const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-
-    // Validate password reset if enabled
-    if (resetPassword) {
-      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-        toast.error('Passwords do not match');
-        return;
-      }
-
-      if (passwordForm.newPassword.length < 8) {
-        toast.error('Password must be at least 8 characters long');
-        return;
-      }
-    }
-
-    try {
-      // Update user details
-      await adminService.updateUser(editingUser.id, {
-        name: editForm.name,
-        role: editForm.role,
-        isActive: editForm.isActive,
-      });
-
-      // Reset password if requested
-      if (resetPassword) {
-        await adminService.resetUserPassword(editingUser.id, passwordForm.newPassword);
-      }
-
-      await loadUsers();
-      setEditOpen(false);
-      setEditingUser(null);
-      setResetPassword(false);
-      setPasswordForm({ newPassword: '', confirmPassword: '' });
-      toast.success(resetPassword ? 'User updated and password reset successfully' : 'User updated successfully');
-    } catch (error: any) {
-      console.error('Error updating user:', error);
-      toast.error(`Failed to update user: ${error?.message || 'Unknown error'}`);
-    }
-  };
-
-  const filteredUsers = users.filter(u =>
-    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.role.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search users by email, name, or role..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Linked Record</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-                {loading ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">Loading...</TableCell></TableRow>
-                ) : filteredUsers.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No users found.</TableCell></TableRow>
-                ) : (
-                  filteredUsers.map((user: any) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'}>{user.role}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {user.linkedRecord ? (
-                          <div className="text-xs">
-                            <Badge variant="outline" className="mr-1">
-                              {user.linkedRecord.type === 'student' ? 'Student' : user.linkedRecord.role}
-                            </Badge>
-                            <span className="text-muted-foreground">
-                              {user.linkedRecord.number}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No linked record</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={user.isActive ? 'default' : 'destructive'}>
-                          {user.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}
-                      </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(user)}>
-                          <Edit className="mr-2 h-4 w-4" /> Edit User
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="w-[95vw] max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>
-              Update user details for {editingUser?.name} ({editingUser?.email})
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleUpdateUser} className="space-y-4">
-            <div>
-              <Label>Name</Label>
-              <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <Select value={editForm.role} onValueChange={v => setEditForm(f => ({ ...f, role: v }))} required>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Admin">Admin</SelectItem>
-                  <SelectItem value="Management">Management</SelectItem>
-                  <SelectItem value="QA">QA</SelectItem>
-                  <SelectItem value="Lecturer">Lecturer</SelectItem>
-                  <SelectItem value="Staff">Staff</SelectItem>
-                  <SelectItem value="Student">Student</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="isActive"
-                checked={editForm.isActive}
-                onCheckedChange={(checked) => setEditForm(f => ({ ...f, isActive: checked }))}
-              />
-              <Label htmlFor="isActive">Active</Label>
-            </div>
-
-            <div className="border-t pt-4 space-y-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="resetPassword"
-                  checked={resetPassword}
-                  onCheckedChange={setResetPassword}
-                />
-                <Label htmlFor="resetPassword" className="flex items-center gap-2">
-                  <KeyRound className="h-4 w-4" />
-                  Reset Password
-                </Label>
-              </div>
-
-              {resetPassword && (
-                <div className="space-y-4 pl-6 border-l-2 border-muted">
-                  <div>
-                    <Label>New Password</Label>
-                    <Input
-                      type="password"
-                      value={passwordForm.newPassword}
-                      onChange={e => setPasswordForm(f => ({ ...f, newPassword: e.target.value }))}
-                      placeholder="Enter new password (min 8 characters)"
-                      required={resetPassword}
-                      minLength={8}
-                    />
-                  </div>
-                  <div>
-                    <Label>Confirm Password</Label>
-                    <Input
-                      type="password"
-                      value={passwordForm.confirmPassword}
-                      onChange={e => setPasswordForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                      placeholder="Confirm new password"
-                      required={resetPassword}
-                      minLength={8}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    The user will need to use this new password to login.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => {
-                setEditOpen(false);
-                setResetPassword(false);
-                setPasswordForm({ newPassword: '', confirmPassword: '' });
-              }}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]">
-                {resetPassword ? 'Update User & Reset Password' : 'Update User'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
 
 // -----------------------------------------------------------------------------
 // SUB-COMPONENT: Academic Calendar Tab
@@ -8701,10 +7795,8 @@ const LIST_PAGE_SIZE = 20;
 
 export default function AdminView({
   defaultTab = 'students',
-  staffTabMode = 'non-teaching',
 }: {
   defaultTab?: string;
-  staffTabMode?: 'non-teaching' | 'staff-role';
 }) {
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState(defaultTab);
@@ -8757,12 +7849,14 @@ export default function AdminView({
   };
 
   const loadStaff = useCallback(
-    async (page: number, options?: { role?: string; search?: string }) => {
+    async (page: number, options?: StaffListQuery) => {
       try {
         const res = await staffService.getStaff({
           page,
           limit: LIST_PAGE_SIZE,
-          ...(options?.role ? { role: options.role } : (staffTabMode === 'staff-role' ? { role: 'Staff' } : {})),
+          ...(options?.role ? { role: options.role } : {}),
+          ...(options?.category ? { category: options.category } : {}),
+          ...(options?.excludeCategory ? { excludeCategory: options.excludeCategory } : {}),
           ...(options?.search ? { search: options.search } : {}),
         });
         const data = res.data || res;
@@ -8771,10 +7865,18 @@ export default function AdminView({
           name: `${s.firstName} ${s.lastName}`,
           email: s.email,
           role: s.role,
-          dept: s.departmentName || s.departmentId || '',
+          dept: s.placementLabel || s.departmentName || s.orgUnitName || '',
           departmentId: s.departmentId,
           status: s.status || 'Active',
           assignedClassCount: typeof s.assignedClassCount === 'number' ? s.assignedClassCount : 0,
+          staffNumber: s.staffNumber,
+          phone: s.phone ?? null,
+          category: s.staffCategory ?? null,
+          rankLabel: s.academicRankLabel ?? null,
+          placement: s.placementLabel || s.departmentName || s.orgUnitName || null,
+          supervisorName: s.supervisorName ?? null,
+          employmentType: s.employmentType ?? null,
+          userId: s.userId ?? null,
         })) : []);
         setStaffTotal(res.total ?? 0);
         setStaffPage(res.page ?? page);
@@ -8783,7 +7885,7 @@ export default function AdminView({
         setStaffTotal(0);
       }
     },
-    [staffTabMode]
+    []
   );
 
   const [classesPage, setClassesPage] = useState(1);
@@ -8931,7 +8033,6 @@ export default function AdminView({
       })));
 
       await loadStudents(1);
-      await loadStaff(1);
     } catch (error) {
       console.error('Error loading admin data:', error);
     } finally {
@@ -8958,20 +8059,8 @@ export default function AdminView({
           <StudentsTab students={students} setStudents={setStudents} classes={classes} setClasses={setClasses} studentsPage={studentsPage} studentsTotal={studentsTotal} pageSize={LIST_PAGE_SIZE} loadStudents={loadStudents} />
         </TabsContent>
         
-        <TabsContent value="staff" className="mt-0">
-          <StaffTab
-            staff={staff}
-            setStaff={setStaff}
-            staffPage={staffPage}
-            staffTotal={staffTotal}
-            pageSize={LIST_PAGE_SIZE}
-            loadStaff={loadStaff}
-            staffTabMode={staffTabMode}
-          />
-        </TabsContent>
-
         <TabsContent value="lecturers" className="mt-0">
-          <LecturersTab staff={staff} setStaff={setStaff} classes={classes} setClasses={setClasses} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} loadClasses={loadClasses} />
+          <LecturersTab staff={staff} classes={classes} setClasses={setClasses} staffPage={staffPage} staffTotal={staffTotal} pageSize={LIST_PAGE_SIZE} loadStaff={loadStaff} loadClasses={loadClasses} />
         </TabsContent>
 
         <TabsContent value="courses" className="mt-0">
@@ -9009,9 +8098,6 @@ export default function AdminView({
           <AcademicCalendarTab />
         </TabsContent>
 
-        <TabsContent value="users" className="mt-0">
-          <UsersTab />
-        </TabsContent>
 
         <TabsContent value="strategic-goals" className="mt-0">
           <StrategicGoalsTab />

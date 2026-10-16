@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DailyAttendanceGrid from '@/features/student/components/DailyAttendanceGrid';
 import DailyMarkingCoverage from '@/features/student/components/DailyMarkingCoverage';
-import { useRole } from '@/components/RoleProvider';
+import { usePermissions } from '@/contexts/AuthContext';
 import type { DailyBulkPrefill, DailyMarkingCoverageFilter } from '@/types/student';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -70,7 +70,7 @@ function resolveInitialTab(
 }
 
 export default function StudentRecords() {
-  const { role } = useRole();
+  const { can } = usePermissions();
   const [searchParams] = useSearchParams();
   const {
     termFilter,
@@ -79,7 +79,7 @@ export default function StudentRecords() {
     onTermChange,
     applyTermDatesTo,
   } = useAcademicTermFilterState();
-  const defaultTab = role === 'QA' ? 'coverage' : 'log';
+  const defaultTab = can('qa.review') && !can('analytics.mgmt_overview') ? 'coverage' : 'log';
   const [activeTab, setActiveTab] = useState<'log' | 'coverage' | 'daily-bulk'>(() =>
     resolveInitialTab(searchParams.get('tab'), defaultTab)
   );

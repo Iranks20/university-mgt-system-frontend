@@ -171,6 +171,8 @@ Columns:
 | Current KCU ERP | Full university ERP / LMS (target) | Status |
 |-----------------|--------------------------------------|--------|
 | Staff / employee directory | Same | Done |
+| Organisation structure (organogram, offices, head titles, deans, heads of department, acting appointments) at `/hr/organisation` | Same | Done |
+| Employee form: personal details, employment (category, rank, date joined, PhD), placement in a department or office, supervisor, system access | Same | Done |
 | HR dashboard & staff attendance overview | Same | Done |
 | Performance appraisals (templates, cycles, review) | Same | Done |
 | Onboarding visibility (new / probation) | Full onboarding checklists & workflows | Partial |

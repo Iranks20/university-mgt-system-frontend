@@ -1,7 +1,29 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import api from '@/lib/api';
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/lib/auth-events';
+import { hasAnyPermission } from '@/lib/nav-permissions';
 
-type User = {
+export type AccessScope = {
+  unrestricted: boolean;
+  schoolIds: string[];
+  departmentIds: string[];
+  programIds: string[];
+  orgUnitIds: string[];
+};
+
+export type AccessGrant = {
+  source: 'Role' | 'AdditionalRole' | 'Position' | 'HeadOfDepartment';
+  name: string;
+  code: string | null;
+  positionTitle: string | null;
+  unitName: string | null;
+  isActing: boolean;
+  endDate: string | null;
+  scopeLabel: string;
+  permissions: string[];
+};
+
+export type User = {
   id: string;
   email: string;
   name: string;
@@ -9,7 +31,12 @@ type User = {
   departmentId?: string | null;
   schoolId?: string | null;
   permissions?: string[];
+  mustChangePassword?: boolean;
+  passwordChangedAt?: string | null;
+  access?: { scope: AccessScope; grants: AccessGrant[] };
 };
+
+export type SessionPayload = { token: string; user: User };
 
 type AuthContextType = {
   isAuthenticated: boolean;
@@ -19,6 +46,7 @@ type AuthContextType = {
   userRole: string | null;
   updateRole: (role: string) => void;
   refreshUser: () => Promise<void>;
+  applySession: (session: SessionPayload) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -142,8 +170,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const applySession = useCallback((session: SessionPayload) => {
+    persistSession(session.token, session.user, session.user.role);
+    lastRefreshAtRef.current = Date.now();
+    setIsAuthenticated(true);
+    setUserRole(session.user.role);
+    setUser(session.user);
+  }, []);
+
+  useEffect(() => {
+    const onPasswordChangeRequired = () => {
+      setUser((current) => {
+        if (!current || current.mustChangePassword) return current;
+        const next = { ...current, mustChangePassword: true };
+        localStorage.setItem('kcu-user', JSON.stringify(next));
+        return next;
+      });
+    };
+    window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+    return () => window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, onPasswordChangeRequired);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, userRole, updateRole, refreshUser }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, user, login, logout, userRole, updateRole, refreshUser, applySession }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -155,4 +206,14 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function usePermissions() {
+  const { user } = useAuth();
+  const permissions = user?.permissions ?? [];
+  const can = useCallback(
+    (...codes: string[]) => hasAnyPermission(permissions, codes),
+    [permissions]
+  );
+  return { permissions, can, scope: user?.access?.scope ?? null, grants: user?.access?.grants ?? [] };
 }

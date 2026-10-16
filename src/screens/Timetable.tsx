@@ -17,7 +17,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { useRole } from '@/components/RoleProvider';
+import { usePermissions } from '@/contexts/AuthContext';
 import { qaService, academicService, timetableService, staffService } from '@/services';
 import type { TimetableClass } from '@/services/timetable.service';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +48,16 @@ const QA_DAY_OPTIONS = [
   { value: '5', label: 'Friday' },
   { value: '6', label: 'Saturday' },
 ];
+
+type TimetableViewRole = 'QA' | 'Lecturer' | 'Student' | null;
+
+function useTimetableViewRole(): TimetableViewRole {
+  const { can } = usePermissions();
+  if (can('timetable.ops')) return 'QA';
+  if (can('timetable.lecturer_me')) return 'Lecturer';
+  if (can('timetable.student_me')) return 'Student';
+  return null;
+}
 
 function normalizeTimeForEdit(value: string | null | undefined): string {
   if (!value) return '';
@@ -98,7 +108,7 @@ interface TimetableItem {
 }
 
 export default function Timetable() {
-  const { role } = useRole();
+  const role = useTimetableViewRole();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'list' | 'week'>('week');
@@ -1169,7 +1179,7 @@ function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: {
   onOpenDetails?: (item: TimetableItem) => void;
   checkInData?: { checkIn: string; checkOut?: string };
 }) {
-  const { role } = useRole();
+  const role = useTimetableViewRole();
   const isLecturer = role === 'Lecturer';
   const hasCheckedIn = !!checkInData?.checkIn;
   const hasCheckedOut = !!checkInData?.checkOut;

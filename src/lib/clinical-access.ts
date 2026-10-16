@@ -1,6 +1,6 @@
 import { CLINICAL_ROUTES, clinicalReportsPath, LEGACY_CLINICAL_TAB_PATH } from './clinical-routes';
 import { graduationHomePath } from './graduation-access';
-import { resolveHomePath } from './nav-permissions';
+import { resolveHomePath, routeAllowed } from './nav-permissions';
 
 export type ClinicalAccess = {
   canManageSites: boolean;
@@ -64,27 +64,20 @@ export function homePathForPermissions(permissions: string[] | undefined): strin
   return '/dashboard';
 }
 
-export function homePathForRole(role: string | null, permissions?: string[]): string {
-  if (role === 'HR') {
-    return '/hr/dashboard';
+const PRIORITY_HOME_PATHS = ['/management-overview', '/hr/dashboard', '/attendance-desk'] as const;
+
+export function homePathForUser(permissions?: string[]): string {
+  const perms = permissions ?? [];
+  for (const path of PRIORITY_HOME_PATHS) {
+    if (routeAllowed(perms, path)) return path;
   }
-  if (role === 'Graduation') {
-    return graduationHomePath(permissions, role) ?? '/graduation/dashboard';
+  if (!routeAllowed(perms, '/dashboard')) {
+    const graduationHome = graduationHomePath(perms);
+    if (graduationHome) return graduationHome;
   }
-  if (role === 'Management') {
-    if (permissions?.includes('analytics.mgmt_overview')) return '/management-overview';
-    return resolveHomePath(permissions || []) ?? '/management-overview';
-  }
-  if (role === 'Admin') {
-    if (permissions?.includes('analytics.mgmt_overview')) return '/management-overview';
-    return resolveHomePath(permissions || []) ?? '/management-overview';
-  }
-  if (permissions?.length) {
-    const clinicalHome = homePathForPermissions(permissions);
-    if (clinicalHome !== '/dashboard') return clinicalHome;
-    return resolveHomePath(permissions) ?? '/dashboard';
-  }
-  return '/dashboard';
+  const clinicalHome = homePathForPermissions(perms);
+  if (clinicalHome !== '/dashboard') return clinicalHome;
+  return resolveHomePath(perms) ?? '/dashboard';
 }
 
 export function clinicalSectionPath(section: string, report?: string): string {

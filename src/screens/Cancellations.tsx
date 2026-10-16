@@ -24,7 +24,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Combobox } from '@/components/ui/combobox';
-import { useRole } from '@/components/RoleProvider';
+import { usePermissions } from '@/contexts/AuthContext';
 import { cancellationsService, timetableService, substitutionsService } from '@/services';
 import type { CancellationRequest } from '@/services/cancellations.service';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
@@ -62,9 +62,11 @@ function SessionCell({ r }: { r: CancellationRequest }) {
 }
 
 export default function Cancellations() {
-  const { role } = useRole();
-  const isLecturer = role === 'Lecturer';
-  const isQA = role === 'QA' || role === 'Admin' || role === 'Management';
+  const { can } = usePermissions();
+  const isLecturer = can('cancellations.lecturer', 'substitutions.lecturer');
+  const isQA = can('cancellations.queue', 'substitutions.queue');
+  const canDecideCancellations = can('cancellations.decide');
+  const canDecideSubstitutions = can('substitutions.decide');
   const { termFilter, onTermChange } = useAcademicTermFilterState();
 
   const [myRequests, setMyRequests] = useState<CancellationRequest[]>([]);
@@ -762,7 +764,7 @@ export default function Cancellations() {
                         )}
                       </TableCell>
                       <TableCell className="text-right space-x-2">
-                        {r.status === 'Pending' ? (
+                        {r.status === 'Pending' && canDecideCancellations ? (
                           <>
                             <Button
                               size="sm"
@@ -1035,7 +1037,7 @@ export default function Cancellations() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right space-x-2">
-                              {r.status === 'Pending' && role !== 'Management' ? (
+                              {r.status === 'Pending' && canDecideSubstitutions ? (
                                 <>
                                   <Button
                                     size="sm"

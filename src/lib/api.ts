@@ -1,3 +1,5 @@
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from './auth-events';
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
 interface ApiError {
@@ -68,6 +70,14 @@ class ApiClient {
       const errorData: ApiError = await response.json().catch(() => ({
         message: response.statusText,
       }));
+
+      if (
+        response.status === 403 &&
+        errorData.code === 'PASSWORD_CHANGE_REQUIRED' &&
+        typeof window !== 'undefined'
+      ) {
+        window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+      }
 
       const error = new Error(errorData.message || 'Request failed');
       (error as any).code = errorData.code;

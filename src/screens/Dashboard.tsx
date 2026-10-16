@@ -8,8 +8,7 @@ import {
   MoreHorizontal, Plus, Search, Filter, ArrowRight, UserCheck, Shield,
   Building, Users
 } from 'lucide-react';
-import { useRole } from '@/components/RoleProvider';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, usePermissions } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -45,10 +44,24 @@ export default function Dashboard() {
   return <DashboardContent />;
 }
 
-function DashboardContent() {
-  const { role } = useRole();
+type DashboardView = 'Management' | 'Student' | 'Lecturer' | 'Clinical' | 'QA' | 'Staff' | null;
 
-  if (!role) {
+function resolveDashboardView(can: (...codes: string[]) => boolean): DashboardView {
+  if (can('admin.console')) return 'Management';
+  if (can('students.self')) return 'Student';
+  if (can('staff.lecturer_me')) return 'Lecturer';
+  if (can('analytics.mgmt_overview')) return 'Management';
+  if (can('clinical.sessions.record', 'clinical.sessions.verify')) return 'Clinical';
+  if (can('qa.review')) return 'QA';
+  if (can('staff.timeclock')) return 'Staff';
+  return null;
+}
+
+function DashboardContent() {
+  const { user } = useAuth();
+  const { can } = usePermissions();
+
+  if (!user) {
     return (
       <div className="p-8 text-center">
         <div className="text-gray-500 mb-4">Loading dashboard...</div>
@@ -56,38 +69,27 @@ function DashboardContent() {
     );
   }
 
-  let content;
-  switch (role) {
+  switch (resolveDashboardView(can)) {
     case 'QA':
-      content = <QADashboard />;
-      break;
-    case 'QAClinicals':
-    case 'ClinicalCoordinator':
-      content = <ClinicalRoleDashboard />;
-      break;
+      return <QADashboard />;
+    case 'Clinical':
+      return <ClinicalRoleDashboard />;
     case 'Lecturer':
-      content = <LecturerDashboard />;
-      break;
+      return <LecturerDashboard />;
     case 'Student':
-      content = <StudentDashboard />;
-      break;
+      return <StudentDashboard />;
     case 'Management':
-    case 'Admin':
-      content = <ManagementDashboard />;
-      break;
+      return <ManagementDashboard />;
     case 'Staff':
-      content = <StaffDashboard />;
-      break;
+      return <StaffDashboard />;
     default:
-      content = (
+      return (
         <div className="p-8 text-center space-y-4">
-          <div className="text-gray-500 mb-4">Dashboard not available for role: {role}</div>
-          <div className="text-sm text-gray-400">Please contact support if you believe this is an error.</div>
+          <div className="text-gray-500 mb-4">No dashboard is assigned to your access yet.</div>
+          <div className="text-sm text-gray-400">Use the menu, or contact ICT if you believe this is an error.</div>
         </div>
       );
   }
-
-  return content;
 }
 
 type TeachingRange = 'today' | 'yesterday' | 'this_week' | 'last_30_days';
@@ -939,27 +941,19 @@ function StaffDashboard() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Welcome, {stats?.staffName ?? 'Staff'}</h1>
           <p className="text-gray-500">{stats?.role ?? 'Staff'}</p>
         </div>
-        <div className="flex gap-3">
-           <Button 
-             className="bg-[#015F2B] hover:bg-[#014022] gap-2 shadow-lg hover:shadow-xl transition-all"
-             onClick={() => navigate('/presence')}
-           >
-            <MapPin size={18} /> Mark Presence
-          </Button>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatsCard icon={CheckCircle} label="Attendance Rate" value={stats?.attendanceRate ?? '-'} color="text-[#015F2B]" />
         <StatsCard icon={Calendar} label="Present This Month" value={stats?.presentDays ?? '-'} description={stats?.workingDaysInMonth != null ? `Out of ${stats.workingDaysInMonth} working days` : undefined} color="text-blue-600" />
-        <StatsCard icon={Clock} label="Total Hours" value={stats?.totalHours ?? '-'} description="Year to date" color="text-[#F6A000]" />
+        <StatsCard icon={Clock} label="Total Hours" value={stats?.totalHours ?? '-'} description="On campus this month" color="text-[#F6A000]" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>My Attendance</CardTitle>
-            <CardDescription>Recent check-in activity.</CardDescription>
+            <CardDescription>First check-in and last check-out recorded by the timekeeper.</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -975,7 +969,7 @@ function StaffDashboard() {
                 {checkInHistory.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      No check-in records yet. Check-in feature will appear here when available.
+                      No attendance recorded yet.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -986,7 +980,7 @@ function StaffDashboard() {
                       <TableCell>{row.checkOut}</TableCell>
                       <TableCell>
                         <Badge variant={row.status === 'Late' ? 'secondary' : 'default'} className={
-                          row.status === 'Present' ? 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' : 'bg-orange-100 text-orange-800'
+                          row.status === 'Present' || row.status === 'On campus' ? 'bg-green-100 text-green-800 hover:bg-green-200 border-green-200' : 'bg-orange-100 text-orange-800'
                         }>
                           {row.status}
                         </Badge>
@@ -1000,7 +994,7 @@ function StaffDashboard() {
               <Button 
                 variant="ghost" 
                 className="text-[#015F2B]"
-                onClick={() => navigate('/attendance-history')}
+                onClick={() => navigate('/student-history')}
               >
                 View Full History <ArrowRight size={16} className="ml-2" />
               </Button>
@@ -1018,7 +1012,7 @@ function StaffDashboard() {
                   <Shield className="text-blue-600 w-5 h-5 mr-3 mt-0.5" />
                   <div>
                     <h4 className="font-semibold text-sm text-gray-900">Check-in reminder</h4>
-                    <p className="text-sm text-gray-600">Ensure you check in when you arrive. Staff check-in history is available in Attendance History.</p>
+                    <p className="text-sm text-gray-600">Check in with the timekeeper when you arrive and check out when you leave. Your history is in Attendance History.</p>
                   </div>
                 </div>
                 {checkInHistory.length > 0 && (
@@ -1026,7 +1020,7 @@ function StaffDashboard() {
                     <CheckCircle className="text-[#015F2B] w-5 h-5 mr-3 mt-0.5" />
                     <div>
                       <h4 className="font-semibold text-sm text-gray-900">Attendance recorded</h4>
-                      <p className="text-sm text-gray-600">You have {checkInHistory.length} check-in record(s) on file.</p>
+                      <p className="text-sm text-gray-600">You have {checkInHistory.length} day(s) of attendance on file.</p>
                     </div>
                   </div>
                 )}

@@ -95,21 +95,17 @@ describe('nav-permissions route alignment', () => {
 });
 
 describe('clinical sidebar nesting', () => {
-  it('nests clinical items only for Admin and Management', () => {
-    expect(shouldNestClinicalNavItems('Admin')).toBe(true);
-    expect(shouldNestClinicalNavItems('Management')).toBe(true);
-    expect(shouldNestClinicalNavItems('QAClinicals')).toBe(false);
-    expect(shouldNestClinicalNavItems('ClinicalCoordinator')).toBe(false);
-    expect(shouldNestClinicalNavItems('QA')).toBe(false);
+  it('nests clinical items unless the user runs clinical sessions day to day', () => {
+    expect(shouldNestClinicalNavItems(['clinical.reports.view', 'clinical.sites.manage'])).toBe(true);
+    expect(shouldNestClinicalNavItems(['clinical.sessions.record'])).toBe(false);
+    expect(shouldNestClinicalNavItems(['clinical.sessions.verify'])).toBe(false);
   });
 });
 
 describe('HR sidebar nesting', () => {
-  it('nests HR items only for Admin', () => {
-    expect(shouldNestHrNavItems('Admin')).toBe(true);
-    expect(shouldNestHrNavItems('Management')).toBe(false);
-    expect(shouldNestHrNavItems('HR')).toBe(false);
-    expect(shouldNestHrNavItems('QA')).toBe(false);
+  it('nests HR items for read-only HR access and flattens them for HR officers', () => {
+    expect(shouldNestHrNavItems(['hr.read'])).toBe(true);
+    expect(shouldNestHrNavItems(['hr.read', 'hr.write'])).toBe(false);
   });
 });
 
@@ -159,36 +155,37 @@ describe('HR module access', () => {
     'notifications.self',
   ];
 
-  it('hides HR module routes from QA even if permissions include hr.read', () => {
-    expect(navAllowed(qaPerms, '/hr/dashboard', 'QA')).toBe(false);
-    expect(navAllowed(qaPerms, '/hr/employees', 'QA')).toBe(false);
-    expect(routeAllowed(qaPerms, '/hr/appraisals', 'QA')).toBe(false);
-    expect(navAllowed(qaPerms, '/hr/dashboard', 'Admin')).toBe(true);
-    expect(resolveHomePath(qaPerms, 'QA')).toBe('/dashboard');
+  it('grants HR module routes from permissions, regardless of account type', () => {
+    expect(navAllowed(qaPerms, '/hr/dashboard')).toBe(true);
+    expect(navAllowed(qaPerms, '/hr/employees')).toBe(true);
+    expect(routeAllowed(qaPerms, '/hr/appraisals')).toBe(true);
+    expect(navAllowed(['qa.review', 'analytics.core_dashboard'], '/hr/dashboard')).toBe(false);
   });
 
   it('still allows lecturers My Appraisal without HR module access', () => {
-    expect(navAllowed(['hr.appraisal_submit'], '/staff-appraisal', 'Lecturer')).toBe(true);
-    expect(navAllowed(['hr.appraisal_submit'], '/hr/dashboard', 'Lecturer')).toBe(false);
+    expect(navAllowed(['hr.appraisal_submit'], '/staff-appraisal')).toBe(true);
+    expect(navAllowed(['hr.appraisal_submit'], '/hr/dashboard')).toBe(false);
   });
 
   it('HR can open workforce and appraisal management routes', () => {
-    expect(navAllowed(hrPerms, '/hr/employees', 'HR')).toBe(true);
-    expect(navAllowed(hrPerms, '/hr/appraisals', 'HR')).toBe(true);
-    expect(navAllowed(hrPerms, '/hr/reports', 'HR')).toBe(true);
-    expect(navAllowed(hrPerms, '/staff-appraisal', 'HR')).toBe(true);
-    expect(resolveHomePath(hrPerms, 'HR')).toBe('/hr/dashboard');
+    expect(navAllowed(hrPerms, '/hr/employees')).toBe(true);
+    expect(navAllowed(hrPerms, '/hr/organisation')).toBe(true);
+    expect(navAllowed(staffPerms, '/hr/organisation')).toBe(false);
+    expect(navAllowed(hrPerms, '/hr/appraisals')).toBe(true);
+    expect(navAllowed(hrPerms, '/hr/reports')).toBe(true);
+    expect(navAllowed(hrPerms, '/staff-appraisal')).toBe(true);
+    expect(resolveHomePath(hrPerms)).toBe('/hr/dashboard');
   });
 
   it('Staff sees My Appraisal and not HR module', () => {
-    expect(navAllowed(staffPerms, '/staff-appraisal', 'Staff')).toBe(true);
-    expect(navAllowed(staffPerms, '/hr/employees', 'Staff')).toBe(false);
-    expect(navAllowed(staffPerms, '/hr/appraisals', 'Staff')).toBe(false);
+    expect(navAllowed(staffPerms, '/staff-appraisal')).toBe(true);
+    expect(navAllowed(staffPerms, '/hr/employees')).toBe(false);
+    expect(navAllowed(staffPerms, '/hr/appraisals')).toBe(false);
   });
 
   it('Lecturer sees My Appraisal and not HR module', () => {
-    expect(navAllowed(lecturerPerms, '/staff-appraisal', 'Lecturer')).toBe(true);
-    expect(navAllowed(lecturerPerms, '/hr/employees', 'Lecturer')).toBe(false);
-    expect(navAllowed(lecturerPerms, '/hr/reports', 'Lecturer')).toBe(false);
+    expect(navAllowed(lecturerPerms, '/staff-appraisal')).toBe(true);
+    expect(navAllowed(lecturerPerms, '/hr/employees')).toBe(false);
+    expect(navAllowed(lecturerPerms, '/hr/reports')).toBe(false);
   });
 });

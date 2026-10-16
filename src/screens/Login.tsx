@@ -12,10 +12,42 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Link } from '@/lib';
 import { useAuth } from '../contexts/AuthContext';
-import { homePathForRole } from '@/lib/clinical-access';
+import { homePathForUser } from '@/lib/clinical-access';
+import { getApiErrorCode, getApiErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+
+function lockedUntilLabel(err: unknown): string | null {
+  const errors = (err as { errors?: Record<string, string[]> } | null)?.errors;
+  const iso = errors?.lockedUntil?.[0];
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function loginErrorMessage(code: string | undefined, err: unknown): string {
+  switch (code) {
+    case 'ACCOUNT_LOCKED': {
+      const until = lockedUntilLabel(err);
+      return until
+        ? `Too many failed attempts. Your account is locked until ${until}, or until HR or ICT unlocks it.`
+        : 'Too many failed attempts. Your account is temporarily locked.';
+    }
+    case 'EMAIL_NOT_FOUND':
+      return 'No account found with this email address';
+    case 'INVALID_PASSWORD':
+      return 'Incorrect password. Please try again.';
+    case 'ACCOUNT_INACTIVE':
+      return 'Your account is inactive. Please contact HR or ICT.';
+    case 'STUDENT_NOT_FOUND':
+      return 'No student found with this ID or email';
+    case 'ACCOUNT_NOT_LINKED':
+      return 'Student account not linked. Please contact the administrator.';
+    default:
+      return getApiErrorMessage(err, 'Login failed. Please check your credentials.');
+  }
+}
 
 function LoginContent() {
   const [identifier, setIdentifier] = useState('');
@@ -24,13 +56,13 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { login, isAuthenticated, userRole, user } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(homePathForRole(userRole, user?.permissions), { replace: true });
+      navigate(homePathForUser(user?.permissions), { replace: true });
     }
-  }, [isAuthenticated, navigate, userRole, user?.permissions]);
+  }, [isAuthenticated, navigate, user?.permissions]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +82,6 @@ function LoginContent() {
         await login('', password, value);
       }
       toast.success('Login successful! Welcome back.');
-      const savedRole = typeof window !== 'undefined' ? localStorage.getItem('kcu-role') : null;
       let savedPermissions: string[] | undefined;
       if (typeof window !== 'undefined') {
         try {
@@ -60,24 +91,12 @@ function LoginContent() {
           savedPermissions = undefined;
         }
       }
-      navigate(homePathForRole(savedRole, savedPermissions));
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || 'Login failed. Please check your credentials.';
+      navigate(homePathForUser(savedPermissions));
+    } catch (err) {
+      const code = getApiErrorCode(err);
+      const errorMessage = loginErrorMessage(code, err);
       setError(errorMessage);
-      
-      if (err?.response?.data?.code === 'EMAIL_NOT_FOUND') {
-        toast.error('No account found with this email address');
-      } else if (err?.response?.data?.code === 'INVALID_PASSWORD') {
-        toast.error('Incorrect password. Please try again.');
-      } else if (err?.response?.data?.code === 'ACCOUNT_INACTIVE') {
-        toast.error('Your account is inactive. Please contact administrator.');
-      } else if (err?.response?.data?.code === 'STUDENT_NOT_FOUND') {
-        toast.error('No student found with this ID or email');
-      } else if (err?.response?.data?.code === 'ACCOUNT_NOT_LINKED') {
-        toast.error('Student account not linked. Please contact administrator.');
-      } else {
-        toast.error(errorMessage);
-      }
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -130,9 +149,17 @@ function LoginContent() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <Link to="#" className="text-sm font-medium text-[#015F2B] hover:underline">
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-[#015F2B] hover:underline"
+                    onClick={() =>
+                      toast.info(
+                        'Ask HR (staff) or ICT / the Registrar (students) to reset your password. You will set your own password when you next sign in.'
+                      )
+                    }
+                  >
                     Forgot password?
-                  </Link>
+                  </button>
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />

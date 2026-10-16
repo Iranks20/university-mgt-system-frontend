@@ -5,7 +5,6 @@ import { appraisalStatusBadge, cycleStatusBadge } from '@/components/hr/HrBadges
 import {
   getHrAppraisalCycles,
   getHrAppraisalReviewById,
-  getHrAppraisalReviews,
   getAppraisalFormTemplates,
   saveAppraisalReview,
   getCalibrationForCycle,
@@ -18,7 +17,10 @@ import { AppraisalPrintView } from '@/components/hr/AppraisalPrintView';
 import { EMPLOYEE_CATEGORY_LABELS } from '@/features/hr/appraisal-form-utils';
 import { emptyResponsesForSections } from '@/features/hr/appraisal-form-utils';
 import type { AppraisalFormTemplate, HrAppraisalCycle, HrAppraisalReview } from '@/features/hr/types';
-import type { CalibrationRow } from '@/services/hr-appraisal.service';
+import { hrAppraisalService, type CalibrationRow } from '@/services/hr-appraisal.service';
+import { TablePagination } from '@/components/ui/table-pagination';
+import { emptyPage, type Paged } from '@/lib/pagination';
+import { usePaging } from '@/hooks/usePaging';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -45,7 +47,11 @@ function formatScore(value?: number | null) {
 
 export default function HrAppraisalsPage() {
   const [cycles, setCycles] = useState<HrAppraisalCycle[]>([]);
-  const [reviews, setReviews] = useState<HrAppraisalReview[]>([]);
+  const [queue, setQueue] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
+  const [allReviews, setAllReviews] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
+  const [reviewsVersion, setReviewsVersion] = useState(0);
+  const queuePaging = usePaging('queue');
+  const allPaging = usePaging('all');
   const [formTemplates, setFormTemplates] = useState<AppraisalFormTemplate[]>([]);
   const [calibration, setCalibration] = useState<CalibrationRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,16 +108,45 @@ export default function HrAppraisalsPage() {
     });
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    hrAppraisalService
+      .getReviews({ openOnly: true, page: queuePaging.page, limit: queuePaging.pageSize })
+      .then((result) => {
+        if (!cancelled) setQueue(result);
+      })
+      .catch(() => {
+        if (!cancelled) setQueue(emptyPage(queuePaging.pageSize));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [queuePaging.page, queuePaging.pageSize, reviewsVersion]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hrAppraisalService
+      .getReviews({ page: allPaging.page, limit: allPaging.pageSize })
+      .then((result) => {
+        if (!cancelled) setAllReviews(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAllReviews(emptyPage(allPaging.pageSize));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [allPaging.page, allPaging.pageSize, reviewsVersion]);
+
   const refreshAll = useCallback(async () => {
     setLoading(true);
+    setReviewsVersion((v) => v + 1);
     try {
-      const [nextCycles, nextReviews, nextTemplates] = await Promise.all([
+      const [nextCycles, nextTemplates] = await Promise.all([
         getHrAppraisalCycles(),
-        getHrAppraisalReviews(),
         getAppraisalFormTemplates(),
       ]);
       setCycles(nextCycles);
-      setReviews(nextReviews);
       setFormTemplates(nextTemplates);
       const active = nextCycles.find((cycle) => cycle.status === 'Open');
       if (active) {
@@ -249,9 +284,14 @@ export default function HrAppraisalsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reviews
-                    .filter((r) => r.status !== 'Completed')
-                    .map((r) => (
+                  {queue.data.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-gray-500 py-8">
+                        {loading ? 'Loading…' : 'No appraisals awaiting review'}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {queue.data.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell>
                           <div className="font-medium">{r.employeeName}</div>
@@ -282,6 +322,13 @@ export default function HrAppraisalsPage() {
                     ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={queuePaging.page}
+                pageSize={queuePaging.pageSize}
+                total={queue.total}
+                onPageChange={queuePaging.setPage}
+                onPageSizeChange={queuePaging.setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -436,7 +483,14 @@ export default function HrAppraisalsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reviews.map((r) => (
+                  {allReviews.data.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                        {loading ? 'Loading…' : 'No appraisal reviews yet'}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {allReviews.data.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{r.employeeName}</TableCell>
                       <TableCell>{r.cycleName}</TableCell>
@@ -449,6 +503,13 @@ export default function HrAppraisalsPage() {
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                page={allPaging.page}
+                pageSize={allPaging.pageSize}
+                total={allReviews.total}
+                onPageChange={allPaging.setPage}
+                onPageSizeChange={allPaging.setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>

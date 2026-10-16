@@ -19,11 +19,10 @@ import AdminAuditLog from './AdminAuditLog'
 import AdminVenues from './AdminVenues'
 import AdminTimetables from './AdminTimetables'
 import AdminCourses from './AdminCourses'
-import AdminStaff from './AdminStaff'
 import AdminStudents from './AdminStudents'
 import Timetable from './Timetable'
 import Reports from './Reports'
 import StudentRecords from './StudentRecords'
 import LectureRecords from './LectureRecords'
 
-export default { Login, Presence, StudentHistory, Dashboard, ManagementStaffPerformance, ManagementStudentPerformance, ManagementLecturerPerformance, ManagementStudentDetails, ManagementDepartments, ManagementOverview, StudentClasses, LecturerPerformance, LecturerCourseAttendance, AdminSchools, AdminClasses, AdminSettings, AdminAuditLog, AdminVenues, AdminTimetables, AdminCourses, AdminStaff, AdminStudents, Timetable, Reports, StudentRecords, LectureRecords }
+export default { Login, Presence, StudentHistory, Dashboard, ManagementStaffPerformance, ManagementStudentPerformance, ManagementLecturerPerformance, ManagementStudentDetails, ManagementDepartments, ManagementOverview, StudentClasses, LecturerPerformance, LecturerCourseAttendance, AdminSchools, AdminClasses, AdminSettings, AdminAuditLog, AdminVenues, AdminTimetables, AdminCourses, AdminStudents, Timetable, Reports, StudentRecords, LectureRecords }
