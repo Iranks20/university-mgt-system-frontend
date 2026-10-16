@@ -2,7 +2,21 @@ import api from '@/lib/api';
 import type { Staff, Lecturer } from '@/types';
 
 export const staffService = {
-  getStaff: async (params?: { search?: string; role?: string; department?: string; status?: string; missingSupervisor?: boolean; page?: number; limit?: number }): Promise<{ data: Staff[]; total: number; page: number; pageSize: number }> => {
+  getStaff: async (params?: {
+    search?: string;
+    role?: string;
+    department?: string;
+    schoolId?: string;
+    orgUnitId?: string;
+    category?: string;
+    excludeCategory?: string;
+    unplaced?: boolean;
+    status?: string;
+    missingSupervisor?: boolean;
+    onboarding?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: Staff[]; total: number; page: number; pageSize: number }> => {
     try {
       const response = await api.get<{ data: Staff[]; total: number; page: number; pageSize: number }>('/staff', params);
       return Array.isArray(response) ? { data: response, total: response.length, page: 1, pageSize: response.length } : response;
@@ -98,22 +112,14 @@ export const staffService = {
     }
   },
 
-  recordCheckIn: async (location?: string): Promise<void> => {
-    await api.post('/staff/me/check-in', location != null ? { location } : {});
-  },
-
-  recordCheckOut: async (): Promise<void> => {
-    await api.post('/staff/me/check-out', {});
-  },
-
   getCheckInHistory: async (): Promise<{ date: string; checkIn: string; checkOut: string; status: string }[]> => {
     try {
       const response = await api.get<any>('/staff/me/check-in-history');
       const data = Array.isArray(response) ? response : (response?.data ?? []);
       return data.map((r: any) => ({
-        date: r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
-        checkIn: r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—',
-        checkOut: r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—',
+        date: r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'â€”',
+        checkIn: r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'â€”',
+        checkOut: r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'â€”',
         status: r.status || 'Present',
       }));
     } catch (error) {
@@ -122,70 +128,6 @@ export const staffService = {
     }
   },
 
-  getWorkforceCheckIns: async (params?: {
-    date?: string;
-    departmentId?: string;
-  }): Promise<{
-    records: Array<{
-      id: string;
-      staffId: string;
-      employeeName: string;
-      departmentId: string;
-      department: string;
-      date: string;
-      checkIn: string | null;
-      checkOut: string | null;
-      hours: number;
-      status: string;
-      location: string | null;
-    }>;
-    summary: {
-      present: number;
-      late: number;
-      absent: number;
-      onLeave: number;
-      checkedIn: number;
-      totalActive: number;
-    };
-    date: string;
-  }> => {
-    const response = await api.get<{
-      records: Array<{
-        id: string;
-        staffId: string;
-        employeeName: string;
-        departmentId: string;
-        department: string;
-        date: string;
-        checkIn: string | null;
-        checkOut: string | null;
-        hours: number;
-        status: string;
-        location: string | null;
-      }>;
-      summary: {
-        present: number;
-        late: number;
-        absent: number;
-        onLeave: number;
-        checkedIn: number;
-        totalActive: number;
-      };
-      date: string;
-    }>('/staff/check-ins', params);
-    return {
-      records: response?.records ?? [],
-      summary: response?.summary ?? {
-        present: 0,
-        late: 0,
-        absent: 0,
-        onLeave: 0,
-        checkedIn: 0,
-        totalActive: 0,
-      },
-      date: response?.date ?? params?.date ?? '',
-    };
-  },
 
   updateStaff: async (id: string, staff: Partial<Staff>): Promise<Staff> => {
     try {
@@ -212,18 +154,6 @@ export const staffService = {
     } catch (error) {
       console.error('Error fetching staff student rating:', error);
       return null;
-    }
-  },
-
-  importStaff: async (file: File, createAccounts: boolean = false): Promise<{ imported: number; failed: number; errors?: string[] }> => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('createAccounts', String(createAccounts));
-      return await api.post<{ imported: number; failed: number; errors?: string[] }>('/staff/import', formData);
-    } catch (error) {
-      console.error('Error importing staff:', error);
-      throw error;
     }
   },
 };

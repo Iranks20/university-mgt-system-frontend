@@ -92,6 +92,9 @@ export default function LectureRecords() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [termDatesReady, setTermDatesReady] = useState(false);
+  const recordsRequestSeq = useRef(0);
+  const summaryRequestSeq = useRef(0);
   const [isExporting, setIsExporting] = useState(false);
   const [schools, setSchools] = useState<string[]>([]);
   const [schoolRecords, setSchoolRecords] = useState<Array<{ id: string; name: string }>>([]);
@@ -292,7 +295,10 @@ export default function LectureRecords() {
         const sel = resolveAcademicTermFilter(TERM_FILTER_ACTIVE, terms);
         applyTermDatesTo(setDateFrom, setDateTo)(sel);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTermDatesReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -320,8 +326,10 @@ export default function LectureRecords() {
   ]);
 
   useEffect(() => {
+    if (!termDatesReady) return;
     loadRecords();
   }, [
+    termDatesReady,
     debouncedSearchTerm,
     commentFilter,
     lecturerFilter,
@@ -342,8 +350,10 @@ export default function LectureRecords() {
   ]);
 
   useEffect(() => {
+    if (!termDatesReady) return;
     loadSummary();
   }, [
+    termDatesReady,
     debouncedSearchTerm,
     commentFilter,
     lecturerFilter,
@@ -624,7 +634,7 @@ export default function LectureRecords() {
         .map((o) => o.departmentName)
         .filter((n): n is string => !!n);
       setDepartments([...new Set(deptNames)].sort());
-    } catch (error) {
+          } catch (error) {
       console.error('Error loading lecturers:', error);
       setAllLecturers([]);
       setLecturerOptions([]);
@@ -816,6 +826,8 @@ export default function LectureRecords() {
   };
 
   const loadRecords = async () => {
+    const requestId = ++recordsRequestSeq.current;
+    const isLatest = () => requestId === recordsRequestSeq.current;
     setIsLoading(true);
     try {
       const filter: any = {
@@ -827,6 +839,7 @@ export default function LectureRecords() {
       };
 
       const response = await qaService.getLectureRecords(filter);
+      if (!isLatest()) return;
       let data: QALectureRecord[] = [];
       let total = 0;
 
@@ -846,23 +859,26 @@ export default function LectureRecords() {
       setRecords(data);
       setTotalRecords(total);
     } catch (error) {
+      if (!isLatest()) return;
       console.error('Error loading records:', error);
       setRecords([]);
       setTotalRecords(0);
     } finally {
-      setIsLoading(false);
+      if (isLatest()) setIsLoading(false);
     }
   };
 
   const loadSummary = async () => {
+    const requestId = ++summaryRequestSeq.current;
+    const isLatest = () => requestId === summaryRequestSeq.current;
     setSummaryLoading(true);
     try {
       const result = await qaService.getLectureRecordsSummary(buildBaseFilter());
-      setSummary(result);
+      if (isLatest()) setSummary(result);
     } catch {
-      setSummary(null);
+      if (isLatest()) setSummary(null);
     } finally {
-      setSummaryLoading(false);
+      if (isLatest()) setSummaryLoading(false);
     }
   };
 
@@ -934,6 +950,7 @@ export default function LectureRecords() {
     termFilter !== TERM_FILTER_ACTIVE;
 
   const handleSeedFromTimetable = async () => {
+    if (timetableSeedLoading) return;
     const d = timetableSeedDate.trim();
     if (!d) {
       toast.error('Choose a date for timetable alignment.');
@@ -971,7 +988,7 @@ export default function LectureRecords() {
 
     const diff = end - start;
     if (diff < 0) return '00:00:00';
-
+    
     const hours = Math.floor(diff / 60);
     const minutes = Math.round(diff % 60);
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
@@ -1449,7 +1466,7 @@ export default function LectureRecords() {
               >
                 {timetableSeedLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
                 From timetable
-              </Button>
+          </Button>
             </div>
           )}
           {/* Import temporarily disabled
@@ -1549,8 +1566,8 @@ export default function LectureRecords() {
             <div className="flex flex-col md:flex-row flex-wrap items-end gap-3">
               <div className="relative flex-1 min-w-[220px]">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search lecturer, course unit, or class..."
+                <Input 
+                  placeholder="Search lecturer, course unit, or class..." 
                   className="pl-8"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}

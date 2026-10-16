@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import type { AccessGrant, AccessScope } from '@/contexts/AuthContext';
 
 export interface SystemSettings {
   [category: string]: {
@@ -14,6 +15,7 @@ export type AdminRole =
   | 'Student'
   | 'Staff'
   | 'HR'
+  | 'Timekeeper'
   | 'Management'
   | 'Admin';
 
@@ -47,16 +49,75 @@ export interface PermissionCatalogRow {
   updatedAt?: string;
 }
 
+export type AccessScopeMode = 'University' | 'OrgUnit';
+
 export interface CustomRoleRow {
   id: string;
   code: string;
   name: string;
   description: string | null;
   isActive: boolean;
+  scopeMode?: AccessScopeMode;
+  isPositionProfile?: boolean;
+  linkedUnitCount?: number;
   userCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface AccessProfileRef {
+  id: string;
+  code: string;
+  name: string;
+  scopeMode: AccessScopeMode;
+}
+
+export interface PositionAccessUnit {
+  id: string;
+  name: string;
+  code: string | null;
+  unitType: string;
+  parentId: string | null;
+  headTitle: string | null;
+  headAccessRole: AccessProfileRef | null;
+  memberAccessRole: AccessProfileRef | null;
+  appointmentCount: number;
+}
+
+export interface PositionAccessSnapshot {
+  units: PositionAccessUnit[];
+  profiles: (AccessProfileRef & { isPositionProfile: boolean })[];
+}
+
+export interface UserAccessDetails {
+  user: { id: string; role: string; email: string; name: string };
+  permissions: string[];
+  scope: AccessScope;
+  grants: AccessGrant[];
+  directScope: { schoolIds: string[]; departmentIds: string[]; programIds: string[] };
+}
+
+export interface CreatedUserResult {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  temporaryPassword: string | null;
+}
+
+export interface PasswordResetResult {
+  message: string;
+  temporaryPassword: string | null;
+}
+
+export interface LecturerLoginResult {
+  staffId: string;
+  email: string;
+  emailChanged: boolean;
+  passwordChanged: boolean;
+}
+
+export const LECTURER_PASSWORD_MIN_LENGTH = 8;
 
 export const adminService = {
   getSettings: async (): Promise<SystemSettings> => {
@@ -113,16 +174,6 @@ export const adminService = {
     }
   },
 
-  createUser: async (data: { email: string; password: string; name: string; role: string }): Promise<any> => {
-    try {
-      const response = await api.post<{ data: any }>('/admin/users', data);
-      return response?.data ?? response;
-    } catch (error) {
-      console.error('Error creating user:', error);
-      throw error;
-    }
-  },
-
   getUserById: async (id: string): Promise<any> => {
     try {
       const response = await api.get<{ data: any }>(`/admin/users/${id}`);
@@ -142,13 +193,64 @@ export const adminService = {
     }
   },
 
-  resetUserPassword: async (id: string, newPassword: string): Promise<any> => {
+  resetUserPassword: async (id: string, newPassword?: string): Promise<PasswordResetResult> => {
     try {
-      return await api.post<any>(`/admin/users/${id}/reset-password`, { newPassword });
+      return await api.post<PasswordResetResult>(
+        `/admin/users/${id}/reset-password`,
+        newPassword?.trim() ? { newPassword: newPassword.trim() } : {}
+      );
     } catch (error) {
       console.error('Error resetting password:', error);
       throw error;
     }
+  },
+
+  unlockUser: async (id: string): Promise<{ message: string }> => {
+    return await api.post<{ message: string }>(`/admin/users/${id}/unlock`);
+  },
+
+  getUserAccess: async (id: string): Promise<UserAccessDetails> => {
+    return api.get<UserAccessDetails>(`/admin/users/${id}/access`);
+  },
+
+  setUserOrgScopes: async (
+    id: string,
+    scopes: { schoolIds: string[]; departmentIds: string[]; programIds: string[] }
+  ): Promise<UserAccessDetails> => {
+    return api.put<UserAccessDetails>(`/admin/users/${id}/org-scopes`, scopes);
+  },
+
+  listPositionAccess: async (): Promise<PositionAccessSnapshot> => {
+    return api.get<PositionAccessSnapshot>('/admin/position-access');
+  },
+
+  setUnitPositionAccess: async (
+    unitId: string,
+    payload: { headAccessRoleId?: string | null; memberAccessRoleId?: string | null }
+  ): Promise<PositionAccessUnit> => {
+    return api.put<PositionAccessUnit>(`/admin/position-access/${unitId}`, payload);
+  },
+
+  updateLecturerLogin: async (
+    staffId: string,
+    input: { email?: string; newPassword?: string }
+  ): Promise<LecturerLoginResult> => {
+    const res = await api.patch<{ data: LecturerLoginResult } | LecturerLoginResult>(
+      `/admin/lecturers/${staffId}/login`,
+      input
+    );
+    return ((res as { data?: LecturerLoginResult }).data ?? res) as LecturerLoginResult;
+  },
+
+  updateStaffLogin: async (
+    staffId: string,
+    input: { email?: string; newPassword?: string }
+  ): Promise<LecturerLoginResult> => {
+    const res = await api.patch<{ data: LecturerLoginResult } | LecturerLoginResult>(
+      `/admin/staff/${staffId}/login`,
+      input
+    );
+    return ((res as { data?: LecturerLoginResult }).data ?? res) as LecturerLoginResult;
   },
 
   getAuditLog: async (params?: { page?: number; limit?: number; action?: string; entity?: string; userId?: string; startDate?: string; endDate?: string }): Promise<{ data: AuditLogEntry[]; total: number; page: number; pageSize: number }> => {
@@ -257,12 +359,21 @@ export const adminService = {
     return Array.isArray(data) ? data : [];
   },
 
-  createCustomRole: async (payload: { code: string; name: string; description?: string | null; isActive?: boolean }): Promise<CustomRoleRow> => {
+  createCustomRole: async (payload: {
+    code: string;
+    name: string;
+    description?: string | null;
+    isActive?: boolean;
+    scopeMode?: AccessScopeMode;
+  }): Promise<CustomRoleRow> => {
     const res = await api.post<{ data: CustomRoleRow }>('/admin/custom-roles', payload);
     return (res as any)?.data ?? (res as any);
   },
 
-  updateCustomRole: async (id: string, payload: { name?: string; description?: string | null; isActive?: boolean }): Promise<CustomRoleRow> => {
+  updateCustomRole: async (
+    id: string,
+    payload: { name?: string; description?: string | null; isActive?: boolean; scopeMode?: AccessScopeMode }
+  ): Promise<CustomRoleRow> => {
     const res = await api.put<{ data: CustomRoleRow }>(`/admin/custom-roles/${id}`, payload);
     return (res as any)?.data ?? (res as any);
   },

@@ -28,6 +28,7 @@ import AdminCustomRoles from './screens/AdminCustomRoles'
 import AdminTimetables from './screens/AdminTimetables'
 import AdminCourses from './screens/AdminCourses'
 import AdminLecturers from './screens/AdminLecturers'
+import AdminAdministrationStaff from './screens/AdminAdministrationStaff'
 import AdminStudents from './screens/AdminStudents'
 import AdminCalendar from './screens/AdminCalendar'
 import AdminStrategicGoals from './screens/AdminStrategicGoals'
@@ -50,7 +51,10 @@ import ClinicalReportsPage from './screens/clinical/pages/ClinicalReportsPage'
 import ClinicalProgramPoliciesPage from './screens/clinical/pages/ClinicalProgramPoliciesPage'
 import HrDashboardPage from './screens/hr/pages/HrDashboardPage'
 import HrEmployeesPage from './screens/hr/pages/HrEmployeesPage'
+import HrOrganisationPage from './screens/hr/pages/HrOrganisationPage'
 import HrAttendancePage from './screens/hr/pages/HrAttendancePage'
+import AttendanceDeskPage from './screens/attendance-desk/AttendanceDeskPage'
+import DeskEntriesPage from './screens/attendance-desk/DeskEntriesPage'
 import HrOnboardingPage from './screens/hr/pages/HrOnboardingPage'
 import HrDocumentsPage from './screens/hr/pages/HrDocumentsPage'
 import HrAppraisalsPage from './screens/hr/pages/HrAppraisalsPage'
@@ -64,37 +68,35 @@ import GraduationEventPage from './screens/graduation/pages/GraduationEventPage'
 import GraduationCommitteesPage, { GraduationCommitteeSlugRedirect } from './screens/graduation/pages/GraduationCommitteesPage'
 import GraduationRegistrationsPage from './screens/graduation/pages/GraduationRegistrationsPage'
 import GraduationProtectedRoute from './components/graduation/GraduationProtectedRoute'
-import { homePathForRole } from './lib/clinical-access'
-import { routeGuardProps } from './lib/nav-permissions'
+import { homePathForUser } from './lib/clinical-access'
+import { hasAnyPermission, routeAllowed, routeGuardProps } from './lib/nav-permissions'
 
 // Public route wrapper for login
 function PublicRoute({ children }: { children: React.ReactNode }) {
-	const { isAuthenticated, userRole, user } = useAuth()
+	const { isAuthenticated, user } = useAuth()
 	
 	if (isAuthenticated) {
-		return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
+		return <Navigate to={homePathForUser(user?.permissions)} replace />
 	}
 	
 	return <>{children}</>
 }
 
 function GraduationDashboardGate() {
-	const { userRole, user } = useAuth()
-	if (userRole === 'Graduation') {
-		return <Navigate to="/graduation/dashboard" replace />
-	}
-	if (userRole === 'Admin') {
-		return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
+	const { user } = useAuth()
+	const permissions = user?.permissions ?? []
+	if (!routeAllowed(permissions, '/dashboard') || hasAnyPermission(permissions, ['admin.console'])) {
+		return <Navigate to={homePathForUser(permissions)} replace />
 	}
 	return <Dashboard />
 }
 
 function DefaultRedirect() {
-	const { isAuthenticated, userRole, user } = useAuth()
+	const { isAuthenticated, user } = useAuth()
 	if (!isAuthenticated) {
 		return <Navigate to="/login" replace />
 	}
-	return <Navigate to={homePathForRole(userRole, user?.permissions)} replace />
+	return <Navigate to={homePathForUser(user?.permissions)} replace />
 }
 
 function AppRoutes() {
@@ -134,7 +136,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-classes" 
 				element={
-					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-classes')}>
+					<ProtectedRoute {...routeGuardProps('/student-classes')}>
 						<StudentClasses />
 					</ProtectedRoute>
 				} 
@@ -142,7 +144,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-registration" 
 				element={
-					<ProtectedRoute allowedRoles={['Student']} {...routeGuardProps('/student-registration')}>
+					<ProtectedRoute {...routeGuardProps('/student-registration')}>
 						<StudentRegistration />
 					</ProtectedRoute>
 				} 
@@ -150,7 +152,7 @@ function AppRoutes() {
 			<Route 
 				path="/student-history" 
 				element={
-					<ProtectedRoute allowedRoles={['Student', 'Staff']} {...routeGuardProps('/student-history')}>
+					<ProtectedRoute {...routeGuardProps('/student-history')}>
 						<StudentHistory />
 					</ProtectedRoute>
 				} 
@@ -176,7 +178,7 @@ function AppRoutes() {
 			<Route 
 				path="/lecturer-performance" 
 				element={
-					<ProtectedRoute allowedRoles={['Lecturer']} {...routeGuardProps('/lecturer-performance')}>
+					<ProtectedRoute {...routeGuardProps('/lecturer-performance')}>
 						<LecturerPerformance />
 					</ProtectedRoute>
 				} 
@@ -202,7 +204,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-overview" 
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-overview')}>
+					<ProtectedRoute {...routeGuardProps('/management-overview')}>
 						<ManagementOverview />
 					</ProtectedRoute>
 				} 
@@ -210,7 +212,7 @@ function AppRoutes() {
 			<Route
 				path="/management-risk"
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-risk')}>
+					<ProtectedRoute {...routeGuardProps('/management-risk')}>
 						<ManagementRiskRegister />
 					</ProtectedRoute>
 				}
@@ -218,7 +220,7 @@ function AppRoutes() {
 			<Route
 				path="/management-enrolment"
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-enrolment')}>
+					<ProtectedRoute {...routeGuardProps('/management-enrolment')}>
 						<ManagementEnrolmentHealth />
 					</ProtectedRoute>
 				}
@@ -226,7 +228,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-departments" 
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-departments')}>
+					<ProtectedRoute {...routeGuardProps('/management-departments')}>
 						<ManagementDepartments />
 					</ProtectedRoute>
 				} 
@@ -234,7 +236,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-staff-performance" 
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-staff-performance')}>
+					<ProtectedRoute {...routeGuardProps('/management-staff-performance')}>
 						<ManagementStaffPerformance />
 					</ProtectedRoute>
 				} 
@@ -242,7 +244,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-student-performance" 
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-student-performance')}>
+					<ProtectedRoute {...routeGuardProps('/management-student-performance')}>
 						<ManagementStudentPerformance />
 					</ProtectedRoute>
 				} 
@@ -258,7 +260,7 @@ function AppRoutes() {
 			<Route 
 				path="/management-student-details" 
 				element={
-					<ProtectedRoute allowedRoles={['Management', 'Admin']} {...routeGuardProps('/management-student-details')}>
+					<ProtectedRoute {...routeGuardProps('/management-student-details')}>
 						<ManagementStudentDetails />
 					</ProtectedRoute>
 				} 
@@ -290,13 +292,16 @@ function AppRoutes() {
 			<Route path="/clinical/reports" element={<ProtectedRoute {...routeGuardProps('/clinical/reports')}><ClinicalReportsPage /></ProtectedRoute>} />
 			<Route path="/clinical/policies" element={<ProtectedRoute {...routeGuardProps('/clinical/policies')}><ClinicalProgramPoliciesPage /></ProtectedRoute>} />
 
-			<Route path="/hr/dashboard" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/dashboard')}><HrDashboardPage /></ProtectedRoute>} />
-			<Route path="/hr/employees" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/employees')}><HrEmployeesPage /></ProtectedRoute>} />
-			<Route path="/hr/attendance" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/attendance')}><HrAttendancePage /></ProtectedRoute>} />
-			<Route path="/hr/onboarding" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/onboarding')}><HrOnboardingPage /></ProtectedRoute>} />
-			<Route path="/hr/documents" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/documents')}><HrDocumentsPage /></ProtectedRoute>} />
-			<Route path="/hr/appraisals" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/appraisals')}><HrAppraisalsPage /></ProtectedRoute>} />
-			<Route path="/hr/reports" element={<ProtectedRoute allowedRoles={['HR', 'Admin']} {...routeGuardProps('/hr/reports')}><HrReportsPage /></ProtectedRoute>} />
+			<Route path="/hr/dashboard" element={<ProtectedRoute {...routeGuardProps('/hr/dashboard')}><HrDashboardPage /></ProtectedRoute>} />
+			<Route path="/hr/employees" element={<ProtectedRoute {...routeGuardProps('/hr/employees')}><HrEmployeesPage /></ProtectedRoute>} />
+			<Route path="/hr/organisation" element={<ProtectedRoute {...routeGuardProps('/hr/organisation')}><HrOrganisationPage /></ProtectedRoute>} />
+			<Route path="/hr/attendance" element={<ProtectedRoute {...routeGuardProps('/hr/attendance')}><HrAttendancePage /></ProtectedRoute>} />
+			<Route path="/attendance-desk" element={<ProtectedRoute {...routeGuardProps('/attendance-desk')}><AttendanceDeskPage /></ProtectedRoute>} />
+			<Route path="/attendance-entries" element={<ProtectedRoute {...routeGuardProps('/attendance-entries')}><DeskEntriesPage /></ProtectedRoute>} />
+			<Route path="/hr/onboarding" element={<ProtectedRoute {...routeGuardProps('/hr/onboarding')}><HrOnboardingPage /></ProtectedRoute>} />
+			<Route path="/hr/documents" element={<ProtectedRoute {...routeGuardProps('/hr/documents')}><HrDocumentsPage /></ProtectedRoute>} />
+			<Route path="/hr/appraisals" element={<ProtectedRoute {...routeGuardProps('/hr/appraisals')}><HrAppraisalsPage /></ProtectedRoute>} />
+			<Route path="/hr/reports" element={<ProtectedRoute {...routeGuardProps('/hr/reports')}><HrReportsPage /></ProtectedRoute>} />
 			<Route path="/staff-appraisal" element={<ProtectedRoute {...routeGuardProps('/staff-appraisal')}><StaffAppraisal /></ProtectedRoute>} />
 			
 			{/* Admin Routes */}
@@ -323,6 +328,14 @@ function AppRoutes() {
 						<AdminLecturers />
 					</ProtectedRoute>
 				} 
+			/>
+			<Route
+				path="/admin-administration"
+				element={
+					<ProtectedRoute {...routeGuardProps('/admin-administration')}>
+						<AdminAdministrationStaff />
+					</ProtectedRoute>
+				}
 			/>
 			<Route 
 				path="/admin-courses" 

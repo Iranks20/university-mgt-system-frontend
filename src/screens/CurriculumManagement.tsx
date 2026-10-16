@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { useRole } from '@/components/RoleProvider'
+import { usePermissions } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 
 type CurriculumStatus = 'Draft' | 'Submitted' | 'Under Review' | 'Changes Requested' | 'Approved'
@@ -96,7 +96,7 @@ const lifecycle = ['Draft', 'Submitted', 'Under Review', 'Approved'] as const
 const mockCurrentLecturer = 'Dr. Ronald Ssemanda'
 
 export default function CurriculumManagement() {
-  const { role } = useRole()
+  const { can } = usePermissions()
   const [rows, setRows] = useState<CurriculumRow[]>(mockCurriculums)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -113,8 +113,8 @@ export default function CurriculumManagement() {
   const [reviewDecision, setReviewDecision] = useState<'Approved' | 'Changes Requested'>('Approved')
   const [reviewNotes, setReviewNotes] = useState('')
 
-  const isManagement = role === 'Management' || role === 'Admin'
-  const isLecturer = role === 'Lecturer'
+  const isManagement = can('academic.mgmt_read', 'academic.write')
+  const isLecturer = !isManagement && can('staff.lecturer_me')
 
   const visibleRows = useMemo(() => {
     const roleScoped = isLecturer ? rows.filter(r => r.assignedTo === mockCurrentLecturer) : rows

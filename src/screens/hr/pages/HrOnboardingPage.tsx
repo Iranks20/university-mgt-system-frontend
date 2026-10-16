@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
+import { TablePagination } from '@/components/ui/table-pagination';
+import { emptyPage, type Paged } from '@/lib/pagination';
+import { usePaging } from '@/hooks/usePaging';
+import { useDebounced } from '@/hooks/useDebounced';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,51 +29,49 @@ function formatDate(value: string | Date) {
 }
 
 export default function HrOnboardingPage() {
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [staff, setStaff] = useState<Paged<Staff>>(() => emptyPage());
   const [loading, setLoading] = useState(true);
+  const [counts, setCounts] = useState<{ pool: number; probation: number } | null>(null);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search.trim());
+  const paging = usePaging(debouncedSearch);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const result = await staffService.getStaff({ limit: 500 });
-        if (!cancelled) setStaff(result.data ?? []);
-      } catch {
-        if (!cancelled) setStaff([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    Promise.all([
+      staffService.getStaff({ onboarding: true, limit: 1 }),
+      staffService.getStaff({ onboarding: true, status: 'Probation', limit: 1 }),
+    ]).then(([pool, probation]) => {
+      if (!cancelled) setCounts({ pool: pool.total, probation: probation.total });
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const onboardingPool = useMemo(() => {
-    return staff
-      .filter((s) => s.status !== 'Terminated' && s.status !== 'Inactive')
-      .filter((s) => {
-        if (s.status === 'Probation') return true;
-        return daysSince(s.hireDate) <= 90;
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    staffService
+      .getStaff({
+        onboarding: true,
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        page: paging.page,
+        limit: paging.pageSize,
       })
-      .sort((a, b) => new Date(b.hireDate).getTime() - new Date(a.hireDate).getTime());
-  }, [staff]);
+      .then((result) => {
+        if (!cancelled) setStaff({ ...result, data: result.data ?? [] });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, paging.page, paging.pageSize]);
 
-  const filtered = onboardingPool.filter((s) => {
-    const q = search.toLowerCase();
-    if (!q) return true;
-    const name = `${s.firstName} ${s.lastName}`.toLowerCase();
-    return (
-      name.includes(q) ||
-      s.staffNumber.toLowerCase().includes(q) ||
-      (s.departmentName ?? '').toLowerCase().includes(q)
-    );
-  });
-
-  const probationCount = onboardingPool.filter((s) => s.status === 'Probation').length;
-  const newHireCount = onboardingPool.filter((s) => s.status !== 'Probation').length;
+  const probationCount = counts?.probation ?? 0;
+  const newHireCount = counts ? counts.pool - counts.probation : 0;
 
   return (
     <HrPageShell
@@ -89,7 +91,7 @@ export default function HrOnboardingPage() {
             <CardTitle className="text-sm text-gray-600">In onboarding pool</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? '—' : onboardingPool.length}</div>
+            <div className="text-2xl font-bold">{counts ? counts.pool : '—'}</div>
           </CardContent>
         </Card>
         <Card>
@@ -97,7 +99,7 @@ export default function HrOnboardingPage() {
             <CardTitle className="text-sm text-purple-700">Probation</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? '—' : probationCount}</div>
+            <div className="text-2xl font-bold">{counts ? probationCount : '—'}</div>
           </CardContent>
         </Card>
         <Card>
@@ -105,7 +107,7 @@ export default function HrOnboardingPage() {
             <CardTitle className="text-sm text-[#015F2B]">New hires (≤90 days)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{loading ? '—' : newHireCount}</div>
+            <div className="text-2xl font-bold">{counts ? newHireCount : '—'}</div>
           </CardContent>
         </Card>
       </div>
@@ -117,7 +119,7 @@ export default function HrOnboardingPage() {
             <Search className="absolute left-3 top-5 h-4 w-4 text-gray-400" />
             <Input
               className="pl-9"
-              placeholder="Search name, staff number, department…"
+              placeholder="Search name or staff number…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -143,14 +145,14 @@ export default function HrOnboardingPage() {
                     Loading…
                   </TableCell>
                 </TableRow>
-              ) : filtered.length === 0 ? (
+              ) : staff.data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                     No probation or recent-hire staff found
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((s) => (
+                staff.data.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">
                       {s.firstName} {s.lastName}
@@ -182,6 +184,14 @@ export default function HrOnboardingPage() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={staff.total}
+            onPageChange={paging.setPage}
+            onPageSizeChange={paging.setPageSize}
+            disabled={loading}
+          />
         </CardContent>
       </Card>
     </HrPageShell>

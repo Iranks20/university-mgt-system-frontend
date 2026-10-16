@@ -1370,8 +1370,8 @@ export function exportStudentAttendanceToCSV(
 export function downloadStudentImportTemplateExcel(): void {
   const data = [
     ['name', 'email', 'studentId', 'password'],
-    ['John Doe', 'john.doe@student.kcu.ac.ug', '2100101', 'TempPassword123!'],
-    ['Jane Smith', 'jane.smith@student.kcu.ac.ug', '2100102', 'TempPassword123!'],
+    ['John Doe', 'john.doe@student.kcu.ac.ug', '2100101', ''],
+    ['Jane Smith', 'jane.smith@student.kcu.ac.ug', '2100102', ''],
   ];
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [
@@ -1385,35 +1385,6 @@ export function downloadStudentImportTemplateExcel(): void {
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, 'students_template.xlsx');
-}
-
-/** Staff import template: name, email, role, dept (optional: staffNumber) */
-export function downloadStaffImportTemplateExcel(): void {
-  const data = [
-    ['name', 'email', 'role', 'dept'],
-    ['Example Staff', 'example@kcu.ac.ug', 'Staff', 'Example Department'],
-    ['HR Manager', 'hr@kcu.ac.ug', 'Administrator', 'Example Department'],
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Staff');
-  const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, 'staff_template.xlsx');
-}
-
-/** Lecturers import template: name, email, role (Lecturer), dept */
-export function downloadLecturerImportTemplateExcel(): void {
-  const data = [
-    ['name', 'email', 'role', 'dept'],
-    ['Dr. Jane Smith', 'jsmith@kcu.ac.ug', 'Lecturer', 'Computer Science'],
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Lecturers');
-  const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, 'lecturers_template.xlsx');
 }
 
 /**

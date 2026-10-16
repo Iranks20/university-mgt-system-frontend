@@ -1,6 +1,11 @@
 import api from '@/lib/api';
 
-export type HrReportExportType = 'headcount' | 'attendance' | 'appraisal' | 'onboarding';
+export type HrReportExportType =
+  | 'headcount'
+  | 'attendance'
+  | 'attendance-monthly'
+  | 'appraisal'
+  | 'onboarding';
 
 function getApiBase(): string {
   return (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
@@ -21,10 +26,12 @@ export const hrReportsService = {
   downloadExport: async (params: {
     type: HrReportExportType;
     date?: string;
+    month?: string;
     cycleId?: string;
   }): Promise<{ filename: string }> => {
     const query = new URLSearchParams({ type: params.type });
     if (params.date) query.set('date', params.date);
+    if (params.month) query.set('month', params.month);
     if (params.cycleId) query.set('cycleId', params.cycleId);
 
     const token = getToken();

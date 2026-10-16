@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
-import { StaffFormDialog, type StaffFormValues } from '@/components/hr/StaffFormDialog';
+import {
+  StaffFormDialog,
+  type OfficeOption,
+  type StaffFormValues,
+  type SupervisorOption,
+} from '@/components/hr/StaffFormDialog';
+import { organizationService } from '@/services/organization.service';
+import { buildOfficeOptions } from '@/lib/office-options';
+import { STAFF_CATEGORY_OPTIONS, type Staff } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -35,50 +43,49 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Search, UserPlus, Download, Eye, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Search, UserPlus, Download, Eye, MoreHorizontal, Pencil, QrCode, Trash2 } from 'lucide-react';
+import { staffAttendanceService } from '@/services/staff-attendance.service';
+import { printStaffBadge } from '@/lib/staff-badge-print';
 import { toast } from 'sonner';
 import { staffService } from '@/services/staff.service';
 import { academicService } from '@/services/academic.service';
 import { hrReportsService } from '@/services/hr-reports.service';
 import { getApiErrorMessage } from '@/lib/api';
 import { useSearchParams } from 'react-router';
+import { TemporaryCredentialsDialog, type TemporaryCredential } from '@/components/TemporaryCredentialsDialog';
 
-type StaffRecord = {
-  id: string;
-  userId?: string | null;
-  staffNumber: string;
-  firstName: string;
-  lastName: string;
-  email: string;
+type StaffRecord = Omit<Staff, 'phone' | 'status' | 'employmentType'> & {
   phone?: string | null;
-  departmentId: string;
-  departmentName?: string | null;
-  schoolId?: string | null;
-  role: string;
   status?: string;
   employmentType?: string;
-  hireDate: string | Date;
-  supervisorId?: string | null;
-  supervisorName?: string | null;
-  hasResolvedSupervisor?: boolean;
-  supervisorSource?: 'explicit' | 'department' | 'missing';
 };
 
 type DeptOption = { id: string; name: string; schoolId: string | null };
 type SchoolOption = { id: string; name: string };
+
+const SUPERVISOR_EXCLUDED_STATUSES = new Set(['Terminated', 'Inactive', 'Suspended']);
+
+const CATEGORY_LABEL = Object.fromEntries(STAFF_CATEGORY_OPTIONS.map((c) => [c.value, c.label.split(' (')[0]]));
 
 export default function HrEmployeesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [employees, setEmployees] = useState<StaffRecord[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
   const [schools, setSchools] = useState<SchoolOption[]>([]);
+  const [offices, setOffices] = useState<OfficeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [schoolFilter, setSchoolFilter] = useState('all');
   const [deptFilter, setDeptFilter] = useState('all');
+  const [officeFilter, setOfficeFilter] = useState(searchParams.get('unit') ?? 'all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [supervisionFilter, setSupervisionFilter] = useState(
-    searchParams.get('supervision') === 'missing' ? 'missing' : 'all'
+    searchParams.get('supervision') === 'missing'
+      ? 'missing'
+      : searchParams.get('placement') === 'unplaced'
+        ? 'unplaced'
+        : 'all'
   );
 
   const [viewing, setViewing] = useState<StaffRecord | null>(null);
@@ -86,6 +93,8 @@ export default function HrEmployeesPage() {
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editTarget, setEditTarget] = useState<StaffRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StaffRecord | null>(null);
+  const [staffDirectory, setStaffDirectory] = useState<SupervisorOption[]>([]);
+  const [issuedCredentials, setIssuedCredentials] = useState<TemporaryCredential[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -96,15 +105,21 @@ export default function HrEmployeesPage() {
   const loadData = useCallback(async (pageNum = 1) => {
     setLoading(true);
     try {
-      const [staffRes, schoolRes, levelRes, departmentRes] = await Promise.all([
+      const [staffRes, schoolRes, levelRes, departmentRes, orgTree] = await Promise.all([
         staffService.getStaff({
           page: pageNum,
           limit: pageSize,
           ...(supervisionFilter === 'missing' ? { missingSupervisor: true } : {}),
+          ...(supervisionFilter === 'unplaced' ? { unplaced: true } : {}),
+          ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
+          ...(officeFilter !== 'all' ? { orgUnitId: officeFilter } : {}),
+          ...(schoolFilter !== 'all' ? { schoolId: schoolFilter } : {}),
+          ...(deptFilter !== 'all' ? { department: deptFilter } : {}),
         }),
         academicService.getSchools(),
         academicService.getLevels(),
         academicService.getDepartments(),
+        organizationService.getTree().catch(() => null),
       ]);
 
       const levelToSchool = new Map(levelRes.map((l: any) => [l.id, l.schoolId]));
@@ -117,10 +132,10 @@ export default function HrEmployeesPage() {
       const deptMap = new Map(deptList.map((d) => [d.id, d]));
 
       const mapped: StaffRecord[] = ((staffRes.data ?? []) as StaffRecord[]).map((s) => {
-        const dept = deptMap.get(s.departmentId);
+        const dept = s.departmentId ? deptMap.get(s.departmentId) : undefined;
         return {
           ...s,
-          departmentName: s.departmentName || dept?.name || 'Unknown',
+          departmentName: s.departmentName || dept?.name || null,
           schoolId: s.schoolId || dept?.schoolId || null,
           status: s.status || 'Active',
           employmentType: s.employmentType || 'Full-time',
@@ -129,23 +144,28 @@ export default function HrEmployeesPage() {
 
       setSchools(schoolRes.map((s: any) => ({ id: s.id, name: s.name })));
       setDepartments(deptList);
+      if (orgTree) setOffices(buildOfficeOptions(orgTree.units));
       setEmployees(mapped);
       setTotal(staffRes.total ?? mapped.length);
       setPage(pageNum);
     } finally {
       setLoading(false);
     }
-  }, [supervisionFilter]);
+  }, [supervisionFilter, categoryFilter, officeFilter, schoolFilter, deptFilter]);
 
   useEffect(() => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (supervisionFilter === 'missing') next.set('supervision', 'missing');
       else next.delete('supervision');
+      if (supervisionFilter === 'unplaced') next.set('placement', 'unplaced');
+      else next.delete('placement');
+      if (officeFilter !== 'all') next.set('unit', officeFilter);
+      else next.delete('unit');
       return next;
     });
     loadData(1);
-  }, [loadData, setSearchParams, supervisionFilter]);
+  }, [loadData, setSearchParams, supervisionFilter, officeFilter]);
 
   const visibleDepts = useMemo(() => {
     if (schoolFilter === 'all') return departments;
@@ -160,23 +180,30 @@ export default function HrEmployeesPage() {
         e.firstName.toLowerCase().includes(q) ||
         e.lastName.toLowerCase().includes(q) ||
         e.staffNumber.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q);
-      const matchSchool = schoolFilter === 'all' || e.schoolId === schoolFilter;
-      const matchDept = deptFilter === 'all' || e.departmentId === deptFilter;
+        e.email.toLowerCase().includes(q) ||
+        e.role.toLowerCase().includes(q);
       const matchStatus = statusFilter === 'all' || (e.status || '').toLowerCase() === statusFilter;
-      const matchSupervision =
-        supervisionFilter === 'all' ||
-        (supervisionFilter === 'missing' ? !e.hasResolvedSupervisor : !!e.hasResolvedSupervisor);
-      return matchSearch && matchSchool && matchDept && matchStatus && matchSupervision;
+      const matchSupervision = supervisionFilter !== 'missing' || !e.hasResolvedSupervisor;
+      return matchSearch && matchStatus && matchSupervision;
     });
-  }, [employees, search, schoolFilter, deptFilter, statusFilter, supervisionFilter]);
+  }, [employees, search, statusFilter, supervisionFilter]);
 
   const schoolName = (id?: string | null) => schools.find((s) => s.id === id)?.name || '-';
+  const placementOf = (e: StaffRecord) =>
+    e.departmentName || e.orgUnitName || e.placementLabel || null;
 
   const openCreate = () => {
     setEditTarget(null);
     setFormMode('create');
     setFormOpen(true);
+  };
+
+  const printBadge = async (staffId: string) => {
+    try {
+      printStaffBadge(await staffAttendanceService.getBadge(staffId));
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not print the badge'));
+    }
   };
 
   const openEdit = (record: StaffRecord) => {
@@ -185,22 +212,62 @@ export default function HrEmployeesPage() {
     setFormOpen(true);
   };
 
+  useEffect(() => {
+    if (!formOpen || staffDirectory.length) return;
+    let cancelled = false;
+    staffService.getStaff({ limit: 5000 }).then((res) => {
+      if (cancelled) return;
+      const eligible = ((res.data ?? []) as Array<SupervisorOption & { status?: string }>).filter(
+        (s) => !SUPERVISOR_EXCLUDED_STATUSES.has(s.status ?? 'Active')
+      );
+      setStaffDirectory(eligible);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [formOpen, staffDirectory.length]);
+
   const handleFormSubmit = async (values: StaffFormValues) => {
+    const { placement, userRole, tempPassword, ...rest } = values;
     const payload = {
-      ...values,
+      ...rest,
       phone: values.phone || null,
-      schoolId: values.schoolId || null,
+      departmentId: placement === 'academic' ? values.departmentId : null,
+      schoolId: placement === 'academic' ? values.schoolId || null : null,
+      orgUnitId: placement === 'office' ? values.orgUnitId : null,
+      academicRank: values.staffCategory === 'Academic' ? values.academicRank || null : null,
+      gender: values.gender || null,
+      hireDate: values.hireDate || undefined,
       supervisorId: values.supervisorId || null,
-      userRole: values.userRole || undefined,
-      tempPassword: values.tempPassword || undefined,
+      ...(formMode === 'create' && userRole ? { userRole } : {}),
+      ...(tempPassword.trim() ? { tempPassword: tempPassword.trim() } : {}),
     };
     if (formMode === 'create') {
-      await staffService.createStaff(payload as any);
+      const created = (await staffService.createStaff(payload as any)) as {
+        temporaryPassword?: string | null;
+      } | null;
       toast.success('Employee created successfully.');
+      if (created?.temporaryPassword) {
+        setIssuedCredentials([
+          {
+            name: `${values.firstName} ${values.lastName}`.trim(),
+            login: values.email.trim(),
+            temporaryPassword: created.temporaryPassword,
+          },
+        ]);
+      }
     } else if (editTarget) {
-      await staffService.updateStaff(editTarget.id, payload as any);
+      const updated = (await staffService.updateStaff(editTarget.id, payload as any)) as {
+        loginChange?: 'deactivated' | 'reactivated' | null;
+      } | null;
       toast.success('Employee updated successfully.');
+      if (updated?.loginChange === 'deactivated') {
+        toast.info('Their sign-in has been disabled because they are no longer active.');
+      } else if (updated?.loginChange === 'reactivated') {
+        toast.info('Their sign-in has been re-enabled.');
+      }
     }
+    setStaffDirectory([]);
     await loadData(page);
   };
 
@@ -233,21 +300,28 @@ export default function HrEmployeesPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const formInitial: Partial<StaffFormValues> | undefined = editTarget
+  const formInitial = useMemo<Partial<StaffFormValues> | undefined>(() => editTarget
     ? {
         staffNumber: editTarget.staffNumber,
         firstName: editTarget.firstName,
         lastName: editTarget.lastName,
         email: editTarget.email,
         phone: editTarget.phone || '',
-        departmentId: editTarget.departmentId,
+        placement: editTarget.orgUnitId && !editTarget.departmentId ? 'office' : 'academic',
+        departmentId: editTarget.departmentId || '',
         schoolId: editTarget.schoolId || '',
+        orgUnitId: editTarget.orgUnitId || '',
         role: editTarget.role,
+        staffCategory: editTarget.staffCategory || 'Administrative',
+        academicRank: editTarget.academicRank || '',
+        gender: editTarget.gender || '',
+        hireDate: editTarget.hireDate ? String(editTarget.hireDate).slice(0, 10) : '',
+        hasPhd: Boolean(editTarget.hasPhd),
         employmentType: editTarget.employmentType || 'Full-time',
         status: editTarget.status || 'Active',
         supervisorId: editTarget.supervisorId || '',
       }
-    : undefined;
+    : undefined, [editTarget]);
 
   return (
     <HrPageShell
@@ -273,11 +347,35 @@ export default function HrEmployeesPage() {
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
               className="pl-9"
-              placeholder="Search by name, staff number, or email…"
+              placeholder="Search by name, staff number, email or job title…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full lg:w-44">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {STAFF_CATEGORY_OPTIONS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>{CATEGORY_LABEL[c.value]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Combobox
+            className="w-full lg:w-56"
+            options={[
+              { value: 'all', label: 'All offices' },
+              ...offices.map((o) => ({ value: o.id, label: o.label })),
+            ]}
+            value={officeFilter}
+            onValueChange={(v) => setOfficeFilter(v || 'all')}
+            placeholder="Office / unit"
+            searchPlaceholder="Search offices..."
+            emptyText="No office found."
+            initialDisplayCount={200}
+          />
           <Combobox
             className="w-full lg:w-56"
             options={[
@@ -285,7 +383,10 @@ export default function HrEmployeesPage() {
               ...schools.map((s) => ({ value: s.id, label: s.name })),
             ]}
             value={schoolFilter}
-            onValueChange={(v) => setSchoolFilter(v || 'all')}
+            onValueChange={(v) => {
+              setSchoolFilter(v || 'all');
+              setDeptFilter('all');
+            }}
             placeholder="School"
             searchPlaceholder="Search schools..."
             emptyText="No school found."
@@ -324,6 +425,7 @@ export default function HrEmployeesPage() {
             <SelectContent>
               <SelectItem value="all">All reporting lines</SelectItem>
               <SelectItem value="missing">Needs supervisor</SelectItem>
+              <SelectItem value="unplaced">Not placed in a department or office</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -343,8 +445,8 @@ export default function HrEmployeesPage() {
                     <TableHead>Staff No.</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Job Title</TableHead>
-                    <TableHead>School</TableHead>
-                    <TableHead>Department</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Department / Office</TableHead>
                     <TableHead>Supervisor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -355,14 +457,44 @@ export default function HrEmployeesPage() {
                     <TableRow key={e.id}>
                       <TableCell className="font-mono text-xs">{e.staffNumber}</TableCell>
                       <TableCell className="font-medium">{e.firstName} {e.lastName}</TableCell>
-                      <TableCell>{e.role}</TableCell>
-                      <TableCell>{schoolName(e.schoolId)}</TableCell>
-                      <TableCell>{e.departmentName || '-'}</TableCell>
+                      <TableCell>
+                        <div>{e.role}</div>
+                        {(e.leadershipRoles ?? []).map((r) => (
+                          <Badge key={r} variant="outline" className="mt-1 mr-1 text-[11px] font-normal">
+                            {r}
+                          </Badge>
+                        ))}
+                      </TableCell>
+                      <TableCell>
+                        <div>{e.staffCategory ? CATEGORY_LABEL[e.staffCategory] : '-'}</div>
+                        {e.academicRankLabel && (
+                          <div className="text-xs text-muted-foreground">{e.academicRankLabel}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {placementOf(e) ? (
+                          <>
+                            <div>{placementOf(e)}</div>
+                            {e.departmentId && (
+                              <div className="text-xs text-muted-foreground">
+                                {e.schoolName || schoolName(e.schoolId)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <Badge variant="destructive">Not placed</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {e.supervisorName ? (
-                          e.supervisorName
-                        ) : e.supervisorSource === 'department' ? (
-                          'Dept HOD'
+                          <>
+                            <div>{e.supervisorName}</div>
+                            {e.supervisorSource !== 'explicit' && (
+                              <div className="text-xs text-muted-foreground">
+                                {e.supervisorSource === 'department' ? 'Head of department' : 'From organisation structure'}
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <Badge variant="destructive">Missing</Badge>
                         )}
@@ -383,6 +515,9 @@ export default function HrEmployeesPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(e)}>
                               <Pencil className="mr-2 h-4 w-4" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void printBadge(e.id)}>
+                              <QrCode className="mr-2 h-4 w-4" /> Print attendance badge
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
@@ -428,18 +563,32 @@ export default function HrEmployeesPage() {
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div><dt className="text-gray-500">Email</dt><dd>{viewing.email}</dd></div>
                 <div><dt className="text-gray-500">Phone</dt><dd>{viewing.phone || '-'}</dd></div>
-                <div><dt className="text-gray-500">School</dt><dd>{schoolName(viewing.schoolId)}</dd></div>
-                <div><dt className="text-gray-500">Department</dt><dd>{viewing.departmentName || '-'}</dd></div>
+                <div>
+                  <dt className="text-gray-500">Category</dt>
+                  <dd>
+                    {viewing.staffCategory ? CATEGORY_LABEL[viewing.staffCategory] : '-'}
+                    {viewing.academicRankLabel ? ` · ${viewing.academicRankLabel}` : ''}
+                  </dd>
+                </div>
+                <div><dt className="text-gray-500">Gender</dt><dd>{viewing.gender || '-'}</dd></div>
+                <div><dt className="text-gray-500">Department / Office</dt><dd>{placementOf(viewing) || 'Not placed'}</dd></div>
+                <div>
+                  <dt className="text-gray-500">School</dt>
+                  <dd>{viewing.departmentId ? viewing.schoolName || schoolName(viewing.schoolId) : '-'}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-gray-500">Leadership roles</dt>
+                  <dd>{viewing.leadershipRoles?.length ? viewing.leadershipRoles.join('; ') : 'None'}</dd>
+                </div>
+                <div><dt className="text-gray-500">PhD holder</dt><dd>{viewing.hasPhd ? 'Yes' : 'No'}</dd></div>
                 <div><dt className="text-gray-500">Employment</dt><dd>{viewing.employmentType || '-'}</dd></div>
                 <div><dt className="text-gray-500">Hire date</dt><dd>{new Date(viewing.hireDate).toLocaleDateString()}</dd></div>
                 <div>
                   <dt className="text-gray-500">Supervisor</dt>
                   <dd>
                     {viewing.supervisorName
-                      ? viewing.supervisorName
-                      : viewing.supervisorSource === 'department'
-                        ? 'Department HOD (default)'
-                        : 'Missing'}
+                      ? `${viewing.supervisorName}${viewing.supervisorSource === 'explicit' ? '' : ' (automatic)'}`
+                      : 'Missing'}
                   </dd>
                 </div>
                 <div><dt className="text-gray-500">System account</dt><dd>{viewing.userId ? 'Linked' : 'None'}</dd></div>
@@ -458,7 +607,8 @@ export default function HrEmployeesPage() {
         initial={formInitial}
         departments={departments}
         schools={schools}
-        supervisors={employees}
+        offices={offices}
+        supervisors={staffDirectory.length ? staffDirectory : employees}
         excludeStaffId={editTarget?.id}
         onSubmit={handleFormSubmit}
       />
@@ -484,6 +634,8 @@ export default function HrEmployeesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemporaryCredentialsDialog credentials={issuedCredentials} onClose={() => setIssuedCredentials([])} />
     </HrPageShell>
   );
 }

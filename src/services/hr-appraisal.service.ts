@@ -9,7 +9,19 @@ import type {
   HrAppraisalReview,
 } from '@/features/hr/types';
 
-type Paged<T> = { data: T[]; total: number; page: number; pageSize: number; totalPages?: number };
+import type { Paged } from '@/lib/pagination';
+
+function toPaged<T>(res: Partial<Paged<T>> | null | undefined, pageSize: number): Paged<T> {
+  const total = res?.total ?? 0;
+  const size = res?.pageSize ?? pageSize;
+  return {
+    data: res?.data ?? [],
+    total,
+    page: res?.page ?? 1,
+    pageSize: size,
+    totalPages: res?.totalPages ?? Math.max(1, Math.ceil(total / size)),
+  };
+}
 
 export type CalibrationRow = {
   department: string;
@@ -147,15 +159,10 @@ export const hrAppraisalService = {
     cycleId?: string;
     status?: string;
     search?: string;
+    openOnly?: boolean;
   }): Promise<Paged<HrAppraisalReview>> => {
     const res = await api.get<Paged<HrAppraisalReview>>('/hr/appraisals/reviews', params as Record<string, unknown>);
-    return {
-      data: res?.data ?? [],
-      total: res?.total ?? 0,
-      page: res?.page ?? 1,
-      pageSize: res?.pageSize ?? 50,
-      totalPages: res?.totalPages,
-    };
+    return toPaged(res, params?.limit ?? 50);
   },
 
   getReview: async (id: string): Promise<HrAppraisalReview | null> => {
@@ -217,11 +224,13 @@ export const hrAppraisalService = {
     return summary ?? emptyDashboardSummary;
   },
 
-  getArchives: async (): Promise<HrAppraisalReview[]> => {
-    const res = await api.get<HrAppraisalReview[] | { data: HrAppraisalReview[] }>(
-      '/hr/appraisals/archives'
-    );
-    return asArray(res);
+  getArchives: async (params: {
+    page: number;
+    limit: number;
+    search?: string;
+  }): Promise<Paged<HrAppraisalReview>> => {
+    const res = await api.get<Paged<HrAppraisalReview>>('/hr/appraisals/archives', params);
+    return toPaged(res, params.limit);
   },
 };
 

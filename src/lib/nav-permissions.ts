@@ -24,25 +24,13 @@ export function normalizePermissionSets(required: PermissionRequirement | undefi
   return [required as string[]];
 }
 
-export const HR_MODULE_ACCESS_ROLES = ['HR', 'Admin'] as const;
-
-export type HrModuleAccessRole = (typeof HR_MODULE_ACCESS_ROLES)[number];
-
-export function isHrModulePath(path: string): boolean {
-  const basePath = path.split('?')[0];
-  return basePath === '/hr/dashboard' || basePath.startsWith('/hr/');
-}
-
-export function canAccessHrModule(role: string | null | undefined): boolean {
-  return !!role && (HR_MODULE_ACCESS_ROLES as readonly string[]).includes(role);
-}
-
 export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-users': ['admin.console'],
   '/admin-roles': ['admin.console'],
   '/admin-students': ['admin.console'],
   '/admin-student-info-forms': [['students.write'], ['admin.console']],
   '/admin-lecturers': ['admin.console'],
+  '/admin-administration': ['admin.console'],
   '/admin-audit-log': ['admin.console'],
   '/admin-courses': ['academic.write'],
   '/admin-classes': ['academic.write'],
@@ -160,16 +148,18 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/presence': [
     ['academic.personal_schedule', 'qa.lecturer_portal'],
     ['academic.personal_schedule', 'students.self', 'students.attendance_self'],
-    ['staff.timeclock'],
   ],
   '/hr/dashboard': ['hr.read'],
   '/hr/employees': ['hr.read'],
+  '/hr/organisation': ['hr.read'],
   '/hr/attendance': ['hr.read'],
   '/hr/onboarding': [['hr.read', 'hr.write']],
   '/hr/documents': ['hr.read'],
   '/hr/appraisals': [['hr.read', 'hr.appraisal_manage']],
   '/hr/reports': [['hr.read', 'hr.reports']],
   '/staff-appraisal': ['hr.appraisal_submit'],
+  '/attendance-desk': ['staff_attendance.record'],
+  '/attendance-entries': ['staff_attendance.record'],
 };
 
 export const ROUTE_PERMISSION: Record<string, PermissionRequirement> = {
@@ -197,6 +187,7 @@ export const ROUTE_PERMISSION: Record<string, PermissionRequirement> = {
 
 const HOME_PATH_CANDIDATES = [
   '/hr/dashboard',
+  '/attendance-desk',
   '/management-overview',
   '/dashboard',
   '/clinical/sites',
@@ -227,24 +218,15 @@ export function permissionSetsForRoute(path: string): string[][] {
   return normalizePermissionSets(required);
 }
 
-export function routeAllowed(
-  userPermissions: string[],
-  path: string,
-  role?: string | null
-): boolean {
-  const basePath = path.split('?')[0];
-  if (isHrModulePath(basePath) && !canAccessHrModule(role)) {
-    return false;
-  }
+export function routeAllowed(userPermissions: string[], path: string): boolean {
   const required = permissionRequirementForRoute(path);
   if (!required) return false;
   return hasAnyPermission(userPermissions, required);
 }
 
-export function resolveHomePath(userPermissions: string[], role?: string | null): string | null {
+export function resolveHomePath(userPermissions: string[]): string | null {
   for (const path of HOME_PATH_CANDIDATES) {
-    if (isHrModulePath(path) && !canAccessHrModule(role)) continue;
-    if (routeAllowed(userPermissions, path, role)) return path;
+    if (routeAllowed(userPermissions, path)) return path;
   }
   return null;
 }
@@ -297,7 +279,8 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/admin-students', label: 'Students (Users)', permissions: NAV_PERMISSION['/admin-students'] },
   { path: '/admin-student-info-forms', label: 'Student info forms', permissions: NAV_PERMISSION['/admin-student-info-forms'] },
   { path: '/admin-lecturers', label: 'Lecturers (Users)', permissions: NAV_PERMISSION['/admin-lecturers'] },
-  { path: '/admin-users', label: 'System accounts', permissions: NAV_PERMISSION['/admin-users'] },
+  { path: '/admin-administration', label: 'Administration staff', permissions: NAV_PERMISSION['/admin-administration'] },
+  { path: '/admin-users', label: 'Account security', permissions: NAV_PERMISSION['/admin-users'] },
   { path: '/admin-roles', label: 'Roles & Permissions', permissions: NAV_PERMISSION['/admin-roles'] },
   { path: '/admin-audit-log', label: 'Audit log (from Settings)', permissions: NAV_PERMISSION['/admin-audit-log'] },
   { path: '/clinical/sites', label: 'Clinical Sites', permissions: NAV_PERMISSION['/clinical/sites'] },
@@ -311,40 +294,35 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/clinical/reports', label: 'Clinical Reports', permissions: NAV_PERMISSION['/clinical/reports'] },
   { path: '/hr/dashboard', label: 'HR Dashboard', permissions: NAV_PERMISSION['/hr/dashboard'] },
   { path: '/hr/employees', label: 'Employees', permissions: NAV_PERMISSION['/hr/employees'] },
+  { path: '/hr/organisation', label: 'Organisation Structure', permissions: NAV_PERMISSION['/hr/organisation'] },
   { path: '/hr/attendance', label: 'Staff Attendance', permissions: NAV_PERMISSION['/hr/attendance'] },
   { path: '/hr/onboarding', label: 'Onboarding', permissions: NAV_PERMISSION['/hr/onboarding'] },
   { path: '/hr/documents', label: 'HR Documents', permissions: NAV_PERMISSION['/hr/documents'] },
   { path: '/hr/appraisals', label: 'Performance Appraisal', permissions: NAV_PERMISSION['/hr/appraisals'] },
   { path: '/hr/reports', label: 'HR Reports', permissions: NAV_PERMISSION['/hr/reports'] },
   { path: '/staff-appraisal', label: 'My Appraisal', permissions: NAV_PERMISSION['/staff-appraisal'] },
+  { path: '/attendance-desk', label: 'Attendance Desk', permissions: NAV_PERMISSION['/attendance-desk'] },
+  { path: '/attendance-entries', label: 'My Entries', permissions: NAV_PERMISSION['/attendance-entries'] },
 ];
 
-export function navAllowed(
-  userPermissions: string[],
-  path: string,
-  role?: string | null
-): boolean {
-  return routeAllowed(userPermissions, path, role);
-}
-
-export function graduationNavAllowed(userPermissions: string[], path: string, role?: string | null): boolean {
-  if (role === 'Graduation' || role === 'Admin') {
-    if (path.startsWith('/graduation')) return true;
-  }
+export function navAllowed(userPermissions: string[], path: string): boolean {
   return routeAllowed(userPermissions, path);
 }
 
-export function shouldNestClinicalNavItems(role: string): boolean {
-  return role === 'Admin' || role === 'Management';
+const CLINICAL_OPERATIONS_PERMISSIONS = ['clinical.sessions.record', 'clinical.sessions.verify'];
+
+export function shouldNestClinicalNavItems(userPermissions: string[]): boolean {
+  return !CLINICAL_OPERATIONS_PERMISSIONS.some((p) => userPermissions.includes(p));
 }
 
-export function shouldNestHrNavItems(role: string): boolean {
-  return role === 'Admin';
+export function shouldNestHrNavItems(userPermissions: string[]): boolean {
+  return !userPermissions.includes('hr.write');
 }
 
 export const HR_NAV_PATHS = [
   '/hr/dashboard',
   '/hr/employees',
+  '/hr/organisation',
   '/hr/attendance',
   '/hr/onboarding',
   '/hr/documents',

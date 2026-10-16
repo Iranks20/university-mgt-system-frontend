@@ -14,8 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { useRole } from "@/components/RoleProvider";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, usePermissions } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { enrollmentService } from "@/services/enrollment.service";
 import { studentService } from "@/services/student.service";
@@ -29,7 +28,12 @@ export default function AttendanceHistory() {
 }
 
 function AttendanceHistoryContent() {
-  const { role } = useRole();
+  const { can } = usePermissions();
+  const role: 'Staff' | 'Student' | null = can('staff.timeclock')
+    ? 'Staff'
+    : can('students.attendance_self')
+      ? 'Student'
+      : null;
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');

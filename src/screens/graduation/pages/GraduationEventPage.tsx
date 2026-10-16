@@ -41,11 +41,10 @@ const emptyForm = (): EventFormState => ({
 
 export default function GraduationEventPage() {
   const navigate = useNavigate();
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
   const { activeEvent, access: serverAccess, loading } = useGraduationActiveEvent();
   const access = buildGraduationAccess({
     permissions: user?.permissions,
-    role: userRole,
     serverAccess,
   });
   const [form, setForm] = useState<EventFormState>(emptyForm());

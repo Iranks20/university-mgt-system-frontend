@@ -3,14 +3,15 @@ import { Link } from 'react-router';
 import { Briefcase, CheckCircle, ClipboardList, MapPin, Users, UserCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useRole } from '@/components/RoleProvider';
+import { usePermissions } from '@/contexts/AuthContext';
 import { CLINICAL_ROUTES } from '@/lib/clinical-routes';
 import { clinicalService } from '@/services/clinical.service';
 
 type DashboardOverview = Awaited<ReturnType<typeof clinicalService.getDashboardOverview>>;
 
 export function ClinicalRoleDashboard() {
-  const { role } = useRole();
+  const { can } = usePermissions();
+  const isCoordinatorView = can('clinical.sessions.verify') && !can('clinical.sessions.record');
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +34,7 @@ export function ClinicalRoleDashboard() {
   const totals = overview?.totals;
   const siteRows = overview?.sites ?? [];
 
-  if (role === 'ClinicalCoordinator') {
+  if (isCoordinatorView) {
     return (
       <div className="p-6 space-y-6">
         <div>

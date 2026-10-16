@@ -1,7 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, Loader2, Search, Shield, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { adminService, type CustomRoleRow, type PermissionCatalogRow, type PermissionGroupRow } from '@/services/admin.service';
+import {
+  adminService,
+  type AccessScopeMode,
+  type CustomRoleRow,
+  type PermissionCatalogRow,
+  type PermissionGroupRow,
+} from '@/services/admin.service';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
+import { PositionAccessPanel } from '@/components/admin/PositionAccessPanel';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,10 +33,14 @@ const SYSTEM_ROLE_CODES = new Set([
   'Staff',
   'HR',
   'Student',
+  'Timekeeper',
 ]);
 
+const SCOPE_MODE_INFO =
+  'Whole university: the permissions apply to all schools and offices (for example the Vice Chancellor or Registrar). Only the unit the person holds: when given through a position, the permissions cover that unit and everything under it (for example a Dean sees only their school).';
+
 export default function AdminCustomRoles() {
-  const [tab, setTab] = useState<'roles' | 'permission-groups' | 'permissions'>('roles');
+  const [tab, setTab] = useState<'roles' | 'positions' | 'permission-groups' | 'permissions'>('roles');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -41,8 +53,8 @@ export default function AdminCustomRoles() {
   const [permOpen, setPermOpen] = useState(false);
 
   const [selected, setSelected] = useState<CustomRoleRow | null>(null);
-  const [createForm, setCreateForm] = useState({ code: '', name: '', description: '' });
-  const [editForm, setEditForm] = useState({ name: '', description: '', isActive: true });
+  const [createForm, setCreateForm] = useState<{ code: string; name: string; description: string; scopeMode: AccessScopeMode }>({ code: '', name: '', description: '', scopeMode: 'University' });
+  const [editForm, setEditForm] = useState<{ name: string; description: string; isActive: boolean; scopeMode: AccessScopeMode }>({ name: '', description: '', isActive: true, scopeMode: 'University' });
 
   const [allPermissionCodes, setAllPermissionCodes] = useState<string[]>([]);
   const [permissionGroups, setPermissionGroups] = useState<Array<{ key: string; label: string; codes: string[] }>>([]);
@@ -130,6 +142,7 @@ export default function AdminCustomRoles() {
       name: r.name,
       description: r.description ?? '',
       isActive: !!r.isActive,
+      scopeMode: r.scopeMode ?? 'University',
     });
     setEditOpen(true);
   };
@@ -191,10 +204,11 @@ export default function AdminCustomRoles() {
         name: createForm.name.trim(),
         description: createForm.description.trim() ? createForm.description.trim() : null,
         isActive: true,
+        scopeMode: createForm.scopeMode,
       });
       toast.success('Role created');
       setCreateOpen(false);
-      setCreateForm({ code: '', name: '', description: '' });
+      setCreateForm({ code: '', name: '', description: '', scopeMode: 'University' });
       load();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create role');
@@ -212,6 +226,7 @@ export default function AdminCustomRoles() {
         name: editForm.name.trim(),
         description: editForm.description.trim() ? editForm.description.trim() : null,
         isActive: editForm.isActive,
+        ...(selected && !SYSTEM_ROLE_CODES.has(selected.code) ? { scopeMode: editForm.scopeMode } : {}),
       });
       toast.success('Role updated');
       setEditOpen(false);
@@ -282,19 +297,17 @@ export default function AdminCustomRoles() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
         <p className="text-gray-500">
-          The sidebar and pages are controlled by permissions on this screen. Changes take effect within a few
-          minutes for people already signed in, and immediately for new sign-ins.
-        </p>
-        <p className="text-gray-500 mt-1">
-          Rows marked <span className="font-medium text-gray-700">System role</span> mirror a built-in account role
-          and edit that role's permission set for everyone who has it. To change what role a specific person has,
-          use the Users screen — deactivating or editing a system role here does not move any individual user off it.
+          Menus and pages are controlled by permissions. Day-to-day access for officers (QA, HR, Deans, and so on)
+          comes from <span className="font-medium text-gray-700">Position access</span> on the organisation chart.
+          Additional custom roles can be attached to a login under Account security. Sync updates built-in system
+          role defaults from the permission matrix without changing who holds which post.
         </p>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
         <TabsList>
           <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="positions">Position access</TabsTrigger>
           <TabsTrigger value="permission-groups">Permission Groups</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
         </TabsList>
@@ -342,6 +355,7 @@ export default function AdminCustomRoles() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Code</TableHead>
+                      <TableHead>Data scope</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Users</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -349,7 +363,7 @@ export default function AdminCustomRoles() {
                   </TableHeader>
                   <TableBody>
                     {roles.length === 0 ? (
-                      <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No roles found.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No roles found.</TableCell></TableRow>
                     ) : (
                       roles.map((r) => (
                         <TableRow key={r.id}>
@@ -359,9 +373,22 @@ export default function AdminCustomRoles() {
                               {SYSTEM_ROLE_CODES.has(r.code) && (
                                 <Badge variant="outline" className="text-[10px] font-normal">System role</Badge>
                               )}
+                              {r.isPositionProfile && (
+                                <Badge variant="outline" className="text-[10px] font-normal border-[#015F2B] text-[#015F2B]">
+                                  Position profile
+                                </Badge>
+                              )}
                             </div>
+                            {(r.linkedUnitCount ?? 0) > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                Linked to {r.linkedUnitCount} unit{r.linkedUnitCount === 1 ? '' : 's'}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="font-mono text-sm">{r.code}</TableCell>
+                          <TableCell className="text-sm">
+                            {r.scopeMode === 'OrgUnit' ? 'Unit held' : 'Whole university'}
+                          </TableCell>
                           <TableCell>{r.isActive ? 'Active' : 'Inactive'}</TableCell>
                           <TableCell>{r.userCount ?? 0}</TableCell>
                           <TableCell className="text-right">
@@ -383,6 +410,10 @@ export default function AdminCustomRoles() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="positions" className="mt-4">
+          {tab === 'positions' && <PositionAccessPanel />}
         </TabsContent>
 
         <TabsContent value="permission-groups" className="mt-4">
@@ -568,6 +599,19 @@ export default function AdminCustomRoles() {
               <Label htmlFor="role-desc">Description</Label>
               <Textarea id="role-desc" value={createForm.description} onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))} placeholder="Optional" />
             </div>
+            <div className="space-y-1.5">
+              <LabelWithInfo info={SCOPE_MODE_INFO}>Data scope</LabelWithInfo>
+              <Select
+                value={createForm.scopeMode}
+                onValueChange={(v) => setCreateForm((f) => ({ ...f, scopeMode: v as AccessScopeMode }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="University">Whole university</SelectItem>
+                  <SelectItem value="OrgUnit">Only the unit the person holds</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}</Button>
@@ -594,6 +638,21 @@ export default function AdminCustomRoles() {
               <Label htmlFor="edit-desc">Description</Label>
               <Textarea id="edit-desc" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
             </div>
+            {selected && !SYSTEM_ROLE_CODES.has(selected.code) && (
+              <div className="space-y-1.5">
+                <LabelWithInfo info={SCOPE_MODE_INFO}>Data scope</LabelWithInfo>
+                <Select
+                  value={editForm.scopeMode}
+                  onValueChange={(v) => setEditForm((f) => ({ ...f, scopeMode: v as AccessScopeMode }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="University">Whole university</SelectItem>
+                    <SelectItem value="OrgUnit">Only the unit the person holds</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Switch checked={editForm.isActive} onCheckedChange={(v) => setEditForm((f) => ({ ...f, isActive: !!v }))} />
               <span className="text-sm text-muted-foreground">Active</span>

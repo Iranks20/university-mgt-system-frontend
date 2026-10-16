@@ -29,7 +29,7 @@ function daysUntil(value: string): number | null {
 }
 
 export default function GraduationDashboardPage() {
-  const { user, userRole } = useAuth();
+  const { user } = useAuth();
   const { data, loading, reload } = useGraduationDashboard();
   const activeEvent = data?.activeEvent ?? null;
   const progress = data?.committeeProgress ?? [];
@@ -39,10 +39,9 @@ export default function GraduationDashboardPage() {
     () =>
       buildGraduationAccess({
         permissions: user?.permissions,
-        role: userRole,
         serverAccess: data?.access ?? null,
       }),
-    [user?.permissions, userRole, data?.access]
+    [user?.permissions, data?.access]
   );
 
   if (loading) {

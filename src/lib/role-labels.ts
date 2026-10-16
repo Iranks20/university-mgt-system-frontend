@@ -4,9 +4,9 @@ export const SYSTEM_ACCOUNT_ROLES = [
   'ClinicalCoordinator',
   'Staff',
   'HR',
+  'Timekeeper',
   'Management',
   'Admin',
-  'Graduation',
 ] as const;
 
 export type SystemAccountRole = (typeof SYSTEM_ACCOUNT_ROLES)[number];
@@ -29,6 +29,8 @@ export function formatRoleLabel(role: string): string {
       return 'HR Officer';
     case 'Graduation':
       return 'Graduation Management';
+    case 'Timekeeper':
+      return 'Timekeeper';
     case 'Lecturer':
       return 'Lecturer';
     case 'Student':

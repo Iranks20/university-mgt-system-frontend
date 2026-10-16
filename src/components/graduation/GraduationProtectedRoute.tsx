@@ -1,12 +1,16 @@
 import { Navigate, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRole } from '@/components/RoleProvider';
 import AppShell from '@/components/AppShell';
 import RoleProvider from '@/components/RoleProvider';
 import AccessDenied from '@/components/AccessDenied';
-import { graduationModuleAllowed } from '@/lib/graduation-access';
-import { hasAnyPermission, resolveHomePath } from '@/lib/nav-permissions';
-import { permissionSetsForRoute } from '@/lib/nav-permissions';
+import ForcedPasswordChange from '@/components/ForcedPasswordChange';
+import {
+  graduationCanManage,
+  graduationCanViewRegistrations,
+  graduationModuleAllowed,
+} from '@/lib/graduation-access';
+import { hasAnyPermission, permissionSetsForRoute } from '@/lib/nav-permissions';
+import { homePathForUser } from '@/lib/clinical-access';
 
 type GraduationProtectedRouteProps = {
   children: React.ReactNode;
@@ -21,47 +25,18 @@ function GraduationProtectedRouteContent({
   requireManage,
   requireRegistrations,
 }: GraduationProtectedRouteProps) {
-  const { userRole, user } = useAuth();
-  const { role } = useRole();
+  const { user } = useAuth();
   const location = useLocation();
-  const currentRole = role || userRole;
   const permissions = user?.permissions ?? [];
 
-  const moduleOk = graduationModuleAllowed(permissions, currentRole);
-  const permissionSets = permissionSetsForRoute(path);
-  const routeOk = hasAnyPermission(permissions, permissionSets);
-
-  const enforcePermissions =
-    String(import.meta.env.VITE_RBAC_UI_ENFORCE_PERMISSIONS || '') === 'true';
-
-  let allowed = moduleOk || routeOk;
-  if (enforcePermissions && currentRole !== 'Graduation') {
-    allowed = routeOk || (currentRole === 'Admin' && moduleOk);
-  }
-
-  if (requireManage) {
-    const canManage =
-      currentRole === 'Graduation' ||
-      currentRole === 'Admin' ||
-      permissions.includes('graduation.manage') ||
-      permissions.includes('admin.console');
-    allowed = allowed && canManage;
-  }
-
-  if (requireRegistrations) {
-    const canRegs =
-      permissions.includes('graduation.registrations') ||
-      permissions.includes('admin.console') ||
-      currentRole === 'Admin' ||
-      currentRole === 'Graduation';
-    allowed = allowed && canRegs;
-  }
+  let allowed =
+    graduationModuleAllowed(permissions) &&
+    hasAnyPermission(permissions, permissionSetsForRoute(path));
+  if (requireManage) allowed = allowed && graduationCanManage(permissions);
+  if (requireRegistrations) allowed = allowed && graduationCanViewRegistrations(permissions);
 
   if (!allowed) {
-    const home =
-      currentRole === 'Graduation'
-        ? '/graduation/dashboard'
-        : resolveHomePath(permissions);
+    const home = homePathForUser(permissions);
     if (home && location.pathname !== home) {
       return <Navigate to={home} replace />;
     }
@@ -77,10 +52,14 @@ export default function GraduationProtectedRoute({
   requireManage,
   requireRegistrations,
 }: GraduationProtectedRouteProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustChangePassword) {
+    return <ForcedPasswordChange />;
   }
 
   return (

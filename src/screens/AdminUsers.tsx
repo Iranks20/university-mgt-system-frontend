@@ -1,5 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, KeyRound, Loader2, Search, ChevronLeft, ChevronRight, Shield } from 'lucide-react';
+import {
+  Pencil,
+  KeyRound,
+  Loader2,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Shield,
+  ShieldCheck,
+  LockOpen,
+} from 'lucide-react';
+import { LabelWithInfo } from '@/components/ui/label-with-info';
+import { TemporaryCredentialsDialog, type TemporaryCredential } from '@/components/TemporaryCredentialsDialog';
+import { UserAccessDialog } from '@/components/admin/UserAccessDialog';
+import { PASSWORD_POLICY_SUMMARY, passwordPolicyProblem } from '@/lib/password-policy';
+import { getApiErrorMessage } from '@/lib/api';
 import { ResetFiltersButton } from '@/components/ui/reset-filters-button';
 import { toast } from 'sonner';
 import { adminService } from '@/services/admin.service';
@@ -21,6 +36,8 @@ type UserRow = {
   role: string;
   isActive: boolean;
   lastLoginAt: string | null;
+  mustChangePassword?: boolean;
+  lockedUntil?: string | null;
   linkedRecord?: { type: string; number?: string; role?: string } | null;
   customRoles?: { id: string; code: string; name: string; isActive: boolean }[];
 };
@@ -36,11 +53,9 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
-  const [addForm, setAddForm] = useState({ email: '', password: '', name: '', role: 'Graduation' });
   const [editForm, setEditForm] = useState({ name: '', role: 'QA', isActive: true });
   const [resetPassword, setResetPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -49,7 +64,9 @@ export default function AdminUsers() {
   const [customRoles, setCustomRoles] = useState<{ id: string; code: string; name: string; isActive: boolean }[]>([]);
   const [selectedCustomRoleIds, setSelectedCustomRoleIds] = useState<Set<string>>(new Set());
   const [roleSearch, setRoleSearch] = useState('');
-  const systemAccountRoles = useMemo(() => [...SYSTEM_ACCOUNT_ROLES], []);
+  const [issuedCredentials, setIssuedCredentials] = useState<TemporaryCredential[]>([]);
+  const [accessUser, setAccessUser] = useState<UserRow | null>(null);
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
 
   const resetFilters = () => {
     setSearch('');
@@ -90,31 +107,6 @@ export default function AdminUsers() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addForm.email.trim() || !addForm.password.trim() || !addForm.name.trim()) {
-      toast.error('Email, password and name are required');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await adminService.createUser({
-        email: addForm.email.trim(),
-        password: addForm.password,
-        name: addForm.name.trim(),
-        role: addForm.role,
-      });
-      toast.success('User created');
-      setAddOpen(false);
-      setAddForm({ email: '', password: '', name: '', role: 'QA' });
-      loadUsers(page);
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to create user');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
@@ -122,7 +114,6 @@ export default function AdminUsers() {
     try {
       await adminService.updateUser(selectedUser.id, {
         name: editForm.name.trim(),
-        role: editForm.role,
         isActive: editForm.isActive,
       });
       toast.success('User updated');
@@ -138,21 +129,47 @@ export default function AdminUsers() {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !resetPassword.trim()) {
-      toast.error('Enter a new password');
+    if (!selectedUser) return;
+    const chosenPassword = resetPassword.trim();
+    const policyProblem = chosenPassword ? passwordPolicyProblem(chosenPassword) : null;
+    if (policyProblem) {
+      toast.error(policyProblem);
       return;
     }
     setSubmitting(true);
     try {
-      await adminService.resetUserPassword(selectedUser.id, resetPassword);
-      toast.success('Password reset');
+      const result = await adminService.resetUserPassword(selectedUser.id, chosenPassword || undefined);
+      toast.success('Password reset. They must choose a new one at next sign-in.');
+      if (result?.temporaryPassword) {
+        setIssuedCredentials([
+          {
+            name: selectedUser.name,
+            login: selectedUser.email,
+            temporaryPassword: result.temporaryPassword,
+          },
+        ]);
+      }
       setResetOpen(false);
       setSelectedUser(null);
       setResetPassword('');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to reset password');
+      loadUsers(page);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to reset password'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleUnlock = async (u: UserRow) => {
+    setUnlockingId(u.id);
+    try {
+      await adminService.unlockUser(u.id);
+      toast.success(`${u.name} can sign in again`);
+      loadUsers(page);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to unlock account'));
+    } finally {
+      setUnlockingId(null);
     }
   };
 
@@ -224,10 +241,11 @@ export default function AdminUsers() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Users</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Account security</h1>
         <p className="text-gray-500">
-          Manage system accounts: university QA, clinical QA, clinical coordinator, management, admin, and staff.
-          Lecturers and students are created under their respective modules.
+          Unlock accounts, reset passwords and review access for existing logins. New people are added in HR ›
+          Employees and placed on the organisation chart (Quality Assurance for QA and clinical QA staff).
+          Administration staff are listed under Administration; lecturers under Lecturers.
         </p>
       </div>
 
@@ -235,14 +253,12 @@ export default function AdminUsers() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <CardTitle>All users</CardTitle>
+              <CardTitle>Existing logins</CardTitle>
               <CardDescription>
-                Create, edit and reset passwords for QA, QA Clinicals, Clinical Coordinator, Management, Admin, and Staff users.
+                Same emails and passwords continue to work. Access also follows each person’s post on the
+                organisation chart.
               </CardDescription>
             </div>
-            <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={() => setAddOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Add user
-            </Button>
           </div>
           <div className="flex flex-wrap gap-2 pt-2">
             <div className="relative flex-1 min-w-[200px]">
@@ -288,12 +304,33 @@ export default function AdminUsers() {
                         <TableCell className="font-medium">{u.name}</TableCell>
                         <TableCell>{u.email}</TableCell>
                         <TableCell><Badge variant="secondary">{formatRoleLabel(u.role)}</Badge></TableCell>
-                        <TableCell>{u.isActive ? <Badge className="bg-green-100 text-green-800">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {u.isActive ? <Badge className="bg-green-100 text-green-800">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
+                            {u.lockedUntil && <Badge variant="destructive">Locked</Badge>}
+                            {u.mustChangePassword && (
+                              <Badge variant="outline" className="border-amber-500 text-amber-700">Must change password</Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="mr-1" onClick={() => openAssignRoles(u)}><Shield className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="sm" className="mr-1" onClick={() => openEdit(u)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="sm" onClick={() => openReset(u)}><KeyRound className="h-4 w-4" /></Button>
+                        <TableCell className="text-right whitespace-nowrap">
+                          {u.lockedUntil && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mr-1"
+                              title="Unlock account"
+                              disabled={unlockingId === u.id}
+                              onClick={() => handleUnlock(u)}
+                            >
+                              {unlockingId === u.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockOpen className="h-4 w-4" />}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" className="mr-1" title="View access" onClick={() => setAccessUser(u)}><ShieldCheck className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" className="mr-1" title="Additional roles" onClick={() => openAssignRoles(u)}><Shield className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" className="mr-1" title="Edit" onClick={() => openEdit(u)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" title="Reset password" onClick={() => openReset(u)}><KeyRound className="h-4 w-4" /></Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -319,72 +356,24 @@ export default function AdminUsers() {
         </CardContent>
       </Card>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add user</DialogTitle>
-            <DialogDescription>
-              Create a new system user. Choose QA (university), QA Clinicals, Clinical Coordinator, Management, Admin, or Staff.
-              They can log in with email and the password you set.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div>
-              <Label htmlFor="add-name">Name</Label>
-              <Input id="add-name" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" required />
-            </div>
-            <div>
-              <Label htmlFor="add-email">Email</Label>
-              <Input id="add-email" type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} placeholder="user@kcu.ac.ug" required />
-            </div>
-            <div>
-              <Label htmlFor="add-password">Password</Label>
-              <Input id="add-password" type="password" value={addForm.password} onChange={e => setAddForm(f => ({ ...f, password: e.target.value }))} placeholder="Temporary password" required />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <Select value={addForm.role} onValueChange={v => setAddForm(f => ({ ...f, role: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {systemAccountRoles.map(r => (
-                    <SelectItem key={r} value={r}>{formatRoleLabel(r)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit user</DialogTitle>
-            <DialogDescription>Update name, role and active status.</DialogDescription>
+            <DialogTitle>Edit login</DialogTitle>
+            <DialogDescription>
+              Update display name and whether they can sign in. Access comes from their organisation post and any
+              additional roles — not from changing account type here.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpdate} className="space-y-4">
-            {selectedUser && <p className="text-sm text-muted-foreground">Email: {selectedUser.email}</p>}
+            {selectedUser && (
+              <p className="text-sm text-muted-foreground">
+                {selectedUser.email} · {formatRoleLabel(selectedUser.role)}
+              </p>
+            )}
             <div>
               <Label htmlFor="edit-name">Name</Label>
               <Input id="edit-name" value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} required />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <Select value={editForm.role} onValueChange={v => setEditForm(f => ({ ...f, role: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(selectedUser?.role === 'Staff'
-                    ? ['Staff', ...systemAccountRoles]
-                    : systemAccountRoles
-                  ).map(r => (
-                    <SelectItem key={r} value={r}>{formatRoleLabel(r)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="edit-active" checked={editForm.isActive} onChange={e => setEditForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded" />
@@ -402,16 +391,24 @@ export default function AdminUsers() {
         <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Reset password</DialogTitle>
-            <DialogDescription>Set a new password for {selectedUser?.name}. They will use this to log in.</DialogDescription>
+            <DialogDescription>
+              Issue a temporary password for {selectedUser?.name}. Their other sessions are signed out, any lockout is
+              cleared, and they must choose their own password at next sign-in.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div>
-              <Label htmlFor="new-password">New password</Label>
-              <Input id="new-password" type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} placeholder="New password" required />
+              <LabelWithInfo
+                htmlFor="new-password"
+                info={`Optional. Leave empty to generate a secure temporary password. ${PASSWORD_POLICY_SUMMARY}`}
+              >
+                Temporary password
+              </LabelWithInfo>
+              <Input id="new-password" type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} placeholder="Leave empty to generate" autoComplete="new-password" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-[#015F2B]" disabled={submitting || !resetPassword.trim()}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reset password'}</Button>
+              <Button type="submit" className="bg-[#015F2B]" disabled={submitting}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reset password'}</Button>
             </div>
           </form>
         </DialogContent>
@@ -461,6 +458,13 @@ export default function AdminUsers() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <TemporaryCredentialsDialog credentials={issuedCredentials} onClose={() => setIssuedCredentials([])} />
+      <UserAccessDialog
+        userId={accessUser?.id ?? null}
+        userName={accessUser?.name}
+        onClose={() => setAccessUser(null)}
+      />
     </div>
   );
 }

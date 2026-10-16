@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { HrPageShell } from '@/components/hr/HrPageShell';
-import {
-  getCompletedAppraisalArchives,
-  getHrAppraisalReviewById,
-} from '@/features/hr/hr-appraisal-store';
+import { getHrAppraisalReviewById } from '@/features/hr/hr-appraisal-store';
+import { hrAppraisalService } from '@/services/hr-appraisal.service';
+import { TablePagination } from '@/components/ui/table-pagination';
+import { emptyPage, type Paged } from '@/lib/pagination';
+import { usePaging } from '@/hooks/usePaging';
+import { useDebounced } from '@/hooks/useDebounced';
 import { AppraisalPrintView } from '@/components/hr/AppraisalPrintView';
 import type { HrAppraisalReview } from '@/features/hr/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,34 +33,42 @@ type DocumentRow = {
   overallHrScore?: number | null;
 };
 
+function toDocumentRow(review: HrAppraisalReview): DocumentRow {
+  return {
+    id: `appraisal-${review.id}`,
+    employeeName: review.employeeName,
+    title: review.archivedDocumentTitle ?? `${review.cycleName} — ${review.formTemplateName}`,
+    category: 'Appraisal Archive',
+    uploadedAt: review.completedAt?.slice(0, 10) ?? review.dueDate,
+    cycleName: review.cycleName,
+    appraisalReviewId: review.id,
+    overallHrScore: review.overallHrScore,
+  };
+}
+
 export default function HrDocumentsPage() {
-  const [docs, setDocs] = useState<DocumentRow[]>([]);
+  const [docs, setDocs] = useState<Paged<DocumentRow>>(() => emptyPage());
   const [search, setSearch] = useState('');
   const [printReview, setPrintReview] = useState<HrAppraisalReview | null>(null);
   const [loading, setLoading] = useState(true);
+  const debouncedSearch = useDebounced(search.trim());
+  const paging = usePaging(debouncedSearch);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getCompletedAppraisalArchives()
+    hrAppraisalService
+      .getArchives({
+        page: paging.page,
+        limit: paging.pageSize,
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      })
       .then((archives) => {
-        if (cancelled) return;
-        setDocs(
-          archives.map((review) => ({
-            id: `appraisal-${review.id}`,
-            employeeName: review.employeeName,
-            title: review.archivedDocumentTitle ?? `${review.cycleName} — ${review.formTemplateName}`,
-            category: 'Appraisal Archive',
-            uploadedAt: review.completedAt?.slice(0, 10) ?? review.dueDate,
-            cycleName: review.cycleName,
-            appraisalReviewId: review.id,
-            overallHrScore: review.overallHrScore,
-          }))
-        );
+        if (!cancelled) setDocs({ ...archives, data: archives.data.map(toDocumentRow) });
       })
       .catch(() => {
         if (!cancelled) {
-          setDocs([]);
+          setDocs(emptyPage(paging.pageSize));
           toast.error('Could not load appraisal archives');
         }
       })
@@ -68,18 +78,7 @@ export default function HrDocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return docs.filter(
-      (d) =>
-        !q ||
-        d.employeeName.toLowerCase().includes(q) ||
-        d.title.toLowerCase().includes(q) ||
-        d.cycleName.toLowerCase().includes(q)
-    );
-  }, [docs, search]);
+  }, [debouncedSearch, paging.page, paging.pageSize]);
 
   const openAppraisalArchive = async (reviewId: string) => {
     const review = await getHrAppraisalReviewById(reviewId);
@@ -124,14 +123,14 @@ export default function HrDocumentsPage() {
                     Loading…
                   </TableCell>
                 </TableRow>
-              ) : filtered.length === 0 ? (
+              ) : docs.data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                    No completed appraisals filed yet
+                    {debouncedSearch ? 'No archives match your search' : 'No completed appraisals filed yet'}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((d) => (
+                docs.data.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell className="font-medium">{d.employeeName}</TableCell>
                     <TableCell>{d.title}</TableCell>
@@ -152,6 +151,14 @@ export default function HrDocumentsPage() {
               )}
             </TableBody>
           </Table>
+          <TablePagination
+            page={paging.page}
+            pageSize={paging.pageSize}
+            total={docs.total}
+            onPageChange={paging.setPage}
+            onPageSizeChange={paging.setPageSize}
+            disabled={loading}
+          />
         </CardContent>
       </Card>
 

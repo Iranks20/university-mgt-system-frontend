@@ -8,9 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { useRole } from '@/components/RoleProvider';
-import { qaService, studentService, staffService } from '@/services';
-import { useAuth } from '@/contexts/AuthContext';
+import { qaService, studentService } from '@/services';
+import { useAuth, usePermissions } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { AcademicTermFilter } from '@/components/AcademicTermFilter';
 import { useAcademicTermFilterState } from '@/hooks/useAcademicTermFilterState';
@@ -20,7 +19,12 @@ export default function Presence() {
 }
 
 function PresenceContent() {
-  const { role } = useRole();
+  const { can } = usePermissions();
+  const role: 'Lecturer' | 'Student' | null = can('qa.lecturer_portal')
+    ? 'Lecturer'
+    : can('students.attendance_self')
+      ? 'Student'
+      : null;
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const preferredClassId = searchParams.get('classId') || undefined;
@@ -212,22 +216,6 @@ function PresenceContent() {
   };
 
   const handleCheckIn = async () => {
-    if (role === 'Staff') {
-      setLocationLoading(true);
-      try {
-        const location = await getCurrentLocation();
-        await staffService.recordCheckIn(`${location.latitude},${location.longitude}`);
-        setAttendanceRecorded(true);
-        toast.success('Check-in recorded');
-      } catch (error: any) {
-        console.error('Error recording staff check-in:', error);
-        toast.error(error?.message || 'Failed to record check-in');
-      } finally {
-        setLocationLoading(false);
-      }
-      return;
-    }
-
     if (role === 'Lecturer' && currentClass?.id) {
       setCheckInOutLoading(true);
       setLocationLoading(true);
@@ -282,18 +270,6 @@ function PresenceContent() {
   };
 
   const handleCheckOut = async () => {
-    if (role === 'Staff') {
-      try {
-        await staffService.recordCheckOut();
-        setAttendanceRecorded(true);
-        toast.success('Check-out recorded');
-      } catch (error: any) {
-        console.error('Error recording staff check-out:', error);
-        toast.error(`Failed to record check-out: ${error?.message || 'Unknown error'}`);
-      }
-      return;
-    }
-
     if (role === 'Lecturer' && currentClass?.id) {
       setCheckInOutLoading(true);
       try {
