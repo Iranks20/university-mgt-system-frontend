@@ -54,7 +54,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['admin.console'],
   ],
   '/graduation/registrations': [['graduation.registrations'], ['admin.console']],
-  '/admin-settings': ['settings.read'],
+  '/admin-settings': ['admin.console'],
   '/timetable': [
     ['timetable.student_me'],
     ['academic.personal_schedule', 'qa.lecturer_portal'],
@@ -102,7 +102,6 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['qa.review'],
     ['analytics.core_dashboard'],
     ['analytics.ops'],
-    ['academic.read'],
     ['timetable.ops'],
   ],
   '/management-overview': [['analytics.mgmt_overview']],
@@ -133,7 +132,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
     ['substitutions.queue'],
     ['substitutions.queue', 'substitutions.decide'],
   ],
-  '/curriculum-management': ['academic.read'],
+  '/curriculum-management': [['academic.write'], ['admin.console']],
   '/lecturer-course-attendance': [
     ['academic.personal_schedule', 'enrollment.class_read'],
     ['qa.review', 'students.attendance_staff'],
@@ -279,8 +278,8 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/admin-students', label: 'Students (Users)', permissions: NAV_PERMISSION['/admin-students'] },
   { path: '/admin-student-info-forms', label: 'Student info forms', permissions: NAV_PERMISSION['/admin-student-info-forms'] },
   { path: '/admin-lecturers', label: 'Lecturers (Users)', permissions: NAV_PERMISSION['/admin-lecturers'] },
-  { path: '/admin-administration', label: 'Administration staff', permissions: NAV_PERMISSION['/admin-administration'] },
-  { path: '/admin-users', label: 'Account security', permissions: NAV_PERMISSION['/admin-users'] },
+  { path: '/admin-administration', label: 'Administration', permissions: NAV_PERMISSION['/admin-administration'] },
+  { path: '/admin-users', label: 'Administration', permissions: NAV_PERMISSION['/admin-users'] },
   { path: '/admin-roles', label: 'Roles & Permissions', permissions: NAV_PERMISSION['/admin-roles'] },
   { path: '/admin-audit-log', label: 'Audit log (from Settings)', permissions: NAV_PERMISSION['/admin-audit-log'] },
   { path: '/clinical/sites', label: 'Clinical Sites', permissions: NAV_PERMISSION['/clinical/sites'] },
@@ -340,4 +339,17 @@ export function formatPermissionRequirement(required: PermissionRequirement | un
   }
   const list = required as string[];
   return list.join(' OR ');
+}
+
+export function menuLabelsForPermission(code: string): string[] {
+  const needle = String(code || '').trim();
+  if (!needle) return [];
+  const labels: string[] = [];
+  for (const entry of NAV_MENU_DOC) {
+    const sets = normalizePermissionSets(entry.permissions);
+    if (sets.some((set) => set.includes(needle))) {
+      labels.push(entry.label);
+    }
+  }
+  return labels;
 }

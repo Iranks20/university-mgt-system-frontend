@@ -157,10 +157,10 @@ The account type (`User.role`) is only a base label. What someone can open comes
 - Login explains lockout (`ACCOUNT_LOCKED`) and deactivated accounts. "Forgot password?" tells the user to contact HR or ICT until email reset exists.
 
 ### Access administration
-- People are created in **HR › Employees** and placed on **Organisation Structure**. Account type is Staff, Lecturer or Timekeeper only; QA and office menus come from the post (for example Quality Assurance).
+- People are created in **HR › Employees** and placed on **Organisation Structure**. Account type is Staff, Lecturer or Timekeeper only; QA and office menus come from the post (for example Quality Assurance). Full flow and first-time HR setup: `docs/user-management-flow.md`.
 - `/admin-lecturers`: academic staff. `/admin-administration`: non-teaching staff (Administrative, Support, Clinical), with login email/password update.
-- `/admin-users` (*Account security*): unlock, reset and review access for existing logins — not for creating day-to-day users.
-- `/admin-roles` › *Position access* (`PositionAccessPanel`): which access profile the head and the members of each organisation unit receive. Custom roles show their data scope (whole university or own unit).
+- `/admin-administration` (*Administration*): non-teaching people directory plus unlock, reset, and access review. `/admin-users` redirects here.
+- `/admin-roles`: **Roles** (position + custom), **Organisation** (head/member role per unit), **Permissions** (create/edit permissions and groups; menu links shown). DB-owned after seed — no startup matrix reset and no Sync UI. New codes ship via Prisma migrations (`permission:migration:generate`).
 
 ## Adding New Features
 

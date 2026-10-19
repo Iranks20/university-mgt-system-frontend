@@ -527,22 +527,41 @@ export function StaffFormDialog({
             </section>
 
             <FormSection title="System access">
-              {mode === 'create' && (
-                <div className="space-y-1.5">
-                  <LabelWithInfo info="Automatic gives academic staff Lecturer and everyone else Staff. Place QA officers, clinical QA and clinical coordinators in Quality Assurance on Organisation Structure — their menus come from that post. Use Timekeeper only for the attendance desk.">
-                    Account type
-                  </LabelWithInfo>
-                  <Select value={form.userRole || '_auto'} onValueChange={(v) => set('userRole', v === '_auto' ? '' : v)}>
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Automatic" /></SelectTrigger>
+              <div className="space-y-1.5">
+                <LabelWithInfo info="Automatic gives academic staff Lecturer and everyone else Staff. Place QA officers, clinical QA and clinical coordinators in Quality Assurance on Organisation Structure — their menus come from that post. Use Timekeeper only for the attendance desk. Portal Admin accounts are managed under Administration, not here.">
+                  Account type
+                </LabelWithInfo>
+                {mode === 'edit' && form.userRole && !HR_ASSIGNABLE_ROLES.has(form.userRole) ? (
+                  <Input value={form.userRole} disabled readOnly className="bg-muted" />
+                ) : (
+                  <Select
+                    value={
+                      form.userRole && HR_ASSIGNABLE_ROLES.has(form.userRole)
+                        ? form.userRole
+                        : mode === 'create'
+                          ? '_auto'
+                          : form.staffCategory === 'Academic'
+                            ? 'Lecturer'
+                            : 'Staff'
+                    }
+                    onValueChange={(v) => set('userRole', v === '_auto' ? '' : v)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Automatic" />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="_auto">Automatic from category</SelectItem>
+                      {mode === 'create' && (
+                        <SelectItem value="_auto">Automatic from category</SelectItem>
+                      )}
                       {roleOptions.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-              )}
+                )}
+              </div>
               <div className="space-y-1.5">
                 <LabelWithInfo
                   htmlFor="staff-temp-password"

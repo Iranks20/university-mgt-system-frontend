@@ -51,8 +51,19 @@ import { staffService } from '@/services/staff.service';
 import { academicService } from '@/services/academic.service';
 import { hrReportsService } from '@/services/hr-reports.service';
 import { getApiErrorMessage } from '@/lib/api';
+import { useDebounced } from '@/hooks/useDebounced';
 import { useSearchParams } from 'react-router';
 import { TemporaryCredentialsDialog, type TemporaryCredential } from '@/components/TemporaryCredentialsDialog';
+
+const STATUS_FILTER_TO_API: Record<string, string> = {
+  active: 'Active',
+  'on leave': 'On Leave',
+  probation: 'Probation',
+  suspended: 'Suspended',
+  inactive: 'Inactive',
+};
+
+const HR_ASSIGNABLE_ACCOUNT_ROLES = new Set(['Staff', 'Lecturer', 'Timekeeper']);
 
 type StaffRecord = Omit<Staff, 'phone' | 'status' | 'employmentType'> & {
   phone?: string | null;
@@ -75,6 +86,7 @@ export default function HrEmployeesPage() {
   const [offices, setOffices] = useState<OfficeOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search.trim());
   const [schoolFilter, setSchoolFilter] = useState('all');
   const [deptFilter, setDeptFilter] = useState('all');
   const [officeFilter, setOfficeFilter] = useState(searchParams.get('unit') ?? 'all');
@@ -105,10 +117,13 @@ export default function HrEmployeesPage() {
   const loadData = useCallback(async (pageNum = 1) => {
     setLoading(true);
     try {
+      const statusApi = statusFilter !== 'all' ? STATUS_FILTER_TO_API[statusFilter] : undefined;
       const [staffRes, schoolRes, levelRes, departmentRes, orgTree] = await Promise.all([
         staffService.getStaff({
           page: pageNum,
           limit: pageSize,
+          ...(debouncedSearch ? { search: debouncedSearch } : {}),
+          ...(statusApi ? { status: statusApi } : {}),
           ...(supervisionFilter === 'missing' ? { missingSupervisor: true } : {}),
           ...(supervisionFilter === 'unplaced' ? { unplaced: true } : {}),
           ...(categoryFilter !== 'all' ? { category: categoryFilter } : {}),
@@ -151,7 +166,15 @@ export default function HrEmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supervisionFilter, categoryFilter, officeFilter, schoolFilter, deptFilter]);
+  }, [
+    debouncedSearch,
+    statusFilter,
+    supervisionFilter,
+    categoryFilter,
+    officeFilter,
+    schoolFilter,
+    deptFilter,
+  ]);
 
   useEffect(() => {
     setSearchParams((prev) => {
@@ -171,22 +194,6 @@ export default function HrEmployeesPage() {
     if (schoolFilter === 'all') return departments;
     return departments.filter((d) => d.schoolId === schoolFilter);
   }, [departments, schoolFilter]);
-
-  const filtered = useMemo(() => {
-    return employees.filter((e) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        e.firstName.toLowerCase().includes(q) ||
-        e.lastName.toLowerCase().includes(q) ||
-        e.staffNumber.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q) ||
-        e.role.toLowerCase().includes(q);
-      const matchStatus = statusFilter === 'all' || (e.status || '').toLowerCase() === statusFilter;
-      const matchSupervision = supervisionFilter !== 'missing' || !e.hasResolvedSupervisor;
-      return matchSearch && matchStatus && matchSupervision;
-    });
-  }, [employees, search, statusFilter, supervisionFilter]);
 
   const schoolName = (id?: string | null) => schools.find((s) => s.id === id)?.name || '-';
   const placementOf = (e: StaffRecord) =>
@@ -229,6 +236,8 @@ export default function HrEmployeesPage() {
 
   const handleFormSubmit = async (values: StaffFormValues) => {
     const { placement, userRole, tempPassword, ...rest } = values;
+    const assignableRole =
+      userRole && HR_ASSIGNABLE_ACCOUNT_ROLES.has(userRole) ? userRole : undefined;
     const payload = {
       ...rest,
       phone: values.phone || null,
@@ -239,7 +248,7 @@ export default function HrEmployeesPage() {
       gender: values.gender || null,
       hireDate: values.hireDate || undefined,
       supervisorId: values.supervisorId || null,
-      ...(formMode === 'create' && userRole ? { userRole } : {}),
+      ...(assignableRole ? { userRole: assignableRole } : {}),
       ...(tempPassword.trim() ? { tempPassword: tempPassword.trim() } : {}),
     };
     if (formMode === 'create') {
@@ -300,28 +309,37 @@ export default function HrEmployeesPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const formInitial = useMemo<Partial<StaffFormValues> | undefined>(() => editTarget
-    ? {
-        staffNumber: editTarget.staffNumber,
-        firstName: editTarget.firstName,
-        lastName: editTarget.lastName,
-        email: editTarget.email,
-        phone: editTarget.phone || '',
-        placement: editTarget.orgUnitId && !editTarget.departmentId ? 'office' : 'academic',
-        departmentId: editTarget.departmentId || '',
-        schoolId: editTarget.schoolId || '',
-        orgUnitId: editTarget.orgUnitId || '',
-        role: editTarget.role,
-        staffCategory: editTarget.staffCategory || 'Administrative',
-        academicRank: editTarget.academicRank || '',
-        gender: editTarget.gender || '',
-        hireDate: editTarget.hireDate ? String(editTarget.hireDate).slice(0, 10) : '',
-        hasPhd: Boolean(editTarget.hasPhd),
-        employmentType: editTarget.employmentType || 'Full-time',
-        status: editTarget.status || 'Active',
-        supervisorId: editTarget.supervisorId || '',
-      }
-    : undefined, [editTarget]);
+  const formInitial = useMemo<Partial<StaffFormValues> | undefined>(() => {
+    if (!editTarget) return undefined;
+    const category = editTarget.staffCategory || 'Administrative';
+    const linkedRole = editTarget.userRole || '';
+    const userRole = linkedRole
+      ? linkedRole
+      : category === 'Academic'
+        ? 'Lecturer'
+        : 'Staff';
+    return {
+      staffNumber: editTarget.staffNumber,
+      firstName: editTarget.firstName,
+      lastName: editTarget.lastName,
+      email: editTarget.email,
+      phone: editTarget.phone || '',
+      placement: editTarget.orgUnitId && !editTarget.departmentId ? 'office' : 'academic',
+      departmentId: editTarget.departmentId || '',
+      schoolId: editTarget.schoolId || '',
+      orgUnitId: editTarget.orgUnitId || '',
+      role: editTarget.role,
+      staffCategory: category,
+      academicRank: editTarget.academicRank || '',
+      gender: editTarget.gender || '',
+      hireDate: editTarget.hireDate ? String(editTarget.hireDate).slice(0, 10) : '',
+      hasPhd: Boolean(editTarget.hasPhd),
+      employmentType: editTarget.employmentType || 'Full-time',
+      status: editTarget.status || 'Active',
+      supervisorId: editTarget.supervisorId || '',
+      userRole,
+    };
+  }, [editTarget]);
 
   return (
     <HrPageShell
@@ -342,92 +360,94 @@ export default function HrEmployeesPage() {
         <CardHeader>
           <CardTitle className="text-base">Search & filter</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+        <CardContent className="flex flex-col gap-3">
+          <div className="relative w-full min-w-0">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <Input
-              className="pl-9"
+              className="w-full pl-9"
               placeholder="Search by name, staff number, email or job title…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-full lg:w-44">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {STAFF_CATEGORY_OPTIONS.map((c) => (
-                <SelectItem key={c.value} value={c.value}>{CATEGORY_LABEL[c.value]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Combobox
-            className="w-full lg:w-56"
-            options={[
-              { value: 'all', label: 'All offices' },
-              ...offices.map((o) => ({ value: o.id, label: o.label })),
-            ]}
-            value={officeFilter}
-            onValueChange={(v) => setOfficeFilter(v || 'all')}
-            placeholder="Office / unit"
-            searchPlaceholder="Search offices..."
-            emptyText="No office found."
-            initialDisplayCount={200}
-          />
-          <Combobox
-            className="w-full lg:w-56"
-            options={[
-              { value: 'all', label: 'All schools' },
-              ...schools.map((s) => ({ value: s.id, label: s.name })),
-            ]}
-            value={schoolFilter}
-            onValueChange={(v) => {
-              setSchoolFilter(v || 'all');
-              setDeptFilter('all');
-            }}
-            placeholder="School"
-            searchPlaceholder="Search schools..."
-            emptyText="No school found."
-            initialDisplayCount={50}
-          />
-          <Combobox
-            className="w-full lg:w-48"
-            options={[
-              { value: 'all', label: 'All departments' },
-              ...visibleDepts.map((d) => ({ value: d.id, label: d.name })),
-            ]}
-            value={deptFilter}
-            onValueChange={(v) => setDeptFilter(v || 'all')}
-            placeholder="Department"
-            searchPlaceholder="Search departments..."
-            emptyText="No department found."
-            initialDisplayCount={50}
-          />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full lg:w-40">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="on leave">On Leave</SelectItem>
-              <SelectItem value="probation">Probation</SelectItem>
-              <SelectItem value="suspended">Suspended</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={supervisionFilter} onValueChange={setSupervisionFilter}>
-            <SelectTrigger className="w-full lg:w-48">
-              <SelectValue placeholder="Supervisor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All reporting lines</SelectItem>
-              <SelectItem value="missing">Needs supervisor</SelectItem>
-              <SelectItem value="unplaced">Not placed in a department or office</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap gap-3">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full sm:w-44">
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {STAFF_CATEGORY_OPTIONS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{CATEGORY_LABEL[c.value]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Combobox
+              className="w-full sm:w-56"
+              options={[
+                { value: 'all', label: 'All offices' },
+                ...offices.map((o) => ({ value: o.id, label: o.label })),
+              ]}
+              value={officeFilter}
+              onValueChange={(v) => setOfficeFilter(v || 'all')}
+              placeholder="Office / unit"
+              searchPlaceholder="Search offices..."
+              emptyText="No office found."
+              initialDisplayCount={200}
+            />
+            <Combobox
+              className="w-full sm:w-56"
+              options={[
+                { value: 'all', label: 'All schools' },
+                ...schools.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+              value={schoolFilter}
+              onValueChange={(v) => {
+                setSchoolFilter(v || 'all');
+                setDeptFilter('all');
+              }}
+              placeholder="School"
+              searchPlaceholder="Search schools..."
+              emptyText="No school found."
+              initialDisplayCount={50}
+            />
+            <Combobox
+              className="w-full sm:w-48"
+              options={[
+                { value: 'all', label: 'All departments' },
+                ...visibleDepts.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+              value={deptFilter}
+              onValueChange={(v) => setDeptFilter(v || 'all')}
+              placeholder="Department"
+              searchPlaceholder="Search departments..."
+              emptyText="No department found."
+              initialDisplayCount={50}
+            />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="on leave">On Leave</SelectItem>
+                <SelectItem value="probation">Probation</SelectItem>
+                <SelectItem value="suspended">Suspended</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={supervisionFilter} onValueChange={setSupervisionFilter}>
+              <SelectTrigger className="w-full sm:w-52">
+                <SelectValue placeholder="Supervisor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All reporting lines</SelectItem>
+                <SelectItem value="missing">Needs supervisor</SelectItem>
+                <SelectItem value="unplaced">Not placed in a department or office</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
@@ -435,7 +455,7 @@ export default function HrEmployeesPage() {
         <CardContent className="p-0">
           {loading ? (
             <div className="p-6 text-sm text-gray-500">Loading employees…</div>
-          ) : filtered.length === 0 ? (
+          ) : employees.length === 0 ? (
             <div className="p-6 text-sm text-gray-500">No employees found for the selected filters.</div>
           ) : (
             <>
@@ -453,7 +473,7 @@ export default function HrEmployeesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((e) => (
+                  {employees.map((e) => (
                     <TableRow key={e.id}>
                       <TableCell className="font-mono text-xs">{e.staffNumber}</TableCell>
                       <TableCell className="font-medium">{e.firstName} {e.lastName}</TableCell>
