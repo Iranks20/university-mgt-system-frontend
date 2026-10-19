@@ -129,7 +129,7 @@ function missingFields(form: StaffFormValues, mode: 'create' | 'edit'): string[]
   if (!form.lastName.trim()) missing.push('last name');
   if (mode === 'create' && !form.gender) missing.push('gender');
   if (!form.email.trim()) missing.push('email');
-  if (!form.staffNumber.trim()) missing.push('staff number');
+  if (mode === 'edit' && !form.staffNumber.trim()) missing.push('staff number');
   if (!form.role.trim()) missing.push('job title');
   if (form.placement === 'academic' && !form.departmentId) missing.push('department');
   if (form.placement === 'office' && !form.orgUnitId) missing.push('office or unit');
@@ -327,15 +327,19 @@ export function StaffFormDialog({
               <div className="space-y-1.5">
                 <LabelWithInfo
                   htmlFor="staff-number"
-                  info="The number on the appointment letter. It must be unique. Replace placeholder numbers such as LEC… or STF… with the real one."
+                  info={
+                    mode === 'create'
+                      ? 'Optional. Leave blank and a unique staff number is assigned. You can replace it later with the number from the appointment letter.'
+                      : 'The number on the appointment letter. It must be unique.'
+                  }
                 >
-                  Staff number *
+                  Staff number{mode === 'edit' ? ' *' : ''}
                 </LabelWithInfo>
                 <Input
                   id="staff-number"
                   value={form.staffNumber}
                   onChange={(e) => set('staffNumber', e.target.value)}
-                  placeholder="e.g. KCU-0042"
+                  placeholder={mode === 'create' ? 'Generated if blank' : 'e.g. KCU-0042'}
                 />
               </div>
               <div className="space-y-1.5">
