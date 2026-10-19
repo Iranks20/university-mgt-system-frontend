@@ -51,6 +51,12 @@ export interface PermissionCatalogRow {
 
 export type AccessScopeMode = 'University' | 'OrgUnit';
 
+export type CustomRoleKind = 'system' | 'position_profile' | 'custom';
+
+export type CustomRoleKindFilter = CustomRoleKind | 'baseline' | 'legacy_office';
+
+export type SystemRoleCategory = 'baseline' | 'legacy_office';
+
 export interface CustomRoleRow {
   id: string;
   code: string;
@@ -58,7 +64,10 @@ export interface CustomRoleRow {
   description: string | null;
   isActive: boolean;
   scopeMode?: AccessScopeMode;
+  kind?: CustomRoleKind;
+  isSystemRole?: boolean;
   isPositionProfile?: boolean;
+  systemCategory?: SystemRoleCategory | null;
   linkedUnitCount?: number;
   userCount?: number;
   createdAt?: string;
@@ -86,7 +95,11 @@ export interface PositionAccessUnit {
 
 export interface PositionAccessSnapshot {
   units: PositionAccessUnit[];
-  profiles: (AccessProfileRef & { isPositionProfile: boolean })[];
+  profiles: (AccessProfileRef & {
+    isPositionProfile: boolean;
+    kind?: CustomRoleKind;
+    isSystemRole?: boolean;
+  })[];
 }
 
 export interface UserAccessDetails {
@@ -335,6 +348,18 @@ export const adminService = {
     return Array.isArray(data) ? data : [];
   },
 
+  createPermission: async (payload: {
+    code: string;
+    label?: string | null;
+    description?: string | null;
+    groupId?: string | null;
+    sortOrder?: number;
+    isVisible?: boolean;
+  }): Promise<PermissionCatalogRow> => {
+    const res = await api.post<{ data: PermissionCatalogRow }>('/admin/permissions', payload);
+    return (res as any)?.data ?? (res as any);
+  },
+
   updatePermissionMetadata: async (code: string, payload: { label?: string | null; description?: string | null; groupId?: string | null; sortOrder?: number; isVisible?: boolean }): Promise<{ message: string }> => {
     return await api.put<{ message: string }>(`/admin/permissions/${encodeURIComponent(code)}`, payload);
   },
@@ -350,10 +375,15 @@ export const adminService = {
     }
   },
 
-  listCustomRoles: async (params?: { search?: string; includeInactive?: boolean }): Promise<CustomRoleRow[]> => {
+  listCustomRoles: async (params?: {
+    search?: string;
+    includeInactive?: boolean;
+    kind?: CustomRoleKindFilter;
+  }): Promise<CustomRoleRow[]> => {
     const query = new URLSearchParams();
     if (params?.search?.trim()) query.set('search', params.search.trim());
     if (params?.includeInactive) query.set('includeInactive', 'true');
+    if (params?.kind) query.set('kind', params.kind);
     const res = await api.get<{ data: CustomRoleRow[] }>('/admin/custom-roles' + (query.toString() ? `?${query.toString()}` : ''));
     const data = (res as any)?.data ?? res;
     return Array.isArray(data) ? data : [];
@@ -396,16 +426,6 @@ export const adminService = {
     return await api.put<{ message: string }>(`/admin/users/${userId}/custom-roles`, { customRoleIds });
   },
 
-  syncSystemRbac: async (): Promise<{
-    rolesSynced: number;
-    usersReconciled: number;
-    userAssignmentsRemoved: number;
-  }> => {
-    const res = await api.post<{
-      data: { rolesSynced: number; usersReconciled: number; userAssignmentsRemoved: number };
-    }>('/admin/rbac/sync-system-roles');
-    return (res as any)?.data ?? (res as any);
-  },
 };
 
 export interface AuditLogEntry {

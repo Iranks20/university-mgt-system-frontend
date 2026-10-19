@@ -182,6 +182,11 @@ export interface Staff {
   departmentHeadStaffId?: string | null;
   userId?: string | null;
   userRole?: string;
+  loginIsActive?: boolean | null;
+  loginLockedUntil?: string | null;
+  loginMustChangePassword?: boolean | null;
+  loginLastAt?: string | null;
+  loginCustomRoles?: { id: string; code: string; name: string; isActive: boolean }[];
   tempPassword?: string;
   assignedClassCount?: number;
 }

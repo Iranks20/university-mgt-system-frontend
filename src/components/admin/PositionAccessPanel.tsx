@@ -70,7 +70,9 @@ export function PositionAccessPanel() {
     );
   }, [snapshot, search]);
 
-  const profiles = snapshot?.profiles ?? [];
+  const profiles = (snapshot?.profiles ?? []).filter(
+    (p) => p.isPositionProfile || (p as { kind?: string }).kind === 'position_profile'
+  );
 
   const updateProfile = async (unit: PositionAccessUnit, field: ProfileField, value: string) => {
     const roleId = value === NONE ? null : value;
@@ -129,10 +131,10 @@ export function PositionAccessPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Position access</CardTitle>
+        <CardTitle>Organisation access</CardTitle>
         <CardDescription>
-          Link each post on the organisation chart to an access profile. Whoever is appointed to the post (including
-          acting) gets that access automatically, and loses it when the appointment ends.
+          Assign a role to the head and members of each unit. People get that access when appointed (including acting)
+          and lose it when the appointment ends.
         </CardDescription>
         <div className="relative max-w-sm pt-2">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

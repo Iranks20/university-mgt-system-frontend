@@ -177,6 +177,14 @@ describe('HR module access', () => {
     expect(resolveHomePath(hrPerms)).toBe('/hr/dashboard');
   });
 
+  it('HR academic.read does not unlock Curriculum, university Reports, or ICT Settings', () => {
+    expect(navAllowed(hrPerms, '/curriculum-management')).toBe(false);
+    expect(navAllowed(hrPerms, '/reports')).toBe(false);
+    expect(navAllowed(hrPerms, '/admin-settings')).toBe(false);
+    expect(navAllowed(['academic.write'], '/curriculum-management')).toBe(true);
+    expect(navAllowed(['admin.console'], '/admin-settings')).toBe(true);
+  });
+
   it('Staff sees My Appraisal and not HR module', () => {
     expect(navAllowed(staffPerms, '/staff-appraisal')).toBe(true);
     expect(navAllowed(staffPerms, '/hr/employees')).toBe(false);

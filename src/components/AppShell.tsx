@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
-  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, UserCog, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
+  Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
   ChevronDown, AlertTriangle, Layers, ScanLine, History,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -161,7 +161,6 @@ const ADMIN_USERS_NAV_CHILDREN: SidebarChild[] = [
   { label: 'Student info forms', icon: ClipboardList, path: '/admin-student-info-forms' },
   { label: 'Lecturers', icon: GraduationCap, path: '/admin-lecturers' },
   { label: 'Administration', icon: Building, path: '/admin-administration' },
-  { label: 'Account security', icon: UserCog, path: '/admin-users' },
   { label: 'Roles & Permissions', icon: KeyRound, path: '/admin-roles' },
   { label: 'Audit log', icon: FileText, path: '/admin-audit-log' },
 ];
@@ -208,7 +207,6 @@ const FLAT_NAV_CANDIDATES: Array<{ label: string; path: string; icon: LucideIcon
   { label: 'Venues', path: '/admin-venues', icon: MapPin },
   { label: 'Calendar', path: '/admin-calendar', icon: Calendar },
   { label: 'Strategic Goals', path: '/admin-strategic-goals', icon: TrendingUp },
-  { label: 'Settings', path: '/admin-settings', icon: Settings },
 ];
 
 function isPathUnderHrSection(pathname: string): boolean {
