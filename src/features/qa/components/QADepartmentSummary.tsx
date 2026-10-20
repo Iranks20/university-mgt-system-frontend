@@ -7,6 +7,7 @@ import { Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
 import { exportDepartmentSummaryReport } from '@/utils/excel';
 import type { QADepartmentSummary } from '@/types/qa';
+import { TimetableTotalsCells, TimetableTotalsFooterCells, TimetableTotalsHeaderCells } from './TimetableTotalsCells';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
@@ -121,6 +122,7 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                     <TableHead className="text-right whitespace-nowrap">TOTAL UNTAUGHT</TableHead>
                     <TableHead className="text-right whitespace-nowrap">TOTAL MISSED</TableHead>
                     <TableHead className="text-right whitespace-nowrap">SUBSTITUTED</TableHead>
+                    <TimetableTotalsHeaderCells />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -140,6 +142,7 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                       <TableCell className="text-right">{summary.noUntaught}</TableCell>
                       <TableCell className="text-right">{summary.totalMissed ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.noSubstituted ?? 0}</TableCell>
+                      <TimetableTotalsCells row={summary} recordedExpected={summary.totalNoTaught + summary.noUntaught} />
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-gray-50">
@@ -156,6 +159,7 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                     <TableCell className="text-right">{sum((s) => s.noUntaught)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.totalMissed ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.noSubstituted ?? 0)}</TableCell>
+                    <TimetableTotalsFooterCells rows={summaries} recordedExpected={sum((s) => s.totalNoTaught + s.noUntaught)} />
                   </TableRow>
                 </TableBody>
               </Table>

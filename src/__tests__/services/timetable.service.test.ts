@@ -68,6 +68,45 @@ describe('TimetableService', () => {
     });
   });
 
+  describe('timetable expectation endpoints', () => {
+    const expectationResponse = {
+      scope: { academicTermId: 'term-1', academicTermName: 'Term 1', dateFrom: '2026-01-01', dateTo: '2026-04-30' },
+      summary: { timetableExpectedSessions: 2, timetableExpectedMinutes: 240 },
+      data: [{ classId: 'class-1' }],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    };
+
+    it('keeps scope and rows when the api client already unwrapped the envelope', async () => {
+      const api = await import('@/lib/api');
+      vi.mocked(api.default.get).mockResolvedValue(expectationResponse);
+
+      const coverage = await timetableService.getTimetableCoverage({ academicTermId: 'term-1' });
+      expect(coverage.scope.dateFrom).toBe('2026-01-01');
+      expect(coverage.scope.dateTo).toBe('2026-04-30');
+      expect(coverage.data).toEqual([{ classId: 'class-1' }]);
+      expect(coverage.total).toBe(1);
+
+      const workload = await timetableService.getLecturerWorkload({ academicTermId: 'term-1' });
+      expect(workload.scope.dateFrom).toBe('2026-01-01');
+      expect(Array.isArray(workload.data)).toBe(true);
+
+      const sessions = await timetableService.getExpectedSessions({ classId: 'class-1' });
+      expect(sessions.scope.dateTo).toBe('2026-04-30');
+      expect(sessions.data).toEqual([{ classId: 'class-1' }]);
+    });
+
+    it('unwraps a still-enveloped response without losing scope', async () => {
+      const api = await import('@/lib/api');
+      vi.mocked(api.default.get).mockResolvedValue({ data: expectationResponse });
+
+      const coverage = await timetableService.getTimetableCoverage();
+      expect(coverage.scope.academicTermId).toBe('term-1');
+      expect(coverage.data).toEqual([{ classId: 'class-1' }]);
+    });
+  });
+
   describe('updateClass', () => {
     it('should update class details', async () => {
       const mockResponse = { id: '1', capacity: 60 };

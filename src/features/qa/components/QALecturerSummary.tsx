@@ -13,6 +13,7 @@ import {
 } from '@/lib/qa-filter-cascade';
 import type { QALecturerSummary as QALecturerSummaryRow, QALecturerSummaryReport } from '@/types/qa';
 import { exportLecturerSummaryTableView } from '@/utils/excel';
+import { TimetableTotalsCells, TimetableTotalsHeaderCells } from './TimetableTotalsCells';
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
@@ -423,6 +424,7 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
                   <TableHead className="text-right whitespace-nowrap">TOTAL UNTAUGHT</TableHead>
                   <TableHead className="text-right whitespace-nowrap">TOTAL MISSED</TableHead>
                   <TableHead className="text-right whitespace-nowrap">SUBSTITUTED</TableHead>
+                  <TimetableTotalsHeaderCells />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -444,6 +446,7 @@ export function QALecturerSummary({ scopedDateRange }: QALecturerSummaryProps) {
                     <TableCell className="text-right">{row.noUntaught ?? 0}</TableCell>
                     <TableCell className="text-right">{row.totalMissed ?? 0}</TableCell>
                     <TableCell className="text-right">{row.noSubstituted ?? 0}</TableCell>
+                    <TimetableTotalsCells row={row} recordedExpected={row.noTaught + (row.noUntaught ?? 0)} />
                   </TableRow>
                 ))}
               </TableBody>

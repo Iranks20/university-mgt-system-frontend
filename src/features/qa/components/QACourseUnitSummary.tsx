@@ -11,6 +11,7 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { exportCourseUnitSummaryReport } from '@/utils/excel';
 import type { QACourseUnitSummary as QACourseUnitSummaryRow } from '@/types/qa';
+import { TimetableTotalsCells, TimetableTotalsHeaderCells } from './TimetableTotalsCells';
 import {
   buildCourseUnitsByClass,
   resolveCascadedCourseUnits,
@@ -448,7 +449,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                   <TableHead className="min-w-[160px]">LECTURER&apos;S NAME</TableHead>
                   <TableHead className="min-w-[140px]">CLASS</TableHead>
                   <TableHead className="min-w-[160px]">COURSE UNIT</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">EXPECTED</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">REC. EXPECTED</TableHead>
                   <TableHead className="text-right whitespace-nowrap">TAUGHT</TableHead>
                   <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
                   <TableHead className="text-right whitespace-nowrap">ONLINE</TableHead>
@@ -460,6 +461,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                   <TableHead className="text-right whitespace-nowrap">LEARNING ACT.</TableHead>
                   <TableHead className="text-right whitespace-nowrap">UNTAUGHT</TableHead>
                   <TableHead className="text-right whitespace-nowrap">MISSED</TableHead>
+                  <TimetableTotalsHeaderCells showRecordedExpected={false} />
                   <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -506,6 +508,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                       <TableCell className="text-right">{row.totalLearningActivity}</TableCell>
                       <TableCell className="text-right">{row.totalUntaught}</TableCell>
                       <TableCell className="text-right">{row.totalMissed}</TableCell>
+                      <TimetableTotalsCells row={row} />
                       <TableCell className="text-right">
                         <Button
                           variant="ghost"

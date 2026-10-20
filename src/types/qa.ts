@@ -45,7 +45,35 @@ export interface QALectureRecord {
  * Lecturer Summary Record
  * Lecturer / class / course unit with the same teaching breakdown as School Summary
  */
-export interface QALecturerSummary {
+export interface TimetableExpectationFields {
+  timetableExpectedSessions?: number;
+  timetableExpectedMinutes?: number;
+  timetableExpectedHours?: number;
+  elapsedExpectedSessions?: number;
+  elapsedExpectedMinutes?: number;
+  elapsedExpectedHours?: number;
+  futureExpectedSessions?: number;
+  futureExpectedMinutes?: number;
+  futureExpectedHours?: number;
+  timetableTaughtSessions?: number;
+  timetableTaughtMinutes?: number;
+  timetableTaughtHours?: number;
+  taughtEstimatedSessions?: number;
+  recordedUntaughtSessions?: number;
+  recordedUntaughtMinutes?: number;
+  recordedUntaughtHours?: number;
+  noRecordSessions?: number;
+  noRecordMinutes?: number;
+  noRecordHours?: number;
+  pendingSessions?: number;
+  cancelledSessions?: number;
+  lostMinutes?: number;
+  lostHours?: number;
+  coveragePercent?: number | null;
+}
+
+export interface QALecturerSummary extends TimetableExpectationFields {
+  lecturerId?: string | null;
   lecturerName: string;
   class: string;
   courseUnit: string;
@@ -68,7 +96,7 @@ export interface QALecturerSummary {
  * School Summary Record (matches 1.csv format)
  * SCHOOL, TOTAL NO. TAUGHT, NO. UNTAIGHT
  */
-export interface QASchoolSummary {
+export interface QASchoolSummary extends TimetableExpectationFields {
   school: string;
   totalNoTaught: number;
   noUntaught: number;
@@ -84,7 +112,7 @@ export interface QASchoolSummary {
   totalMissed?: number;
 }
 
-export interface QADepartmentSummary {
+export interface QADepartmentSummary extends TimetableExpectationFields {
   department: string;
   school: string;
   totalNoTaught: number;
@@ -112,7 +140,7 @@ export interface QALecturerSummaryReport {
   lecturers: QALecturerSummary[];
 }
 
-export interface QACourseUnitSummary {
+export interface QACourseUnitSummary extends TimetableExpectationFields {
   lecturerName: string;
   class: string;
   courseUnit: string;

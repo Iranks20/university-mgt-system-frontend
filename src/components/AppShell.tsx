@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
+import { 
   Menu, X, LayoutDashboard, BookOpen, Users, FileText, Calendar, CalendarX,
   MapPin, BarChart, Settings, School, Building,
   Clock, UserCheck, LogOut, GraduationCap, Bell, KeyRound, TrendingUp, Briefcase, ClipboardList, UsersRound, UserPlus,
@@ -669,19 +669,19 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     filteredNavItems.map(item => {
       if (item.type === 'single') {
         const isActive = navItemMatches(item.path, location.pathname, location.search);
-        return (
-          <li key={item.path}>
-            <Link
-              to={item.path}
+              return (
+                <li key={item.path}>
+                  <Link 
+                    to={item.path} 
               onClick={onNavigate}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${
-                isActive
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <item.icon size={20} />
-              {item.label}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${
+                      isActive 
+                        ? 'bg-primary/10 text-primary font-medium' 
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <item.icon size={20} />
+                    {item.label}
             </Link>
           </li>
         );
@@ -725,11 +725,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                       >
                         <child.icon size={18} className="shrink-0 opacity-90" />
                         {child.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
             </CollapsibleContent>
           </Collapsible>
         </li>
@@ -892,8 +892,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                         </li>
                       ))}
                     </ul>
-                  )}
-                </div>
+              )}
+            </div>
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
