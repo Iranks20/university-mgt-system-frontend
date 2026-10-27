@@ -137,9 +137,7 @@ function TimetableMetricCells({
   );
   const rest = (
     <>
-      <TableCell className="text-right">
-        {has ? `${row.noRecordSessions ?? 0} · ${fmtHours(row.noRecordHours)}h` : '—'}
-      </TableCell>
+      <TableCell className="text-right">{has ? (row.noRecordSessions ?? 0) : '—'}</TableCell>
       <TableCell className="text-right">{has ? fmtHours(row.timetableTaughtHours) : '—'}</TableCell>
       <TableCell className="text-right">{has ? fmtHours(row.lostHours) : '—'}</TableCell>
       <TableCell className="text-right">{row.coveragePercent != null ? `${row.coveragePercent}%` : '—'}</TableCell>
@@ -230,9 +228,7 @@ export function TimetableTotalsFooterCells({
   );
   const rest = (
     <>
-      <TableCell className="text-right">
-        {has ? `${sum((r) => r.noRecordSessions ?? 0)} · ${fmtHours(sum((r) => r.noRecordMinutes ?? 0) / 60)}h` : '—'}
-      </TableCell>
+      <TableCell className="text-right">{has ? sum((r) => r.noRecordSessions ?? 0) : '—'}</TableCell>
       <TableCell className="text-right">{has ? fmtHours(taughtMinutes / 60) : '—'}</TableCell>
       <TableCell className="text-right">
         {has ? fmtHours(Math.max(0, elapsedMinutes - taughtMinutes) / 60) : '—'}
