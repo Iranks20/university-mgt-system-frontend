@@ -643,7 +643,16 @@ export const qaService = {
     departments: Array<{
       id: string;
       name: string;
-      classes: Array<{ id: string; label: string; className: string; courseUnit: string; courseId: string | null; deliveryMode?: DeliveryMode }>;
+      classes: Array<{
+        id: string;
+        label: string;
+        className: string;
+        courseUnit: string;
+        courseId: string | null;
+        deliveryMode?: DeliveryMode;
+        startTime?: string | null;
+        endTime?: string | null;
+      }>;
     }>;
   } | null> => {
     try {

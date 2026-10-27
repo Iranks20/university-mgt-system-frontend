@@ -155,10 +155,24 @@ export default function LectureRecords() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [lecturerAssignments, setLecturerAssignments] = useState<{
     lecturerId: string;
-    departments: Array<{ id: string; name: string; classes: Array<{ id: string; label: string; className: string; courseUnit: string; deliveryMode?: DeliveryMode }> }>;
+    departments: Array<{
+      id: string;
+      name: string;
+      classes: Array<{
+        id: string;
+        label: string;
+        className: string;
+        courseUnit: string;
+        deliveryMode?: DeliveryMode;
+        startTime?: string | null;
+        endTime?: string | null;
+      }>;
+    }>;
   } | null>(null);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [scheduledStartTime, setScheduledStartTime] = useState('08:00');
+  const [scheduledEndTime, setScheduledEndTime] = useState('10:00');
   const [classLecturerPool, setClassLecturerPool] = useState<ModalLecturerOption[]>([]);
   const [classLecturerPoolClassId, setClassLecturerPoolClassId] = useState('');
   const [classLecturerPoolLoading, setClassLecturerPoolLoading] = useState(false);
@@ -1148,6 +1162,8 @@ export default function LectureRecords() {
     setCurrentRecordId(id);
     const record = records.find((r) => r.id === id);
     if (!record) return;
+    setScheduledStartTime(formatTimeForInput(record.timeForStarting) || '08:00');
+    setScheduledEndTime(formatTimeForInput(record.timeOutForEnding) || '10:00');
     const nameTrim = (record.lecturerName || '').trim();
     setSelectedLecturerName(nameTrim);
     const recordDeptName = (record.department || '').trim();
@@ -1309,6 +1325,8 @@ export default function LectureRecords() {
     setSelectedDepartmentName('');
     setSelectedClassId('');
     setSelectedClassName('');
+    setScheduledStartTime('08:00');
+    setScheduledEndTime('10:00');
     setLecturerAssignments(null);
     setSelectedComment('TAUGHT');
     setSelectedDeliveryMode('InPerson');
@@ -1404,6 +1422,14 @@ export default function LectureRecords() {
     const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
     if (!match) return '';
     return `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`;
+  };
+
+  const applyClassTimetableTimes = (cls?: {
+    startTime?: string | null;
+    endTime?: string | null;
+  } | null) => {
+    setScheduledStartTime(formatTimeForInput(cls?.startTime) || '08:00');
+    setScheduledEndTime(formatTimeForInput(cls?.endTime) || '10:00');
   };
 
   const resolveActualTimeDefault = (
@@ -2331,6 +2357,8 @@ export default function LectureRecords() {
                             setSelectedDepartmentName('');
                             setSelectedClassId('');
                             setSelectedClassName('');
+                            setScheduledStartTime('08:00');
+                            setScheduledEndTime('10:00');
                             setLecturerAssignments(null);
                             clearClassLecturerPool();
                           }
@@ -2351,6 +2379,8 @@ export default function LectureRecords() {
                         setSelectedDepartmentName(opt?.departmentName || '');
                         setSelectedClassId('');
                         setSelectedClassName('');
+                        setScheduledStartTime('08:00');
+                        setScheduledEndTime('10:00');
                         clearClassLecturerPool();
                         const assignments = await qaService.getLecturerAssignments(id);
                         setLecturerAssignments(assignments ?? null);
@@ -2427,6 +2457,8 @@ export default function LectureRecords() {
                           setSelectedDepartmentId(value);
                           setSelectedClassId('');
                           setSelectedClassName('');
+                          setScheduledStartTime('08:00');
+                          setScheduledEndTime('10:00');
                           const dept = lecturerAssignments?.departments.find((d) => d.id === value);
                           setSelectedDepartmentName(dept?.name || '');
                         }}
@@ -2461,6 +2493,7 @@ export default function LectureRecords() {
                           const dept = lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId);
                           const cls = dept?.classes.find((c) => c.id === value);
                           setSelectedClassName(cls?.label || '');
+                          applyClassTimetableTimes(cls);
                           if (cls?.deliveryMode) {
                             setSelectedDeliveryMode(normalizeDeliveryMode(cls.deliveryMode));
                           }
@@ -2528,12 +2561,8 @@ export default function LectureRecords() {
                     name="timeForStarting" 
                     type="time" 
                     required 
-                    defaultValue={
-                      currentRecordId !== null
-                        ? formatTimeForInput(records.find((r) => r.id === currentRecordId)?.timeForStarting) ||
-                          '08:00'
-                        : '08:00'
-                    }
+                    value={scheduledStartTime}
+                    onChange={(e) => setScheduledStartTime(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -2543,12 +2572,8 @@ export default function LectureRecords() {
                     name="timeOutForEnding" 
                     type="time" 
                     required 
-                    defaultValue={
-                      currentRecordId !== null
-                        ? formatTimeForInput(records.find((r) => r.id === currentRecordId)?.timeOutForEnding) ||
-                          '10:00'
-                        : '10:00'
-                    }
+                    value={scheduledEndTime}
+                    onChange={(e) => setScheduledEndTime(e.target.value)}
                   />
                 </div>
               </div>
@@ -2566,14 +2591,15 @@ export default function LectureRecords() {
                       id="checkInTime" 
                       name="checkInTime" 
                       type="time" 
+                      key={currentRecordId ? `checkin-${currentRecordId}` : `checkin-new-${scheduledStartTime}`}
                       defaultValue={
                         currentRecordId !== null
                           ? resolveActualTimeDefault(
                               records.find((r) => r.id === currentRecordId)?.checkInTime,
                               records.find((r) => r.id === currentRecordId)?.timeForStarting,
-                              '08:00'
+                              scheduledStartTime
                             )
-                          : '08:00'
+                          : scheduledStartTime
                       }
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually arrived.</p>
@@ -2584,14 +2610,15 @@ export default function LectureRecords() {
                       id="checkOutTime" 
                       name="checkOutTime" 
                       type="time" 
+                      key={currentRecordId ? `checkout-${currentRecordId}` : `checkout-new-${scheduledEndTime}`}
                       defaultValue={
                         currentRecordId !== null
                           ? resolveActualTimeDefault(
                               records.find((r) => r.id === currentRecordId)?.checkOutTime,
                               records.find((r) => r.id === currentRecordId)?.timeOutForEnding,
-                              '10:00'
+                              scheduledEndTime
                             )
-                          : '10:00'
+                          : scheduledEndTime
                       }
                     />
                     <p className="text-xs text-muted-foreground">Time when the lecturer actually left.</p>
