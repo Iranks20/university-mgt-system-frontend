@@ -392,12 +392,21 @@ export const qaService = {
     }
   },
 
-  getDepartmentSummaryReport: async (params?: { dateFrom?: string; dateTo?: string }): Promise<QADepartmentSummary[]> => {
+  getDepartmentSummaryReport: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    school?: string;
+  }): Promise<QADepartmentSummary[]> => {
     try {
-      const query = params?.dateFrom && params?.dateTo ? { dateFrom: params.dateFrom, dateTo: params.dateTo } : {};
+      const query: Record<string, string> = {};
+      if (params?.dateFrom && params?.dateTo) {
+        query.dateFrom = params.dateFrom;
+        query.dateTo = params.dateTo;
+      }
+      if (params?.school?.trim()) query.school = params.school.trim();
       const raw = await api.get<QADepartmentSummary[] | { data: QADepartmentSummary[] }>(
         '/qa/department-summary-report',
-        query as Record<string, string>
+        query
       );
       return Array.isArray(raw) ? raw : (raw as { data?: QADepartmentSummary[] })?.data ?? [];
     } catch (error) {

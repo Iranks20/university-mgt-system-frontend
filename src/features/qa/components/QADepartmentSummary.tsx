@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
@@ -11,6 +12,8 @@ import { TimetableTotalsCells, TimetableTotalsFooterCells, TimetableTotalsHeader
 
 type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
+const ALL = 'All';
+
 type QADepartmentSummaryProps = {
   scopedDateRange?: { dateFrom: string; dateTo: string };
 };
@@ -19,6 +22,8 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
   const [summaries, setSummaries] = useState<QADepartmentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>('all');
+  const [schoolOptions, setSchoolOptions] = useState<string[]>([]);
+  const [selectedSchool, setSelectedSchool] = useState(ALL);
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
     if (scopedDateRange) return scopedDateRange;
@@ -38,14 +43,24 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
   };
 
   useEffect(() => {
+    qaService
+      .getSchools()
+      .then((schools) => setSchoolOptions(schools))
+      .catch(() => setSchoolOptions([]));
+  }, []);
+
+  useEffect(() => {
     loadSummaries();
-  }, [dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
+  }, [dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo, selectedSchool]);
 
   const loadSummaries = async () => {
     setIsLoading(true);
     try {
       const params = getDateParams();
-      const data = await qaService.getDepartmentSummaryReport(params);
+      const data = await qaService.getDepartmentSummaryReport({
+        ...params,
+        ...(selectedSchool !== ALL ? { school: selectedSchool } : {}),
+      });
       setSummaries(data);
     } catch (error) {
       console.error('Error loading department summaries:', error);
@@ -60,6 +75,11 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
 
   const sum = (pick: (s: QADepartmentSummary) => number) => summaries.reduce((acc, s) => acc + pick(s), 0);
 
+  const schoolComboboxOptions = useMemo(
+    () => [{ value: ALL, label: 'All Schools' }, ...schoolOptions.map((school) => ({ value: school, label: school }))],
+    [schoolOptions]
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -68,6 +88,16 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
           <p className="text-gray-500">Summary by department with untaught breakdown</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
+          <Combobox
+            className="w-[240px]"
+            options={schoolComboboxOptions}
+            value={selectedSchool}
+            onValueChange={(value) => setSelectedSchool(value || ALL)}
+            placeholder="School"
+            searchPlaceholder="Search schools..."
+            emptyText="No school found."
+            initialDisplayCount={50}
+          />
           {!scopedDateRange ? (
             <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
               <SelectTrigger className="w-[180px]">
@@ -95,14 +125,14 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
         <CardHeader>
           <CardTitle>Department Summary</CardTitle>
           <CardDescription>
-            Total lectures taught vs untaught (rollup) by department, with reason breakdown
+            Total lectures taught vs untaught by department, with timetable expected sessions and hours
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-8 text-center text-gray-500">
-              Loading department summaries...
-            </div>
+            <div className="py-8 text-center text-gray-500">Loading department summaries...</div>
+          ) : summaries.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">No department summary data for the selected filters.</div>
           ) : (
             <div className="rounded-md border overflow-x-auto">
               <Table>
@@ -110,6 +140,7 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                   <TableRow>
                     <TableHead>SCHOOL</TableHead>
                     <TableHead>DEPARTMENT</TableHead>
+                    <TimetableTotalsHeaderCells ttExpectedFirst />
                     <TableHead className="text-right whitespace-nowrap">NO. TAUGHT</TableHead>
                     <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
                     <TableHead className="text-right whitespace-nowrap">ONLINE</TableHead>
@@ -122,7 +153,6 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                     <TableHead className="text-right whitespace-nowrap">TOTAL UNTAUGHT</TableHead>
                     <TableHead className="text-right whitespace-nowrap">TOTAL MISSED</TableHead>
                     <TableHead className="text-right whitespace-nowrap">SUBSTITUTED</TableHead>
-                    <TimetableTotalsHeaderCells />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -130,6 +160,11 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                     <TableRow key={`${summary.school}-${summary.department}-${index}`}>
                       <TableCell className="font-medium">{summary.school}</TableCell>
                       <TableCell className="font-medium">{summary.department}</TableCell>
+                      <TimetableTotalsCells
+                        row={summary}
+                        recordedExpected={summary.totalNoTaught + summary.noUntaught}
+                        ttExpectedFirst
+                      />
                       <TableCell className="text-right">{summary.totalNoTaught}</TableCell>
                       <TableCell className="text-right">{summary.physicalClasses ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.onlineLectures ?? 0}</TableCell>
@@ -142,11 +177,15 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                       <TableCell className="text-right">{summary.noUntaught}</TableCell>
                       <TableCell className="text-right">{summary.totalMissed ?? 0}</TableCell>
                       <TableCell className="text-right">{summary.noSubstituted ?? 0}</TableCell>
-                      <TimetableTotalsCells row={summary} recordedExpected={summary.totalNoTaught + summary.noUntaught} />
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-gray-50">
                     <TableCell colSpan={2}>TOTAL</TableCell>
+                    <TimetableTotalsFooterCells
+                      rows={summaries}
+                      recordedExpected={sum((s) => s.totalNoTaught + s.noUntaught)}
+                      ttExpectedFirst
+                    />
                     <TableCell className="text-right">{sum((s) => s.totalNoTaught)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.physicalClasses ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.onlineLectures ?? 0)}</TableCell>
@@ -159,7 +198,6 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
                     <TableCell className="text-right">{sum((s) => s.noUntaught)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.totalMissed ?? 0)}</TableCell>
                     <TableCell className="text-right">{sum((s) => s.noSubstituted ?? 0)}</TableCell>
-                    <TimetableTotalsFooterCells rows={summaries} recordedExpected={sum((s) => s.totalNoTaught + s.noUntaught)} />
                   </TableRow>
                 </TableBody>
               </Table>

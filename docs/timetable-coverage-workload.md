@@ -9,13 +9,15 @@ Reports & Analytics (`/reports`):
 - **Timetable Coverage** — every class scheduled in the selected term.
 - **Lecturer Workload** — planned hours per lecturer (week + term) vs taught.
 - School / Department / Lecturer / Course Unit summaries now carry timetable columns next to the existing QA-record columns.
+- **Course Unit Summary** leads with **TT EXPECTED** / **TT HOURS**, then **Sessions/week** and **Hrs/week**, then recorded expected. Column headers have brief info icons.
 
 Use the Academic Term filter at the top of Reports first. Term is the master scope.
 
 ## Definitions (same everywhere, screen and exports)
 
 - **Recorded Expected** (existing, unchanged): QA records marked Taught + Untaught.
-- **Timetable Expected**: dated sessions expanded from each class's weekly timetable pattern across the term dates. A 2-hour Monday class over 14 Mondays = 14 sessions / 28 hours.
+- **Timetable Expected** (TT EXPECTED / TT HOURS): dated sessions expanded from each class's weekly timetable pattern across the term dates. A 2-hour Monday class over 14 Mondays = 14 sessions / 28 hours. This is the total expected that comes directly from the timetable.
+- **Sessions/week · Hrs/week** (Course Unit Summary): weekly load from the class timetable pattern (one slot per scheduled class day/time). Summed when a course-unit row rolls up more than one class.
 - **No Record**: elapsed timetable sessions with no QA action (includes pending seeds). This is an investigation list, not proof the lecturer was absent.
 - **Taught Hours**: actual QA duration for Taught / Substituted / Compensation sessions. If a record has no actual duration, scheduled length is used and counted as estimated.
 - **Lost Hours**: elapsed timetable hours − taught hours (recorded untaught + no-record).

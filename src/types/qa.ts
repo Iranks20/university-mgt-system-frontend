@@ -145,6 +145,9 @@ export interface QACourseUnitSummary extends TimetableExpectationFields {
   class: string;
   courseUnit: string;
   expectedLectures: number;
+  weeklySessions?: number;
+  weeklyMinutes?: number;
+  weeklyHours?: number;
   noTaught: number;
   physicalClasses: number;
   onlineLectures: number;
