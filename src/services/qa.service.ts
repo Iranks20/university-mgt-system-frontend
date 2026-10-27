@@ -399,10 +399,8 @@ export const qaService = {
   }): Promise<QADepartmentSummary[]> => {
     try {
       const query: Record<string, string> = {};
-      if (params?.dateFrom && params?.dateTo) {
-        query.dateFrom = params.dateFrom;
-        query.dateTo = params.dateTo;
-      }
+      if (params?.dateFrom) query.dateFrom = params.dateFrom;
+      if (params?.dateTo) query.dateTo = params.dateTo;
       if (params?.school?.trim()) query.school = params.school.trim();
       const raw = await api.get<QADepartmentSummary[] | { data: QADepartmentSummary[] }>(
         '/qa/department-summary-report',

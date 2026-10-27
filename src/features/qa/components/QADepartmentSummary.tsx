@@ -3,14 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Download } from 'lucide-react';
 import { qaService } from '@/services/qa.service';
 import { exportDepartmentSummaryReport } from '@/utils/excel';
 import type { QADepartmentSummary } from '@/types/qa';
 import { TimetableTotalsCells, TimetableTotalsFooterCells, TimetableTotalsHeaderCells } from './TimetableTotalsCells';
-
-type DateRangeKey = 'all' | 'last_30_days' | 'this_term';
 
 const ALL = 'All';
 
@@ -21,25 +19,25 @@ type QADepartmentSummaryProps = {
 export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProps) {
   const [summaries, setSummaries] = useState<QADepartmentSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [dateRangeKey, setDateRangeKey] = useState<DateRangeKey>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [schoolOptions, setSchoolOptions] = useState<string[]>([]);
   const [selectedSchool, setSelectedSchool] = useState(ALL);
 
   const getDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
-    if (scopedDateRange) return scopedDateRange;
-    const now = new Date();
-    if (dateRangeKey === 'all') return undefined;
-    if (dateRangeKey === 'last_30_days') {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 30);
-      return { dateFrom: from.toISOString().slice(0, 10), dateTo: now.toISOString().slice(0, 10) };
-    }
-    if (dateRangeKey === 'this_term') {
-      const from = new Date(now);
-      from.setMonth(from.getMonth() - 3);
-      return { dateFrom: from.toISOString().slice(0, 10), dateTo: now.toISOString().slice(0, 10) };
-    }
-    return undefined;
+    const from = dateFrom.trim() || undefined;
+    const to = dateTo.trim() || undefined;
+    if (!from && !to) return undefined;
+    return { dateFrom: from, dateTo: to };
+  };
+
+  const getDateRangeLabel = () => {
+    const from = dateFrom.trim();
+    const to = dateTo.trim();
+    if (from && to) return `${from} to ${to}`;
+    if (from) return `From ${from}`;
+    if (to) return `Until ${to}`;
+    return 'All time';
   };
 
   useEffect(() => {
@@ -50,8 +48,14 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
   }, []);
 
   useEffect(() => {
+    if (!scopedDateRange) return;
+    setDateFrom(scopedDateRange.dateFrom);
+    setDateTo(scopedDateRange.dateTo);
+  }, [scopedDateRange?.dateFrom, scopedDateRange?.dateTo]);
+
+  useEffect(() => {
     loadSummaries();
-  }, [dateRangeKey, scopedDateRange?.dateFrom, scopedDateRange?.dateTo, selectedSchool]);
+  }, [dateFrom, dateTo, scopedDateRange?.dateFrom, scopedDateRange?.dateTo, selectedSchool]);
 
   const loadSummaries = async () => {
     setIsLoading(true);
@@ -85,9 +89,45 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Department Summary Report</h2>
-          <p className="text-gray-500">Summary by department with untaught breakdown</p>
+          <p className="text-gray-500">
+            Summary by department with untaught breakdown
+            {dateFrom || dateTo ? ` · ${getDateRangeLabel()}` : ''}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Date from</label>
+            <Input
+              type="date"
+              className="w-[150px]"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Date to</label>
+            <Input
+              type="date"
+              className="w-[150px]"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+          {dateFrom || dateTo ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mb-0.5"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+              }}
+            >
+              Clear dates
+            </Button>
+          ) : null}
           <Combobox
             className="w-[240px]"
             options={schoolComboboxOptions}
@@ -98,18 +138,6 @@ export function QADepartmentSummary({ scopedDateRange }: QADepartmentSummaryProp
             emptyText="No school found."
             initialDisplayCount={50}
           />
-          {!scopedDateRange ? (
-            <Select value={dateRangeKey} onValueChange={(v) => setDateRangeKey(v as DateRangeKey)}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All time</SelectItem>
-                <SelectItem value="last_30_days">Last 30 days</SelectItem>
-                <SelectItem value="this_term">Last 3 months</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : null}
           <Button
             variant="outline"
             className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
