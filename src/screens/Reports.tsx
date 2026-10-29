@@ -16,7 +16,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { QASchoolSummary, QADepartmentSummary, QALecturerSummary, QACourseUnitSummary } from '@/features/qa';
+import { QASchoolSummary, QADepartmentSummary, QALecturerSummary, QACourseUnitSummary, QATimetableCoverage, QALecturerWorkload } from '@/features/qa';
 import { analyticsService } from '@/services/analytics.service';
 import { reportService } from '@/services/report.service';
 import { qaService } from '@/services/qa.service';
@@ -1108,6 +1108,8 @@ export default function Reports() {
             <TabsTrigger value="department-summary">Department Summary</TabsTrigger>
             <TabsTrigger value="lecturer-summary">Lecturer Summary</TabsTrigger>
             <TabsTrigger value="course-unit-summary">Course Unit Summary</TabsTrigger>
+            <TabsTrigger value="timetable-coverage">Timetable Coverage</TabsTrigger>
+            <TabsTrigger value="lecturer-workload">Lecturer Workload</TabsTrigger>
             <TabsTrigger value="schools">School Performance</TabsTrigger>
             <TabsTrigger value="lecturers">Lecturer Stats</TabsTrigger>
             <TabsTrigger value="students">Student Attendance</TabsTrigger>
@@ -1218,6 +1220,14 @@ export default function Reports() {
 
           <TabsContent value="course-unit-summary" className="space-y-4">
             <QACourseUnitSummary scopedDateRange={reportsScopedDates} />
+          </TabsContent>
+
+          <TabsContent value="timetable-coverage" className="space-y-4">
+            <QATimetableCoverage scopedDateRange={reportsScopedDates} academicTermId={academicTermId} />
+          </TabsContent>
+
+          <TabsContent value="lecturer-workload" className="space-y-4">
+            <QALecturerWorkload scopedDateRange={reportsScopedDates} academicTermId={academicTermId} />
           </TabsContent>
 
           {/* OVERVIEW TAB */}

@@ -1,4 +1,111 @@
 import api from '@/lib/api';
+import type { TimetableExpectationFields } from '@/types/qa';
+
+export type TimetableExpectationParams = {
+  academicTermId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  schoolId?: string;
+  departmentId?: string;
+  courseId?: string;
+  classId?: string;
+  lecturerId?: string;
+  search?: string;
+  outcome?: string;
+  minWeeklyHours?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type TimetableExpectationResponse<T> = {
+  scope: { academicTermId: string | null; academicTermName: string | null; dateFrom: string; dateTo: string };
+  summary: TimetableExpectationFields & {
+    classCount?: number;
+    lecturerCount?: number;
+    unassignedClassCount?: number;
+    unassignedSessions?: number;
+  };
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type TimetableCoverageRow = TimetableExpectationFields & {
+  classId: string;
+  className: string;
+  courseId: string;
+  courseCode: string | null;
+  courseName: string | null;
+  departmentName: string | null;
+  schoolName: string | null;
+  programName: string | null;
+  lecturerId: string | null;
+  lecturerName: string | null;
+  coLecturers: Array<{ id: string; name: string | null; isPrimary: boolean }>;
+  dayOfWeek: number | null;
+  dayName: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  venueName: string | null;
+  isActive: boolean;
+  weeklyMinutes: number;
+  weeklyHours: number;
+};
+
+export type LecturerWorkloadRow = TimetableExpectationFields & {
+  lecturerId: string;
+  lecturerName: string;
+  staffNumber: string | null;
+  assignedClassCount: number;
+  courseCount: number;
+  weeklyMinutes: number;
+  weeklyHours: number;
+  actualTaughtMinutes: number;
+  actualTaughtHours: number;
+  remainingMinutes: number;
+  remainingHours: number;
+};
+
+export type ExpectedSessionRow = {
+  slotId: string | null;
+  classId: string;
+  className: string;
+  courseCode: string | null;
+  courseName: string | null;
+  departmentName: string | null;
+  schoolName: string | null;
+  lecturerId: string | null;
+  lecturerName: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  venue: string | null;
+  durationMinutes: number;
+  durationHours: number;
+  outcome: 'taught' | 'untaught' | 'pending' | 'no_record' | 'cancelled' | 'scheduled';
+  qaComment: string | null;
+  taughtMinutes: number;
+  taughtHours: number;
+};
+
+function unwrapExpectationResponse<T>(res: TimetableExpectationResponse<T> | { data: TimetableExpectationResponse<T> }): TimetableExpectationResponse<T> {
+  const candidate = res as TimetableExpectationResponse<T>;
+  if (candidate && typeof candidate === 'object' && 'scope' in candidate && Array.isArray(candidate.data)) {
+    return candidate;
+  }
+  return (res as { data: TimetableExpectationResponse<T> }).data;
+}
+
+function cleanParams(params?: TimetableExpectationParams): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (!params) return query;
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    query[key] = String(value);
+  }
+  return query;
+}
 
 export interface TimetableClass {
   id: string;
@@ -238,6 +345,21 @@ export const timetableService = {
     if (params.limit != null) query.limit = String(params.limit);
     const res = await api.get<{ data: any[]; total: number; page: number; pageSize: number }>('/timetable/my-scheduled-sessions', query);
     return Array.isArray(res) ? { data: res, total: res.length, page: 1, pageSize: res.length } : (res as any);
+  },
+
+  getTimetableCoverage: async (params?: TimetableExpectationParams): Promise<TimetableExpectationResponse<TimetableCoverageRow>> => {
+    const res = await api.get<TimetableExpectationResponse<TimetableCoverageRow> | { data: TimetableExpectationResponse<TimetableCoverageRow> }>('/timetable/coverage', cleanParams(params));
+    return unwrapExpectationResponse(res);
+  },
+
+  getLecturerWorkload: async (params?: TimetableExpectationParams): Promise<TimetableExpectationResponse<LecturerWorkloadRow>> => {
+    const res = await api.get<TimetableExpectationResponse<LecturerWorkloadRow> | { data: TimetableExpectationResponse<LecturerWorkloadRow> }>('/timetable/lecturer-workload', cleanParams(params));
+    return unwrapExpectationResponse(res);
+  },
+
+  getExpectedSessions: async (params?: TimetableExpectationParams): Promise<TimetableExpectationResponse<ExpectedSessionRow>> => {
+    const res = await api.get<TimetableExpectationResponse<ExpectedSessionRow> | { data: TimetableExpectationResponse<ExpectedSessionRow> }>('/timetable/expected-sessions', cleanParams(params));
+    return unwrapExpectationResponse(res);
   },
 
   getScheduledCountBySchool: async (dateFrom: string, dateTo: string): Promise<{ schoolName: string; scheduledCount: number }[]> => {

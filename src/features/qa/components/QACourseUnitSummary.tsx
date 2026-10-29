@@ -11,6 +11,8 @@ import { qaService } from '@/services/qa.service';
 import { academicService } from '@/services/academic.service';
 import { exportCourseUnitSummaryReport } from '@/utils/excel';
 import type { QACourseUnitSummary as QACourseUnitSummaryRow } from '@/types/qa';
+import { TimetableTotalsCells, TimetableTotalsHeaderCells } from './TimetableTotalsCells';
+
 import {
   buildCourseUnitsByClass,
   resolveCascadedCourseUnits,
@@ -448,7 +450,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                   <TableHead className="min-w-[160px]">LECTURER&apos;S NAME</TableHead>
                   <TableHead className="min-w-[140px]">CLASS</TableHead>
                   <TableHead className="min-w-[160px]">COURSE UNIT</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">EXPECTED</TableHead>
+                  <TimetableTotalsHeaderCells showRecordedExpected showWeekly ttExpectedFirst />
                   <TableHead className="text-right whitespace-nowrap">TAUGHT</TableHead>
                   <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
                   <TableHead className="text-right whitespace-nowrap">ONLINE</TableHead>
@@ -494,7 +496,12 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                           {row.courseUnit}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">{row.expectedLectures}</TableCell>
+                      <TimetableTotalsCells
+                        row={row}
+                        recordedExpected={row.expectedLectures}
+                        showWeekly
+                        ttExpectedFirst
+                      />
                       <TableCell className="text-right">{row.noTaught}</TableCell>
                       <TableCell className="text-right">{row.physicalClasses}</TableCell>
                       <TableCell className="text-right">{row.onlineLectures}</TableCell>
@@ -562,8 +569,24 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
             <div className="space-y-5">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="rounded-md border p-3">
-                  <p className="text-xs text-muted-foreground">Expected</p>
+                  <p className="text-xs text-muted-foreground">Recorded expected</p>
                   <p className="text-lg font-semibold">{detailRow.expectedLectures}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Timetable total expected</p>
+                  <p className="text-lg font-semibold">
+                    {detailRow.timetableExpectedSessions != null
+                      ? `${detailRow.timetableExpectedSessions} sess · ${detailRow.timetableExpectedHours ?? 0}h`
+                      : '—'}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Sessions / hours a week</p>
+                  <p className="text-lg font-semibold">
+                    {detailRow.weeklySessions != null
+                      ? `${detailRow.weeklySessions} · ${detailRow.weeklyHours ?? 0}h`
+                      : '—'}
+                  </p>
                 </div>
                 <div className="rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">Taught</p>
