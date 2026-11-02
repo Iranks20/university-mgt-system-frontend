@@ -173,6 +173,47 @@ export default function LectureRecords() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [scheduledStartTime, setScheduledStartTime] = useState('08:00');
   const [scheduledEndTime, setScheduledEndTime] = useState('10:00');
+  const [bindToTimetable, setBindToTimetable] = useState(false);
+  const [recordDate, setRecordDate] = useState(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  });
+  const [sessionChoice, setSessionChoice] = useState('');
+  const [scheduleLocked, setScheduleLocked] = useState(false);
+  const [selectedTimetableId, setSelectedTimetableId] = useState<string | null>(null);
+  const [daySessions, setDaySessions] = useState<
+    Array<{
+      timetableId: string;
+      classId: string;
+      label: string;
+      courseUnit: string;
+      courseId: string | null;
+      departmentId: string;
+      departmentName: string;
+      deliveryMode?: DeliveryMode;
+      startTime: string;
+      endTime: string;
+      status: string;
+      lectureRecordId: string | null;
+      lectureComment: string | null;
+    }>
+  >([]);
+  const [extraClasses, setExtraClasses] = useState<
+    Array<{
+      classId: string;
+      label: string;
+      className: string;
+      courseUnit: string;
+      courseId: string | null;
+      departmentId: string;
+      departmentName: string;
+      deliveryMode?: DeliveryMode;
+      startTime?: string | null;
+      endTime?: string | null;
+    }>
+  >([]);
+  const [daySessionsLoading, setDaySessionsLoading] = useState(false);
   const [classLecturerPool, setClassLecturerPool] = useState<ModalLecturerOption[]>([]);
   const [classLecturerPoolClassId, setClassLecturerPoolClassId] = useState('');
   const [classLecturerPoolLoading, setClassLecturerPoolLoading] = useState(false);
@@ -1015,6 +1056,10 @@ export default function LectureRecords() {
       toast.error('Please select a lecturer.');
       return;
     }
+    if (bindToTimetable && !sessionChoice) {
+      toast.error('Select the timetable session for this day, or record an extra class.');
+      return;
+    }
     if (!selectedClassId?.trim()) {
       toast.error('Please select a class so student attendance and rankings can use this session.');
       return;
@@ -1113,6 +1158,9 @@ export default function LectureRecords() {
       checkInTime: checkInTime || undefined,
       checkOutTime: checkOutTime || undefined,
       lessonTimeout: lessonTimeout,
+      ...(bindToTimetable
+        ? { timetableId: scheduleLocked ? selectedTimetableId : null }
+        : {}),
     };
 
     try {
@@ -1159,6 +1207,10 @@ export default function LectureRecords() {
   };
 
   const openEdit = async (id: string) => {
+    setBindToTimetable(false);
+    setSessionChoice('');
+    setScheduleLocked(false);
+    setSelectedTimetableId(null);
     setCurrentRecordId(id);
     const record = records.find((r) => r.id === id);
     if (!record) return;
@@ -1316,6 +1368,15 @@ export default function LectureRecords() {
   };
 
   const openNew = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setBindToTimetable(true);
+    setRecordDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+    setSessionChoice('');
+    setScheduleLocked(false);
+    setSelectedTimetableId(null);
+    setDaySessions([]);
+    setExtraClasses([]);
     setCurrentRecordId(null);
     setSelectedSchool('');
     setClasses([]);
@@ -1431,6 +1492,151 @@ export default function LectureRecords() {
     setScheduledStartTime(formatTimeForInput(cls?.startTime) || '08:00');
     setScheduledEndTime(formatTimeForInput(cls?.endTime) || '10:00');
   };
+
+  const assignmentsFromClasses = (
+    classes: Array<{
+      classId: string;
+      label: string;
+      className: string;
+      courseUnit: string;
+      courseId: string | null;
+      departmentId: string;
+      departmentName: string;
+      deliveryMode?: DeliveryMode;
+      startTime?: string | null;
+      endTime?: string | null;
+    }>
+  ) => {
+    const departments = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        classes: Array<{
+          id: string;
+          label: string;
+          className: string;
+          courseUnit: string;
+          courseId: string | null;
+          deliveryMode?: DeliveryMode;
+          startTime?: string | null;
+          endTime?: string | null;
+        }>;
+      }
+    >();
+    for (const cls of classes) {
+      if (!cls.departmentId) continue;
+      const dept = departments.get(cls.departmentId) ?? {
+        id: cls.departmentId,
+        name: cls.departmentName,
+        classes: [],
+      };
+      dept.classes.push({
+        id: cls.classId,
+        label: cls.label,
+        className: cls.className,
+        courseUnit: cls.courseUnit,
+        courseId: cls.courseId,
+        deliveryMode: cls.deliveryMode,
+        startTime: cls.startTime,
+        endTime: cls.endTime,
+      });
+      departments.set(cls.departmentId, dept);
+    }
+    return { lecturerId: selectedLecturerId, departments: [...departments.values()] };
+  };
+
+  const applySessionChoice = async (value: string) => {
+    setSessionChoice(value);
+    if (!value) {
+      setScheduleLocked(false);
+      setSelectedTimetableId(null);
+      setCurrentRecordId(null);
+      setSelectedDepartmentId('');
+      setSelectedDepartmentName('');
+      setSelectedClassId('');
+      setSelectedClassName('');
+      setLecturerAssignments(null);
+      clearClassLecturerPool();
+      return;
+    }
+    if (value === 'extra') {
+      setScheduleLocked(false);
+      setSelectedTimetableId(null);
+      setCurrentRecordId(null);
+      setLecturerAssignments(assignmentsFromClasses(extraClasses));
+      setSelectedDepartmentId('');
+      setSelectedDepartmentName('');
+      setSelectedClassId('');
+      setSelectedClassName('');
+      setScheduledStartTime('08:00');
+      setScheduledEndTime('10:00');
+      clearClassLecturerPool();
+      return;
+    }
+    const session = daySessions.find((row) => row.timetableId === value);
+    if (!session || session.status === 'Cancelled') return;
+    setScheduleLocked(true);
+    setSelectedTimetableId(session.timetableId);
+    setCurrentRecordId(session.lectureRecordId);
+    setSelectedDepartmentId(session.departmentId);
+    setSelectedDepartmentName(session.departmentName);
+    setSelectedClassId(session.classId);
+    setSelectedClassName(session.label);
+    setScheduledStartTime(formatTimeForInput(session.startTime) || '08:00');
+    setScheduledEndTime(formatTimeForInput(session.endTime) || '10:00');
+    if (session.deliveryMode) setSelectedDeliveryMode(normalizeDeliveryMode(session.deliveryMode));
+    if (session.lectureComment) setSelectedComment(session.lectureComment);
+    setLecturerAssignments(
+      assignmentsFromClasses([
+        {
+          classId: session.classId,
+          label: session.label,
+          className: session.label,
+          courseUnit: session.courseUnit,
+          courseId: session.courseId,
+          departmentId: session.departmentId,
+          departmentName: session.departmentName,
+          deliveryMode: session.deliveryMode,
+          startTime: session.startTime,
+          endTime: session.endTime,
+        },
+      ])
+    );
+    const pool = await loadClassLecturerPool(session.classId);
+    setSelectedCoLecturerIds([]);
+    if (!session.lectureRecordId) {
+      applySinglePoolLecturerIfNeeded(pool, { onlyWhenEmpty: true });
+    }
+    if (session.lectureRecordId) {
+      toast.info('This session already has a lecture record. Saving will update it.');
+    }
+  };
+
+  useEffect(() => {
+    if (!isDialogOpen || !bindToTimetable || !selectedLecturerId) {
+      if (!selectedLecturerId) {
+        setDaySessions([]);
+        setExtraClasses([]);
+      }
+      return;
+    }
+    let cancelled = false;
+    setDaySessionsLoading(true);
+    qaService
+      .getLecturerDaySessions(selectedLecturerId, recordDate)
+      .then((plan) => {
+        if (cancelled) return;
+        setDaySessions(plan?.sessions ?? []);
+        setExtraClasses(plan?.extraClasses ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setDaySessionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDialogOpen, bindToTimetable, selectedLecturerId, recordDate]);
 
   const resolveActualTimeDefault = (
     actual: string | undefined | null,
@@ -2325,16 +2531,32 @@ export default function LectureRecords() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="date">DATE *</Label>
-                  <Input 
-                    id="date" 
-                    name="date" 
-                    type="date" 
-                    required 
-                      defaultValue={
-                        currentRecordId !== null
-                          ? formatDateForInput(records.find((r) => r.id === currentRecordId)?.date)
-                          : formatDateForInput(new Date())
-                      }
+                  <Input
+                    id="date"
+                    name="date"
+                    type="date"
+                    required
+                    {...(bindToTimetable
+                      ? {
+                          value: recordDate,
+                          onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                            setRecordDate(e.target.value);
+                            setSessionChoice('');
+                            setScheduleLocked(false);
+                            setSelectedTimetableId(null);
+                            setCurrentRecordId(null);
+                            setSelectedDepartmentId('');
+                            setSelectedDepartmentName('');
+                            setSelectedClassId('');
+                            setSelectedClassName('');
+                            setLecturerAssignments(null);
+                          },
+                        }
+                      : {
+                          defaultValue: formatDateForInput(
+                            records.find((r) => r.id === currentRecordId)?.date
+                          ),
+                        })}
                   />
                 </div>
                   <div className="space-y-2 lg:col-span-3">
@@ -2372,9 +2594,11 @@ export default function LectureRecords() {
                           setSelectedSubstituteId('');
                           setSelectedSubstituteName('');
                         }
-                        if (selectedClassId) {
+                        if (selectedClassId || scheduleLocked) {
                           return;
                         }
+                        setSessionChoice('');
+                        setSelectedTimetableId(null);
                         setSelectedDepartmentId('');
                         setSelectedDepartmentName(opt?.departmentName || '');
                         setSelectedClassId('');
@@ -2382,6 +2606,10 @@ export default function LectureRecords() {
                         setScheduledStartTime('08:00');
                         setScheduledEndTime('10:00');
                         clearClassLecturerPool();
+                        if (bindToTimetable) {
+                          setLecturerAssignments(null);
+                          return;
+                        }
                         const assignments = await qaService.getLecturerAssignments(id);
                         setLecturerAssignments(assignments ?? null);
                       }}
@@ -2447,12 +2675,68 @@ export default function LectureRecords() {
                 </div>
               </div>
 
+              {bindToTimetable ? (
+                <div className="space-y-2">
+                  <Label>SESSION FOR THIS DAY *</Label>
+                  <Select
+                    value={sessionChoice || undefined}
+                    onValueChange={(value) => {
+                      void applySessionChoice(value);
+                    }}
+                    disabled={!selectedLecturerId || daySessionsLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          !selectedLecturerId
+                            ? 'Select a lecturer first'
+                            : daySessionsLoading
+                              ? 'Loading timetable…'
+                              : 'Select a scheduled session or an extra class'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {daySessions.map((session) => (
+                        <SelectItem
+                          key={session.timetableId}
+                          value={session.timetableId}
+                          disabled={session.status === 'Cancelled'}
+                        >
+                          {session.startTime}–{session.endTime} · {session.label}
+                          {session.status === 'Cancelled'
+                            ? ' (cancelled)'
+                            : session.lectureRecordId
+                              ? ' (already recorded)'
+                              : ''}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="extra">Extra class (not on this day’s timetable)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedLecturerId && !daySessionsLoading && daySessions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No timetable sessions for this lecturer on {recordDate}. Use extra class to record one.
+                    </p>
+                  ) : null}
+                  {sessionChoice === 'extra' ? (
+                    <p className="text-xs text-muted-foreground">
+                      This session is not on the timetable. It will appear on student attendance for this date after you save it.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+                {bindToTimetable && !sessionChoice ? (
+                  <p className="text-sm text-muted-foreground">Choose a session to fill the class and scheduled times.</p>
+                ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                     <Label>DEPARTMENT</Label>
                     {lecturerAssignments && lecturerAssignments.departments.length > 0 ? (
-                  <Select 
+                  <Select
                         value={selectedDepartmentId}
+                        disabled={scheduleLocked}
                     onValueChange={(value) => {
                           setSelectedDepartmentId(value);
                           setSelectedClassId('');
@@ -2485,9 +2769,10 @@ export default function LectureRecords() {
                     {lecturerAssignments &&
                     selectedDepartmentId &&
                     lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId)?.classes.length ? (
-                    <Select 
+                    <Select
                       name="class"
                         value={selectedClassId}
+                        disabled={scheduleLocked}
                         onValueChange={async (value) => {
                           setSelectedClassId(value);
                           const dept = lecturerAssignments.departments.find((d) => d.id === selectedDepartmentId);
@@ -2524,6 +2809,7 @@ export default function LectureRecords() {
                   )}
                 </div>
               </div>
+                )}
               </section>
 
               <section className="space-y-3">
@@ -2553,6 +2839,11 @@ export default function LectureRecords() {
 
               <section className="space-y-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scheduled timing</h4>
+                {scheduleLocked ? (
+                  <p className="text-xs text-muted-foreground">Taken from this date’s timetable slot.</p>
+                ) : sessionChoice === 'extra' ? (
+                  <p className="text-xs text-muted-foreground">Enter the times for this extra class. It is not a timetable slot.</p>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="timeForStarting">TIME FOR STARTING (Scheduled) *</Label>
@@ -2560,7 +2851,8 @@ export default function LectureRecords() {
                     id="timeForStarting" 
                     name="timeForStarting" 
                     type="time" 
-                    required 
+                    required
+                    readOnly={scheduleLocked}
                     value={scheduledStartTime}
                     onChange={(e) => setScheduledStartTime(e.target.value)}
                   />
@@ -2571,7 +2863,8 @@ export default function LectureRecords() {
                     id="timeOutForEnding" 
                     name="timeOutForEnding" 
                     type="time" 
-                    required 
+                    required
+                    readOnly={scheduleLocked}
                     value={scheduledEndTime}
                     onChange={(e) => setScheduledEndTime(e.target.value)}
                   />
