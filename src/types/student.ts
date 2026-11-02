@@ -189,6 +189,7 @@ export interface DailyMarkingSlot {
   startTime: string | null;
   endTime: string | null;
   attendanceAllowed?: boolean;
+  unscheduled?: boolean;
 }
 
 export interface DailyMarkingGridStudent {

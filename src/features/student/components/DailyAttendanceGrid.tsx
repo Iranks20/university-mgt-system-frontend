@@ -380,7 +380,9 @@ export default function DailyAttendanceGrid({
                     {grid.slots.map((slot) => (
                       <TableHead key={slot.classId} className="text-center min-w-[128px] align-bottom p-2">
                         <div className="space-y-1.5">
-                          <span className="text-[10px] uppercase text-muted-foreground block">{slot.dayShort}</span>
+                          <span className="text-[10px] uppercase text-muted-foreground block">
+                            {slot.unscheduled ? 'Extra' : slot.dayShort}
+                          </span>
                           <span className="text-xs font-medium leading-tight block">{slot.courseName}</span>
                           {slotAllowsAttendance(slot) ? (
                             <Select onValueChange={(v) => setColumnAll(slot.classId, v as AttendanceStatus)}>

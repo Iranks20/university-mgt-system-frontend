@@ -645,6 +645,49 @@ export const qaService = {
     }
   },
 
+  getLecturerDaySessions: async (
+    lecturerId: string,
+    date: string
+  ): Promise<{
+    date: string;
+    sessions: Array<{
+      timetableId: string;
+      classId: string;
+      className: string;
+      label: string;
+      courseUnit: string;
+      courseId: string | null;
+      departmentId: string;
+      departmentName: string;
+      deliveryMode: DeliveryMode;
+      startTime: string;
+      endTime: string;
+      status: string;
+      lectureRecordId: string | null;
+      lectureComment: string | null;
+    }>;
+    extraClasses: Array<{
+      classId: string;
+      className: string;
+      label: string;
+      courseUnit: string;
+      courseId: string | null;
+      departmentId: string;
+      departmentName: string;
+      deliveryMode: DeliveryMode;
+      startTime: string | null;
+      endTime: string | null;
+    }>;
+  } | null> => {
+    try {
+      const res = await api.get<any>('/qa/lecturer-day-sessions', { lecturerId, date });
+      return (res as any)?.data ?? res;
+    } catch (error) {
+      console.error('Error fetching lecturer day sessions:', error);
+      return null;
+    }
+  },
+
   getLecturerAssignments: async (lecturerId: string): Promise<{
     lecturerId: string;
     departments: Array<{
