@@ -1062,7 +1062,7 @@ export default function Timetable() {
                               <span className="text-xs font-bold text-[#F6A000]">{item.time}</span>
                               <div className="flex gap-1">
                                 {item.isCancelledToday && (
-                                  <Badge variant="outline" className="text-[10px] px-1 h-5 border-amber-400 text-amber-800 bg-amber-50">
+                                  <Badge variant="outline" className="text-[10px] px-1 h-5 border-red-200 text-red-700 bg-red-50">
                                     Cancelled today
                                   </Badge>
                                 )}
@@ -1197,7 +1197,7 @@ function TimetableCard({ item, onMarkPresence, onOpenDetails, checkInData }: {
             </div>
             <div className="flex gap-1 mb-1">
               {isCancelledToday && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-800 bg-amber-50">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-200 text-red-700 bg-red-50">
                   Cancelled today
                 </Badge>
               )}
