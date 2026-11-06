@@ -450,6 +450,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                   <TableHead className="min-w-[160px]">LECTURER&apos;S NAME</TableHead>
                   <TableHead className="min-w-[140px]">CLASS</TableHead>
                   <TableHead className="min-w-[160px]">COURSE UNIT</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">CU</TableHead>
                   <TimetableTotalsHeaderCells showRecordedExpected showWeekly ttExpectedFirst />
                   <TableHead className="text-right whitespace-nowrap">TAUGHT</TableHead>
                   <TableHead className="text-right whitespace-nowrap">PHYSICAL</TableHead>
@@ -496,6 +497,7 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
                           {row.courseUnit}
                         </span>
                       </TableCell>
+                      <TableCell className="text-right">{row.creditUnits ?? '—'}</TableCell>
                       <TimetableTotalsCells
                         row={row}
                         recordedExpected={row.expectedLectures}
@@ -568,6 +570,10 @@ export function QACourseUnitSummary({ scopedDateRange }: QACourseUnitSummaryProp
           {detailRow ? (
             <div className="space-y-5">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Credit units (CU)</p>
+                  <p className="text-lg font-semibold">{detailRow.creditUnits ?? '—'}</p>
+                </div>
                 <div className="rounded-md border p-3">
                   <p className="text-xs text-muted-foreground">Recorded expected</p>
                   <p className="text-lg font-semibold">{detailRow.expectedLectures}</p>

@@ -495,7 +495,10 @@ export const academicService = {
     programId: string;
     year: number;
     semester: number;
-    credits: number;
+    lectureHours?: number;
+    tutorialHours?: number;
+    practicalHours?: number;
+    credits?: number;
     enrollmentPolicy?: 'Auto' | 'Self' | 'StaffOnly';
   }): Promise<Course & { linked: boolean }> => {
     try {

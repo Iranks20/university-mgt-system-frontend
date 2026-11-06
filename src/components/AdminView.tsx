@@ -43,6 +43,7 @@ import {
   type LecturerOption,
 } from '@/lib/class-admin-utils';
 import { getApiErrorMessage } from '@/lib/api';
+import { computeNcheCourseHours } from '@/lib/nche-course-hours';
 import { PASSWORD_POLICY_SUMMARY, passwordPolicyProblem } from '@/lib/password-policy';
 import { TemporaryCredentialsDialog, type TemporaryCredential } from '@/components/TemporaryCredentialsDialog';
 import { AcademicTermsPanel } from '@/components/admin/AcademicTermsPanel';
@@ -2726,6 +2727,10 @@ type CoursesTabRow = {
   dept?: string;
   programId?: string | null;
   programName?: string;
+  lectureHours: number;
+  tutorialHours: number;
+  practicalHours: number;
+  contactHours: number;
   credits: number;
   level: number;
   semester: number;
@@ -2749,11 +2754,18 @@ function CoursesTab() {
     name: '',
     departmentId: '',
     programId: '',
+    lectureHours: 0,
+    tutorialHours: 0,
+    practicalHours: 0,
     credits: 0,
     level: 1,
     semester: 1,
     enrollmentPolicy: 'Auto' as 'Auto' | 'Self' | 'StaffOnly',
   });
+  const courseFormNche = computeNcheCourseHours(courseForm);
+  const courseFormHasHours =
+    courseForm.lectureHours > 0 || courseForm.tutorialHours > 0 || courseForm.practicalHours > 0;
+  const courseFormDisplayCu = courseFormHasHours ? courseFormNche.creditUnits : courseForm.credits;
 
   const loadCourses = async (pageNum: number = 1, search?: string) => {
     setLoading(true);
@@ -2783,6 +2795,10 @@ function CoursesTab() {
         dept: deptMap[c.departmentId],
         programId: c.programId ?? null,
         programName: c.programId ? progMap[c.programId] : undefined,
+        lectureHours: c.lectureHours ?? 0,
+        tutorialHours: c.tutorialHours ?? 0,
+        practicalHours: c.practicalHours ?? 0,
+        contactHours: c.contactHours ?? 0,
         credits: c.credits ?? 0,
         level: c.level ?? 1,
         semester: c.semester ?? 1,
@@ -2825,6 +2841,9 @@ function CoursesTab() {
       name: '',
       departmentId: Object.keys(depts)[0] ?? '',
       programId: '',
+      lectureHours: 0,
+      tutorialHours: 0,
+      practicalHours: 0,
       credits: 0,
       level: 1,
       semester: 1,
@@ -2840,13 +2859,15 @@ function CoursesTab() {
       const fresh = await academicService.getCourseById(course.id);
       if (fresh) courseData = fresh;
     } catch {
-      // use table data fallback
     }
-    setCourseForm({ 
+    setCourseForm({
       code: courseData.code ?? course.code,
       name: courseData.name ?? course.name,
       departmentId: courseData.departmentId ?? course.departmentId,
       programId: courseData.programId ?? '',
+      lectureHours: courseData.lectureHours ?? course.lectureHours ?? 0,
+      tutorialHours: courseData.tutorialHours ?? course.tutorialHours ?? 0,
+      practicalHours: courseData.practicalHours ?? course.practicalHours ?? 0,
       credits: courseData.credits ?? course.credits,
       level: courseData.level || 1,
       semester: courseData.semester || 1,
@@ -2857,6 +2878,14 @@ function CoursesTab() {
 
   const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
+    const hourPayload = courseFormHasHours
+      ? {
+          lectureHours: courseForm.lectureHours,
+          tutorialHours: courseForm.tutorialHours,
+          practicalHours: courseForm.practicalHours,
+          credits: courseFormNche.creditUnits,
+        }
+      : { credits: courseForm.credits };
     try {
       if (editingCourse) {
         await academicService.updateCourse(editingCourse.id, {
@@ -2864,7 +2893,7 @@ function CoursesTab() {
           name: courseForm.name,
           departmentId: courseForm.departmentId || undefined,
           programId: courseForm.programId || null,
-          credits: courseForm.credits,
+          ...hourPayload,
           level: courseForm.level,
           semester: courseForm.semester,
           enrollmentPolicy: courseForm.enrollmentPolicy,
@@ -2875,7 +2904,7 @@ function CoursesTab() {
           name: courseForm.name,
           departmentId: courseForm.departmentId,
           programId: courseForm.programId || null,
-          credits: courseForm.credits,
+          ...hourPayload,
           level: courseForm.level,
           semester: courseForm.semester,
           enrollmentPolicy: courseForm.enrollmentPolicy,
@@ -3058,9 +3087,60 @@ function CoursesTab() {
                 </Select>
               </div>
             </div>
-            <div>
-              <Label>Credits</Label>
-              <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
+                  LH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.lectureHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, lectureHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Tutorial Hours (TH). Two tutorial hours count as one contact hour (CH = LH + TH/2 + PH/2).">
+                  TH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.tutorialHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, tutorialHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Practical Hours (PH), when the curriculum includes labs or practicum. Two practical hours count as one contact hour.">
+                  PH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.practicalHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, practicalHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <LabelWithInfo info="Contact Hours (CH) = LH + TH/2 + PH/2, per NCHE. Calculated automatically.">
+                  CH
+                </LabelWithInfo>
+                <Input type="number" value={courseFormHasHours ? courseFormNche.contactHours : 0} readOnly className="bg-muted" />
+              </div>
+              <div>
+                <LabelWithInfo info="Credit Units (CU) = CH ÷ 15, per NCHE. Calculated when LH/TH/PH are entered; otherwise the existing credit value is kept for older courses.">
+                  CU
+                </LabelWithInfo>
+                <Input type="number" value={courseFormDisplayCu} readOnly className="bg-muted" />
+              </div>
             </div>
             <div>
               <Label>Enrollment policy</Label>
@@ -3159,9 +3239,60 @@ function CoursesTab() {
                 </Select>
               </div>
             </div>
-            <div>
-              <Label>Credits</Label>
-              <Input type="number" min={0} value={courseForm.credits} onChange={e => setCourseForm(f => ({ ...f, credits: parseInt(e.target.value, 10) || 0 }))} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
+                  LH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.lectureHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, lectureHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Tutorial Hours (TH). Two tutorial hours count as one contact hour (CH = LH + TH/2 + PH/2).">
+                  TH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.tutorialHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, tutorialHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Practical Hours (PH), when the curriculum includes labs or practicum. Two practical hours count as one contact hour.">
+                  PH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={courseForm.practicalHours}
+                  onChange={(e) =>
+                    setCourseForm((f) => ({ ...f, practicalHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <LabelWithInfo info="Contact Hours (CH) = LH + TH/2 + PH/2, per NCHE. Calculated automatically.">
+                  CH
+                </LabelWithInfo>
+                <Input type="number" value={courseFormHasHours ? courseFormNche.contactHours : 0} readOnly className="bg-muted" />
+              </div>
+              <div>
+                <LabelWithInfo info="Credit Units (CU) = CH ÷ 15, per NCHE. Calculated when LH/TH/PH are entered; otherwise the existing credit value is kept for older courses.">
+                  CU
+                </LabelWithInfo>
+                <Input type="number" value={courseFormDisplayCu} readOnly className="bg-muted" />
+              </div>
             </div>
             <div>
               <Label>Enrollment policy</Label>
@@ -3885,9 +4016,28 @@ function SchoolsTab() {
   const [moveTarget, setMoveTarget] = useState<string>('');
   const [moveCoursesLoading, setMoveCoursesLoading] = useState(false);
   const [addCourseOpen, setAddCourseOpen] = useState(false);
-  const [addCourseForm, setAddCourseForm] = useState({ code: '', name: '', credits: 3 });
+  const [addCourseForm, setAddCourseForm] = useState({
+    code: '',
+    name: '',
+    lectureHours: 0,
+    tutorialHours: 0,
+    practicalHours: 0,
+    credits: 3,
+  });
   const [addCourseSaving, setAddCourseSaving] = useState(false);
-  const [editingCourse, setEditingCourse] = useState<{ id: string; code: string; name: string; credits: number } | null>(null);
+  const [editingCourse, setEditingCourse] = useState<{
+    id: string;
+    code: string;
+    name: string;
+    lectureHours: number;
+    tutorialHours: number;
+    practicalHours: number;
+    credits: number;
+  } | null>(null);
+  const addCourseNche = computeNcheCourseHours(addCourseForm);
+  const addCourseHasHours =
+    addCourseForm.lectureHours > 0 || addCourseForm.tutorialHours > 0 || addCourseForm.practicalHours > 0;
+  const addCourseDisplayCu = addCourseHasHours ? addCourseNche.creditUnits : addCourseForm.credits;
   const [moveTargetOptions, setMoveTargetOptions] = useState<{ value: string; label: string }[]>([]);
 
   const loadSchools = async () => {
@@ -4143,21 +4293,38 @@ function SchoolsTab() {
     setCoursesInNode(r.data ?? []);
   };
 
+  const emptyAddCourseForm = () => ({
+    code: '',
+    name: '',
+    lectureHours: 0,
+    tutorialHours: 0,
+    practicalHours: 0,
+    credits: 3,
+  });
+
   const handleAddCourseInNode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addCourseForm.code.trim() || !addCourseForm.name.trim()) return;
+    const hourPayload = addCourseHasHours
+      ? {
+          lectureHours: addCourseForm.lectureHours,
+          tutorialHours: addCourseForm.tutorialHours,
+          practicalHours: addCourseForm.practicalHours,
+          credits: addCourseNche.creditUnits,
+        }
+      : { credits: addCourseForm.credits };
     if (editingCourse) {
       setAddCourseSaving(true);
       try {
         await academicService.updateCourse(editingCourse.id, {
           code: addCourseForm.code.trim(),
           name: addCourseForm.name.trim(),
-          credits: addCourseForm.credits,
+          ...hourPayload,
         });
         toast.success('Course updated');
         setAddCourseOpen(false);
         setEditingCourse(null);
-        setAddCourseForm({ code: '', name: '', credits: 3 });
+        setAddCourseForm(emptyAddCourseForm());
         await refreshCoursesInNode();
       } catch (err: any) {
         toast.error(err?.message || 'Failed to update course');
@@ -4177,11 +4344,11 @@ function SchoolsTab() {
         programId: selectedNode.programId,
         year: selectedNode.level,
         semester: selectedNode.semester,
-        credits: addCourseForm.credits,
+        ...hourPayload,
       });
       toast.success(result.linked ? 'Existing course linked to this program' : 'Course created');
       setAddCourseOpen(false);
-      setAddCourseForm({ code: '', name: '', credits: 3 });
+      setAddCourseForm(emptyAddCourseForm());
       await refreshCoursesInNode();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create course');
@@ -4645,7 +4812,8 @@ function SchoolsTab() {
                                                                                       size="sm"
                                                                                       className="bg-[#015F2B] hover:bg-[#014022] h-7 text-xs shrink-0"
                                                                                       onClick={() => {
-                                                                                        setAddCourseForm({ code: '', name: '', credits: 3 });
+                                                                                        setEditingCourse(null);
+                                                                                        setAddCourseForm(emptyAddCourseForm());
                                                                                         setAddCourseOpen(true);
                                                                                       }}
                                                                                     >
@@ -4685,8 +4853,27 @@ function SchoolsTab() {
                                                                                                   size="sm"
                                                                                                   className="h-7 w-7 p-0"
                                                                                                   onClick={() => {
-                                                                                                    setEditingCourse({ id: c.id, code: c.code, name: c.name, credits: c.credits ?? 3 });
-                                                                                                    setAddCourseForm({ code: c.code, name: c.name, credits: c.credits ?? 3 });
+                                                                                                    const lectureHours = c.lectureHours ?? 0;
+                                                                                                    const tutorialHours = c.tutorialHours ?? 0;
+                                                                                                    const practicalHours = c.practicalHours ?? 0;
+                                                                                                    const credits = c.credits ?? 3;
+                                                                                                    setEditingCourse({
+                                                                                                      id: c.id,
+                                                                                                      code: c.code,
+                                                                                                      name: c.name,
+                                                                                                      lectureHours,
+                                                                                                      tutorialHours,
+                                                                                                      practicalHours,
+                                                                                                      credits,
+                                                                                                    });
+                                                                                                    setAddCourseForm({
+                                                                                                      code: c.code,
+                                                                                                      name: c.name,
+                                                                                                      lectureHours,
+                                                                                                      tutorialHours,
+                                                                                                      practicalHours,
+                                                                                                      credits,
+                                                                                                    });
                                                                                                     setAddCourseOpen(true);
                                                                                                   }}
                                                                                                 >
@@ -5274,17 +5461,63 @@ function SchoolsTab() {
               <Label>Course name *</Label>
               <Input value={addCourseForm.name} onChange={e => setAddCourseForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Introduction to Programming" />
             </div>
-            <div>
-              <Label>Credits</Label>
-              <Select value={addCourseForm.credits.toString()} onValueChange={v => setAddCourseForm(f => ({ ...f, credits: parseInt(v, 10) }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5, 6].map(c => (<SelectItem key={c} value={c.toString()}>{c}</SelectItem>))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div>
+                <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
+                  LH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={addCourseForm.lectureHours}
+                  onChange={(e) =>
+                    setAddCourseForm((f) => ({ ...f, lectureHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Tutorial Hours (TH). Two tutorial hours count as one contact hour (CH = LH + TH/2 + PH/2).">
+                  TH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={addCourseForm.tutorialHours}
+                  onChange={(e) =>
+                    setAddCourseForm((f) => ({ ...f, tutorialHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+              <div>
+                <LabelWithInfo info="Practical Hours (PH), when the curriculum includes labs or practicum. Two practical hours count as one contact hour.">
+                  PH
+                </LabelWithInfo>
+                <Input
+                  type="number"
+                  min={0}
+                  value={addCourseForm.practicalHours}
+                  onChange={(e) =>
+                    setAddCourseForm((f) => ({ ...f, practicalHours: parseInt(e.target.value, 10) || 0 }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <LabelWithInfo info="Contact Hours (CH) = LH + TH/2 + PH/2, per NCHE. Calculated automatically.">
+                  CH
+                </LabelWithInfo>
+                <Input type="number" value={addCourseHasHours ? addCourseNche.contactHours : 0} readOnly className="bg-muted" />
+              </div>
+              <div>
+                <LabelWithInfo info="Credit Units (CU) = CH ÷ 15, per NCHE. Calculated when LH/TH/PH are entered; otherwise the existing credit value is kept for older courses.">
+                  CU
+                </LabelWithInfo>
+                <Input type="number" value={addCourseDisplayCu} readOnly className="bg-muted" />
+              </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setAddCourseOpen(false); setEditingCourse(null); }}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { setAddCourseOpen(false); setEditingCourse(null); setAddCourseForm(emptyAddCourseForm()); }}>Cancel</Button>
               <Button type="submit" className="bg-[#015F2B]" disabled={addCourseSaving}>
                 {addCourseSaving ? (editingCourse ? 'Updating...' : 'Creating...') : (editingCourse ? 'Update course' : 'Create course')}
               </Button>
