@@ -93,6 +93,10 @@ export interface Course {
   name: string;
   departmentId: string;
   programId?: string | null;
+  lectureHours?: number;
+  tutorialHours?: number;
+  practicalHours?: number;
+  contactHours?: number;
   credits: number;
   level: number;
   semester: number;
