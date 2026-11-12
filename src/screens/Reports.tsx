@@ -1546,15 +1546,15 @@ export default function Reports() {
                  <div className="flex flex-wrap gap-2 items-center mb-6">
                    {!reportsTermScoped ? (
                    <Select value={lecturerDateRange} onValueChange={(v: 'all' | 'last_30_days' | 'this_term') => setLecturerDateRange(v)}>
-                     <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[180px]">
                        <SelectValue placeholder="Date range" />
-                     </SelectTrigger>
-                     <SelectContent>
+                  </SelectTrigger>
+                  <SelectContent>
                        <SelectItem value="all">All time</SelectItem>
                        <SelectItem value="last_30_days">Last 30 days</SelectItem>
                        <SelectItem value="this_term">Last 3 months</SelectItem>
-                     </SelectContent>
-                   </Select>
+                  </SelectContent>
+               </Select>
                    ) : null}
                    <Combobox
                       className="w-[200px]"
@@ -1589,7 +1589,7 @@ export default function Reports() {
                    <div className="relative flex-1 min-w-[200px] max-w-sm">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input placeholder="Search lecturer..." className="pl-8" value={lecturerSearch} onChange={(e) => setLecturerSearch(e.target.value)} />
-                   </div>
+             </div>
                    {(schoolFilter !== 'all' || lecturerDeptFilter !== 'all' || lecturerRateFilter !== 'all' || lecturerSearch) && (
                      <Button
                        variant="ghost"
@@ -2470,15 +2470,15 @@ export default function Reports() {
             <DialogHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
                 <div>
-                  <DialogTitle>Lecturer Performance Details</DialogTitle>
-                  <DialogDescription>
+              <DialogTitle>Lecturer Performance Details</DialogTitle>
+              <DialogDescription>
                     Full lecture evidence for {selectedLecturer?.name}
                     {lecturerDetail?.dateFrom && lecturerDetail?.dateTo
                       ? ` · ${lecturerDetail.dateFrom} to ${lecturerDetail.dateTo}`
                       : lecturerDateRange === 'all'
                         ? ' · all time'
                         : ''}
-                  </DialogDescription>
+              </DialogDescription>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   <Button
@@ -2513,8 +2513,8 @@ export default function Reports() {
                 ) : (
                   <>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">Name</p>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Name</p>
                         <p className="text-sm font-medium">{lecturerDetail?.lecturer.name || selectedLecturer.name}</p>
                       </div>
                       <div>
@@ -2524,21 +2524,21 @@ export default function Reports() {
                       <div>
                         <p className="text-sm font-medium text-gray-500">Email</p>
                         <p className="text-sm font-medium">{lecturerDetail?.lecturer.email || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">School</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">School</p>
                         <p className="text-sm font-medium">{lecturerDetail?.lecturer.school || selectedLecturer.school}</p>
-                      </div>
-                      <div>
+                  </div>
+                  <div>
                         <p className="text-sm font-medium text-gray-500">Department</p>
                         <p className="text-sm font-medium">{lecturerDetail?.lecturer.department || selectedLecturer.department}</p>
-                      </div>
-                      <div>
+                  </div>
+                  <div>
                         <p className="text-sm font-medium text-gray-500">Teaching rate</p>
                         <p className={`text-sm font-bold ${(lecturerDetail?.summary.rate ?? selectedLecturer.rate) >= 90 ? 'text-green-600' : (lecturerDetail?.summary.rate ?? selectedLecturer.rate) >= 80 ? 'text-orange-600' : 'text-red-600'}`}>
                           {(lecturerDetail?.summary.rate ?? selectedLecturer.rate).toFixed(1)}%
-                        </p>
-                      </div>
+                    </p>
+                  </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2600,7 +2600,7 @@ export default function Reports() {
                           </p>
                         </CardContent>
                       </Card>
-                    </div>
+                  </div>
 
                     {lecturerDetail?.summary.rateBasis && (
                       <p className="text-xs text-muted-foreground">
@@ -2617,7 +2617,7 @@ export default function Reports() {
                               {lectureCommentLabel(comment)}: {count}
                             </Badge>
                           ))}
-                      </div>
+                </div>
                     )}
 
                     {lecturerDetail && lecturerDetail.byClass.length > 0 && (
