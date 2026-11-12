@@ -698,14 +698,14 @@ function StudentsTab({
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
             <Label className="sr-only">Search</Label>
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search students (name, email, student number)"
               className="pl-8"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-          </div>
+        </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className="lg:hidden">{cohortPromotionBadge}</span>
@@ -759,8 +759,8 @@ function StudentsTab({
             <Button className="bg-[#015F2B]" onClick={() => setAddOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Add Student
             </Button>
-          </div>
         </div>
+      </div>
 
         <div className="hidden lg:flex gap-3 flex-wrap">
           <div className="min-w-[240px]">
@@ -1622,7 +1622,7 @@ function StudentsTab({
               }
 
               await loadStudents(1);
-
+              
               setEditOpen(false);
               setEditingStudent(null);
               setPreviewCourses([]);
@@ -1687,7 +1687,7 @@ function StudentsTab({
                           <Eye className="h-4 w-4 text-muted-foreground" />
                         )}
                       </Button>
-                    </div>
+                </div>
                   </div>
                   {editingStudent?.holdbackReason ? (
                     <div className="space-y-2 min-w-0 sm:col-span-2 xl:col-span-3 rounded-md border border-amber-200 bg-amber-50/60 p-3">
@@ -1703,9 +1703,9 @@ function StudentsTab({
                         />
                         Clear holdback (allow promote on next run)
                       </label>
-                    </div>
-                  ) : null}
                 </div>
+                  ) : null}
+              </div>
               </div>
 
               {/* Academic Information Section */}
@@ -1716,23 +1716,23 @@ function StudentsTab({
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   <div className="space-y-2 min-w-0">
                     <Label>School</Label>
-                    {departmentsLoading ? (
+                {departmentsLoading ? (
                       <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-                      </div>
-                    ) : (
+                  </div>
+                ) : (
                       <Select value={editForm.schoolId} onValueChange={v => setEditForm(f => ({ ...f, schoolId: v, departmentId: '', programId: '' }))} required>
                         <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select school" /></SelectTrigger>
-                        <SelectContent className="max-h-[300px]">
+                    <SelectContent className="max-h-[300px]">
                           {schools.map((school) => (
                             <SelectItem key={school.id} value={school.id}>
-                              {school.name}
-                            </SelectItem>
-                          ))}
+                                {school.name}
+                                </SelectItem>
+                              ))}
                         </SelectContent>
                       </Select>
                     )}
-                  </div>
+                            </div>
                   <div className="space-y-2 min-w-0">
                     <Label>Department</Label>
                     {departmentsLoading ? (
@@ -1749,24 +1749,24 @@ function StudentsTab({
                               .map((d) => (
                                 <SelectItem key={d.id} value={d.id}>
                                   {d.name} {d.code ? `(${d.code})` : ''}
-                                </SelectItem>
-                              ))
+                          </SelectItem>
+                        ))
                           ) : (
                             <div className="px-2 py-1.5 text-sm text-gray-500">Select a school first</div>
                           )}
                           {editForm.schoolId && departments.filter(d => String(d.schoolId) === String(editForm.schoolId)).length === 0 && (
                             <div className="px-2 py-1.5 text-sm text-gray-500">No departments in this school</div>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
                   <div className="space-y-2 min-w-0">
                     <Label>Program</Label>
                     {programsLoading ? (
                       <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-                      </div>
+            </div>
                     ) : (
                       <Select value={editForm.programId} onValueChange={v => setEditForm(f => ({ ...f, programId: v, programStreamId: '' }))} required>
                         <SelectTrigger className="w-full truncate"><SelectValue placeholder="Select program" /></SelectTrigger>
@@ -1786,7 +1786,7 @@ function StudentsTab({
                         </SelectContent>
                       </Select>
                     )}
-                  </div>
+              </div>
                   {programStreams.length > 0 ? (
                     <div className="space-y-2 min-w-0">
                       <Label>Specialization</Label>
@@ -1806,7 +1806,7 @@ function StudentsTab({
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+          </div>
                   ) : null}
                   <div className="space-y-2 min-w-0">
                   <Label>Year</Label>
@@ -1829,7 +1829,7 @@ function StudentsTab({
                       </p>
                       ) : null;
                   })()}
-                </div>
+    </div>
                   <div className="space-y-2 min-w-0">
                     <Label>Semester</Label>
                     <Select value={editForm.semester} onValueChange={v => setEditForm(f => ({ ...f, semester: v }))}>
@@ -1845,29 +1845,29 @@ function StudentsTab({
 
               {/* Course Enrollment Section */}
               {editForm.programId && editForm.year && (
-                <div className="space-y-4">
+    <div className="space-y-4">
                   <div className="border-b pb-2 flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">Course Enrollment</h3>
                     {previewLoading && <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
-                  </div>
+            </div>
                   {previewLoading ? (
                     <div className="text-sm text-gray-500 py-8 text-center">Loading available courses...</div>
                   ) : previewCourses.length === 0 ? (
                     <div className="text-sm text-gray-500 py-8 text-center border rounded-md bg-gray-50 space-y-1">
                       <p>No classes found for {programs.find((p: any) => p.id === editForm.programId)?.name || 'selected program'} — Year {editForm.year.replace('Year ', '')} — Semester {editForm.semester}.</p>
                       <p className="text-xs">Add courses under this program on the Schools page, then create classes in the Classes tab to enroll students.</p>
-                  </div>
+            </div>
                 ) : (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-xs text-gray-600">
                         <span>Select classes to enroll the student in:</span>
                         <span className="font-medium">{selectedCourseIds.length} of {previewCourses.filter((c: any) => !c.noClass).length} selected</span>
-                      </div>
+          </div>
                       <div className="max-h-[60vh] overflow-y-auto border rounded-md">
                         <div className="overflow-x-visible">
                           <Table className="w-full table-auto">
                             <TableHeader className="sticky top-0 bg-white z-10 border-b">
-                              <TableRow>
+                <TableRow>
                                 <TableHead className="w-12 px-3"></TableHead>
                                 <TableHead className="w-[120px] px-3">Course Code</TableHead>
                                 <TableHead className="min-w-[250px] px-3">Course Name</TableHead>
@@ -1875,9 +1875,9 @@ function StudentsTab({
                                 <TableHead className="min-w-[180px] px-3">Lecturer</TableHead>
                                 <TableHead className="w-[130px] px-3">Schedule</TableHead>
                                 <TableHead className="w-[140px] px-3">Venue</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                               {previewCourses.map((cls) => {
                                 const isCourseOnly = (cls as any).noClass === true;
                                 const isChecked = !isCourseOnly && selectedCourseIds.includes(cls.id);
@@ -1898,7 +1898,7 @@ function StudentsTab({
                                           }}
                                         />
                                       )}
-                                    </TableCell>
+                    </TableCell>
                                     <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                                     <TableCell className="px-3">
                                       <div className="text-sm break-words">{cls.course?.name || '—'}</div>
@@ -1918,10 +1918,10 @@ function StudentsTab({
                                     <TableCell className="text-sm px-3 break-words">{cls.lecturer?.name || '—'}</TableCell>
                                     <TableCell className="text-sm px-3 whitespace-nowrap">
                                       {cls.dayOfWeek !== null && cls.startTime && cls.endTime ? (
-                                        <div>
+                          <div>
                                           <div className="font-medium">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]}</div>
                                           <div className="text-xs text-gray-500">{cls.startTime} - {cls.endTime}</div>
-                            </div>
+                          </div>
                                       ) : (
                                         '—'
                                       )}
@@ -1931,18 +1931,18 @@ function StudentsTab({
                                         <div>
                                           <div>{cls.venue.name}</div>
                                           {cls.venue.code && <div className="text-xs text-gray-500">{cls.venue.code}</div>}
-                          </div>
+                        </div>
                                       ) : (
                                         '—'
                                       )}
-                                    </TableCell>
-                                  </TableRow>
+                      </TableCell>
+                    </TableRow>
                                 );
                               })}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </div>
+              </TableBody>
+            </Table>
+          </div>
+              </div>
                       <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
                         <span>
                           {selectedCourseIds.length > 0 
@@ -1981,9 +1981,9 @@ function StudentsTab({
               </div>
             </div>
                   )}
-                </div>
+              </div>
               )}
-            </div>
+                  </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button 
                 type="button" 
@@ -2023,7 +2023,7 @@ function StudentsTab({
         open={statusDialogOpen}
         onOpenChange={setStatusDialogOpen}
         targets={statusDialogTargets.map((s) => ({
-          id: s.id,
+                id: s.id,
           name: s.name,
           status: s.status,
           year: s.year,
@@ -2274,7 +2274,7 @@ function LecturersTab({
     if (!selectedLecturer) return;
     if (assignClasses.length === 0) {
       toast.error('Load classes for a school, program, year, and semester first.');
-      return;
+      return; 
     }
     setAssignSaving(true);
     try {
@@ -2480,7 +2480,7 @@ function LecturersTab({
                   <div key={label} className="space-y-0.5">
                     <dt className="text-muted-foreground">{label}</dt>
                     <dd className="font-medium break-words">{value || '—'}</dd>
-                  </div>
+              </div>
                 ))}
               </dl>
               <div className="space-y-2">
@@ -2488,7 +2488,7 @@ function LecturersTab({
                 {viewAssignedClassesLoading ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Loading assigned classes...
-                  </div>
+              </div>
                 ) : viewAssignedClasses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No classes assigned to this lecturer.</p>
                 ) : (
@@ -2498,19 +2498,19 @@ function LecturersTab({
                         <div className="font-medium">
                           {cls.courseCode ? `${cls.courseCode} · ` : ''}
                           {cls.courseName || cls.name}
-                        </div>
+            </div>
                         <div className="text-xs text-muted-foreground">
                           {cls.name}
                           {cls.isPrimary ? ' · Primary' : ''}
-                        </div>
+                </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+              )}
+            </div>
             </div>
           )}
-          <DialogFooter>
+            <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setViewingLecturer(null)}>Close</Button>
             {viewingLecturer?.userId && (
               <Button
@@ -2538,7 +2538,7 @@ function LecturersTab({
                 <BookMarked className="mr-2 h-4 w-4" /> Assign courses
               </Button>
             )}
-          </DialogFooter>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2555,7 +2555,7 @@ function LecturersTab({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
+                <div className="space-y-2">
               <Label>Currently teaching ({assignedClassesSummary.length})</Label>
               {assignedClassesLoading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -2570,16 +2570,16 @@ function LecturersTab({
                       <div className="font-medium">
                         {cls.courseCode ? `${cls.courseCode} · ` : ''}
                         {cls.courseName || cls.name}
-                      </div>
+                </div>
                       <div className="text-xs text-muted-foreground">
                         {cls.name}
                         {cls.isPrimary ? ' · Primary' : ''}
-                      </div>
-                    </div>
+              </div>
+                  </div>
                   ))}
                 </div>
-              )}
-            </div>
+                )}
+              </div>
             <ProgramIntakeScopeFilter
               scope={assignScope}
               intakeField="type"
@@ -2601,7 +2601,7 @@ function LecturersTab({
                     value={assignClassSearch}
                     onChange={(e) => setAssignClassSearch(e.target.value)}
                   />
-                </div>
+            </div>
                 <div className="rounded-md border max-h-[min(50vh,420px)] overflow-auto">
                   <Table>
                     <TableHeader>
@@ -2641,17 +2641,17 @@ function LecturersTab({
                           return (
                             <TableRow key={cls.id}>
                               <TableCell>
-                                <Checkbox
-                                  id={`assign-cls-${cls.id}`}
-                                  checked={selectedClassIds.includes(cls.id)}
-                                  onCheckedChange={(c) => {
-                                    if (c) {
+                  <Checkbox 
+                    id={`assign-cls-${cls.id}`} 
+                    checked={selectedClassIds.includes(cls.id)} 
+                    onCheckedChange={(c) => {
+                      if (c) {
                                       setSelectedClassIds((prev) => [...prev, cls.id]);
-                                    } else {
+                      } else {
                                       setSelectedClassIds((prev) => prev.filter((id) => id !== cls.id));
-                                    }
-                                  }}
-                                />
+                      }
+                    }} 
+                  />
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium text-sm">{cls.courseName || '—'}</div>
@@ -2692,9 +2692,9 @@ function LecturersTab({
             <Button
               variant="outline"
               onClick={() => {
-                setAssignOpen(false);
-                setSelectedLecturer(null);
-                setSelectedClassIds([]);
+              setAssignOpen(false);
+              setSelectedLecturer(null);
+              setSelectedClassIds([]);
                 setAssignClasses([]);
                 setAssignedClassesSummary([]);
               }}
@@ -2860,7 +2860,7 @@ function CoursesTab() {
       if (fresh) courseData = fresh;
     } catch {
     }
-    setCourseForm({
+    setCourseForm({ 
       code: courseData.code ?? course.code,
       name: courseData.name ?? course.name,
       departmentId: courseData.departmentId ?? course.departmentId,
@@ -2975,34 +2975,34 @@ function CoursesTab() {
                 </TableRow>
               ) : (
                 courses.map((course) => (
-                  <TableRow key={course.id}>
-                    <TableCell className="font-bold">{course.code}</TableCell>
-                    <TableCell>{course.name}</TableCell>
-                    <TableCell>{course.dept ?? course.departmentId}</TableCell>
-                    <TableCell>{course.credits}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditCourse(course)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={async () => {
-                            if (confirm(`Delete course "${course.name}"?`)) {
-                              try {
-                                await academicService.deleteCourse(course.id);
+                <TableRow key={course.id}>
+                  <TableCell className="font-bold">{course.code}</TableCell>
+                  <TableCell>{course.name}</TableCell>
+                  <TableCell>{course.dept ?? course.departmentId}</TableCell>
+                  <TableCell>{course.credits}</TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditCourse(course)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600" onClick={async () => {
+                          if (confirm(`Delete course "${course.name}"?`)) {
+                            try {
+                              await academicService.deleteCourse(course.id);
                                 await loadCourses(coursesPage);
-                              } catch (error: any) {
-                                console.error('Error deleting course:', error);
-                                toast.error(`Failed to delete course: ${error?.message || 'Unknown error'}`);
-                              }
+                            } catch (error: any) {
+                              console.error('Error deleting course:', error);
+                              toast.error(`Failed to delete course: ${error?.message || 'Unknown error'}`);
                             }
-                          }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          }
+                        }}><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
               )
             )}
           </TableBody>
@@ -3088,7 +3088,7 @@ function CoursesTab() {
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div>
+            <div>
                 <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
                   LH
                 </LabelWithInfo>
@@ -3240,7 +3240,7 @@ function CoursesTab() {
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div>
+            <div>
                 <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
                   LH
                 </LabelWithInfo>
@@ -5591,7 +5591,7 @@ function ClassesTab({
   const [form, setForm] = useState({ 
     name: '', 
     courseId: '', 
-    lecturerId: '',
+    lecturerId: '', 
     lecturerIds: [] as string[],
     primaryLecturerId: '',
     cohortProgramIntakeIds: [] as string[],
@@ -5837,7 +5837,7 @@ function ClassesTab({
     setForm({ 
       name: '', 
       courseId: '', 
-      lecturerId: '',
+      lecturerId: '', 
       lecturerIds: [],
       primaryLecturerId: '',
       cohortProgramIntakeIds: [],
@@ -5860,7 +5860,7 @@ function ClassesTab({
       setForm({ 
         name: cls.name, 
         courseId: cls.courseId, 
-        lecturerId: cls.lecturerId || '',
+        lecturerId: cls.lecturerId || '', 
         lecturerIds: ((classDetails as any)?.lecturerIds || (cls.lecturerId ? [cls.lecturerId] : [])) as string[],
         primaryLecturerId:
           ((classDetails as any)?.primaryLecturerId || cls.lecturerId || '') as string,
@@ -5879,7 +5879,7 @@ function ClassesTab({
       setForm({ 
         name: cls.name, 
         courseId: cls.courseId, 
-        lecturerId: cls.lecturerId || '',
+        lecturerId: cls.lecturerId || '', 
         lecturerIds: cls.lecturerId ? [cls.lecturerId] : [],
         primaryLecturerId: cls.lecturerId || '',
         cohortProgramIntakeIds: [],
@@ -6036,10 +6036,10 @@ function ClassesTab({
     try {
       const currentEnrollments = await enrollmentService.getClassEnrollments(enrollClass.id);
       const currentStudentIds = extractEnrolledStudentIdsFromClassEnrollments(currentEnrollments);
-
+      
       const toAdd = selectedStudentIds.filter((id) => !currentStudentIds.includes(id));
       const toRemove = currentStudentIds.filter((id) => !selectedStudentIds.includes(id));
-
+      
       for (const studentId of toRemove) {
         const enrollment = (
           currentEnrollments as Array<{ id?: string; studentId?: string; student?: { id?: string } }>
@@ -6048,7 +6048,7 @@ function ClassesTab({
           await enrollmentService.deleteEnrollment(enrollment.id);
         }
       }
-
+      
       if (toAdd.length > 0) {
         await enrollmentService.bulkEnroll({
           classId: enrollClass.id,
@@ -6056,7 +6056,7 @@ function ClassesTab({
           status: 'Active',
         });
       }
-
+      
       const refreshed = await enrollmentService.getClassEnrollments(enrollClass.id);
       const finalIds = extractEnrolledStudentIdsFromClassEnrollments(refreshed);
 
@@ -6363,16 +6363,16 @@ function ClassesTab({
                   <SelectTrigger>
                     <SelectValue placeholder="Shared (all students in cohort)" />
                   </SelectTrigger>
-                  <SelectContent>
+                <SelectContent>
                     <SelectItem value="__none__">Shared (all students in cohort)</SelectItem>
                     {classStreams.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.name} ({s.code})
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             ) : null}
             <div className="space-y-2">
               <Label>Lecturer *</Label>
@@ -6463,17 +6463,17 @@ function ClassesTab({
                     <SelectTrigger>
                       <SelectValue placeholder="Select primary lecturer" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— None —</SelectItem>
+                <SelectContent>
+                  <SelectItem value="none">— None —</SelectItem>
                       {allLecturers
                         .filter((l) => form.lecturerIds.includes(l.id))
                         .map((l) => (
                           <SelectItem key={l.id} value={l.id}>
                             {l.name}
                           </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  ))}
+                </SelectContent>
+              </Select>
                 </div>
               </div>
             </div>
@@ -6499,7 +6499,7 @@ function ClassesTab({
                     <span>{opt.label}</span>
                   </label>
                 ))}
-              </div>
+            </div>
             </div>
             <div className="space-y-2">
               <Label>Venue</Label>
@@ -6616,7 +6616,7 @@ function ClassesTab({
           {enrollLoading ? (
             <div className="flex flex-1 justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
+              </div>
           ) : (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
               <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
@@ -6628,29 +6628,29 @@ function ClassesTab({
                     value={enrollSearch}
                     onChange={(e) => setEnrollSearch(e.target.value)}
                   />
-                </div>
+          </div>
                 <Select
                   value={enrollListFilter}
                   onValueChange={(v) => setEnrollListFilter(v as 'all' | 'enrolled' | 'not_enrolled')}
                 >
                   <SelectTrigger className="h-9 w-[160px]">
                     <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
+                </SelectTrigger>
+                <SelectContent>
                     <SelectItem value="all">All students</SelectItem>
                     <SelectItem value="enrolled">Enrolled only</SelectItem>
                     <SelectItem value="not_enrolled">Not enrolled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                </SelectContent>
+             </Select>
+        </div>
               <p className="text-xs text-muted-foreground">
                 {selectedStudentIds.length} enrolled · {enrollCandidates.length} in cohort ·{' '}
                 {visibleEnrollCandidates.length} shown
               </p>
               <div className="max-h-[min(45dvh,380px)] overflow-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
+          <Table>
+            <TableHeader>
+              <TableRow>
                       <TableHead className="w-10">
                         <Checkbox
                           checked={allVisibleEnrollSelected}
@@ -6661,9 +6661,9 @@ function ClassesTab({
                       <TableHead>Student</TableHead>
                       <TableHead>Reg. no.</TableHead>
                       <TableHead>Email</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                     {enrollCandidates.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
@@ -6690,15 +6690,15 @@ function ClassesTab({
                                 )
                               }
                             />
-                          </TableCell>
+                    </TableCell>
                           <TableCell className="font-medium">{st.name}</TableCell>
                           <TableCell className="font-mono text-sm">{st.studentId || '—'}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{st.email || '—'}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
               </div>
             </div>
           )}
@@ -6932,8 +6932,8 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       .then((term) => {
         if (!term) {
           setActiveTermLabel(null);
-          return;
-        }
+        return;
+      }
         setActiveTermLabel(term.name);
         if (term.semester === 1 || term.semester === 2) {
           setImportScope((s) => ({ ...s, semester: term.semester }));
@@ -7234,14 +7234,14 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                     <TableCell>{cls.course?.semester ?? '—'}</TableCell>
                     <TableCell className="font-medium">{cls.course?.name?.trim() || '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{cls.course?.code || '—'}</TableCell>
-                    <TableCell>
+                      <TableCell>
                       <span className="inline-flex items-center gap-2">
                         {cls.name}
                         {cls.isActive === false && (
                           <Badge variant="secondary" className="text-xs font-normal">Inactive</Badge>
                         )}
                       </span>
-                    </TableCell>
+                      </TableCell>
                     <TableCell>{cls.dayOfWeek !== null ? DAY_NAMES[cls.dayOfWeek] : '—'}</TableCell>
                     <TableCell>{cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : '—'}</TableCell>
                     <TableCell>{cls.venue?.name || '—'}</TableCell>
@@ -7294,18 +7294,18 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="w-[95vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
           <div className="p-5 sm:p-6 border-b bg-muted/30">
-            <DialogHeader>
+          <DialogHeader>
               <DialogTitle className="text-lg font-semibold">Import Timetable</DialogTitle>
               <DialogDescription className="text-sm mt-1">
                 Set the program and semester, then upload a CSV or Excel file. Columns: Course Code, Course Name, Class Name, Lecturer Name, Day, Start Time, End Time, Venue, Capacity.
-              </DialogDescription>
-            </DialogHeader>
+            </DialogDescription>
+          </DialogHeader>
           </div>
           <div className="p-5 sm:p-6 space-y-5">
             <div className="rounded-lg border bg-card p-4 space-y-4">
               <p className="text-sm font-medium text-foreground">Timetable scope</p>
               <div className="space-y-4">
-                <div>
+            <div>
                   <Label className="text-muted-foreground">Program</Label>
                   <Select
                     value={importScope.programId}
@@ -7318,7 +7318,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+            </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-muted-foreground">Year</Label>
@@ -7333,7 +7333,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+            </div>
                   <div>
                     <Label className="text-muted-foreground">Semester</Label>
                     <Select
@@ -7409,7 +7409,7 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
                   </>
                 )}
               </button>
-            </div>
+              </div>
             {importResult && (
               <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
                 <p className="text-sm font-medium text-foreground">Import summary</p>
@@ -7602,8 +7602,8 @@ function StrategicGoalsTab() {
     const valid = goals.filter((g) => g.name.trim());
     if (!valid.length) {
       toast.error('Add at least one goal with a name');
-      return;
-    }
+        return;
+      }
     setSaving(true);
     try {
       await adminService.updateStrategicGoals(valid.map((g) => ({ name: g.name.trim(), progress: g.progress })));
@@ -7638,13 +7638,13 @@ function StrategicGoalsTab() {
         <CardContent className="space-y-4">
           {goals.map((goal, idx) => (
             <div key={idx} className="flex gap-4 items-center flex-wrap">
-              <Input
+          <Input
                 placeholder="Goal name"
                 value={goal.name}
                 onChange={(e) => updateGoal(idx, 'name', e.target.value)}
                 className="max-w-[280px]"
               />
-              <Input
+                    <Input
                 type="number"
                 min={0}
                 max={100}
@@ -7656,12 +7656,12 @@ function StrategicGoalsTab() {
               <Button variant="ghost" size="sm" onClick={() => removeGoal(idx)} className="text-red-600">
                 <Trash2 className="h-4 w-4" />
               </Button>
-            </div>
+                  </div>
           ))}
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={addGoal}>
               <Plus className="h-4 w-4 mr-2" /> Add goal
-            </Button>
+              </Button>
             <Button className="bg-[#015F2B] hover:bg-[#014022]" disabled={saving} onClick={handleSave}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save goals
@@ -7847,45 +7847,45 @@ function AcademicCalendarTab() {
         </TabsContent>
 
         <TabsContent value="events" className="mt-4 space-y-4">
-          <div className="flex justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex justify-between gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search events…" className="pl-8" />
-            </div>
+        </div>
             <Button className="bg-[#015F2B]" onClick={openAdd}>
               <Plus className="mr-2 h-4 w-4" /> Add Event
             </Button>
-          </div>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Event / Period Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Event / Period Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Start Date</TableHead>
+              <TableHead>End Date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
-                ) : events.length === 0 ? (
+            ) : events.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                       No calendar events. Click "Add Event" to create one.
                     </TableCell>
                   </TableRow>
-                ) : (
-                  events.map((event) => (
-                    <TableRow key={event.id}>
-                      <TableCell className="font-medium">{event.name}</TableCell>
-                      <TableCell>{event.type}</TableCell>
+            ) : (
+              events.map((event) => (
+                <TableRow key={event.id}>
+                  <TableCell className="font-medium">{event.name}</TableCell>
+                  <TableCell>{event.type}</TableCell>
                       <TableCell>
                         {event.startDate ? new Date(event.startDate).toLocaleDateString() : '—'}
                       </TableCell>
@@ -7895,22 +7895,22 @@ function AcademicCalendarTab() {
                       <TableCell>
                         <Badge>{event.status || 'Scheduled'}</Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
                           <Button variant="ghost" size="sm" onClick={() => openEdit(event)}>
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => deleteEvent(event.id)}>
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
         </TabsContent>
       </Tabs>
 
@@ -8094,13 +8094,13 @@ export default function AdminView({
         });
         const data = res.data || res;
         setStaff(Array.isArray(data) ? data.map((s: any) => ({
-          id: s.id,
-          name: `${s.firstName} ${s.lastName}`,
-          email: s.email,
-          role: s.role,
+        id: s.id,
+        name: `${s.firstName} ${s.lastName}`,
+        email: s.email,
+        role: s.role,
           dept: s.placementLabel || s.departmentName || s.orgUnitName || '',
-          departmentId: s.departmentId,
-          status: s.status || 'Active',
+        departmentId: s.departmentId,
+        status: s.status || 'Active',
           assignedClassCount: typeof s.assignedClassCount === 'number' ? s.assignedClassCount : 0,
           staffNumber: s.staffNumber,
           phone: s.phone ?? null,
@@ -8155,10 +8155,10 @@ export default function AdminView({
         const arr = res.data ?? [];
         setClasses(
           arr.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            course: c.course?.name || '',
-            courseId: c.courseId,
+        id: c.id,
+        name: c.name,
+        course: c.course?.name || '',
+        courseId: c.courseId,
             lecturerId: c.primaryLecturerId ?? c.lecturerId ?? c.lecturerPool?.find((x: any) => x.isPrimary)?.lecturerId ?? null,
             lecturerIds: Array.isArray(c.lecturerIds)
               ? c.lecturerIds
@@ -8179,8 +8179,8 @@ export default function AdminView({
               : c.lecturerPool?.find((x: any) => x.isPrimary)?.lecturer?.firstName
                 ? `${c.lecturerPool.find((x: any) => x.isPrimary).lecturer.firstName} ${c.lecturerPool.find((x: any) => x.isPrimary).lecturer.lastName}`
                 : '—',
-            students: c.enrolledCount || 0,
-            room: c.venue?.name || '',
+        students: c.enrolledCount || 0,
+        room: c.venue?.name || '',
             isActive: c.isActive !== false,
           }))
         );
