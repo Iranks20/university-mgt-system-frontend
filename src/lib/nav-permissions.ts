@@ -36,7 +36,7 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/admin-classes': ['academic.write'],
   '/admin-timetables': [['timetable.admin'], ['admin.console']],
   '/admin-schools': ['academic.write'],
-  '/admin-venues': ['academic.venues'],
+  '/admin-venues': ['academic.venues_manage'],
   '/admin-calendar': ['academic.write'],
   '/admin-strategic-goals': ['admin.console'],
   '/admin-graduation-registrations': ['graduation.registrations'],
@@ -97,13 +97,8 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/clinical/reports': [['clinical.reports.view']],
   '/lecture-records': [['qa.review']],
   '/student-records': [['students.read', 'academic.read']],
-  '/reports': [
-    ['reports.access'],
-    ['qa.review'],
-    ['analytics.core_dashboard'],
-    ['analytics.ops'],
-    ['timetable.ops'],
-  ],
+  // Must match what the Reports API allows (reports.access or qa.review), or the page opens empty.
+  '/reports': [['reports.access'], ['qa.review']],
   '/management-overview': [['analytics.mgmt_overview']],
   '/management-risk': [['analytics.mgmt_overview', 'analytics.ops']],
   '/management-enrolment': [['analytics.mgmt_overview', 'students.read']],
@@ -153,10 +148,12 @@ export const NAV_PERMISSION: Record<string, PermissionRequirement> = {
   '/hr/organisation': ['hr.read'],
   '/hr/attendance': ['hr.read'],
   '/hr/onboarding': [['hr.read', 'hr.write']],
-  '/hr/documents': ['hr.read'],
+  // HR Documents holds the completed appraisal archive, which only HR may read.
+  '/hr/documents': ['hr.appraisal_manage'],
   '/hr/appraisals': [['hr.read', 'hr.appraisal_manage']],
   '/hr/reports': [['hr.read', 'hr.reports']],
   '/staff-appraisal': ['hr.appraisal_submit'],
+  '/appraisals/vc': ['hr.appraisal_vc'],
   '/attendance-desk': ['staff_attendance.record'],
   '/attendance-entries': ['staff_attendance.record'],
 };
@@ -300,6 +297,7 @@ export const NAV_MENU_DOC: NavMenuDocEntry[] = [
   { path: '/hr/appraisals', label: 'Performance Appraisal', permissions: NAV_PERMISSION['/hr/appraisals'] },
   { path: '/hr/reports', label: 'HR Reports', permissions: NAV_PERMISSION['/hr/reports'] },
   { path: '/staff-appraisal', label: 'My Appraisal', permissions: NAV_PERMISSION['/staff-appraisal'] },
+  { path: '/appraisals/vc', label: 'Appraisal Final Review', permissions: NAV_PERMISSION['/appraisals/vc'] },
   { path: '/attendance-desk', label: 'Attendance Desk', permissions: NAV_PERMISSION['/attendance-desk'] },
   { path: '/attendance-entries', label: 'My Entries', permissions: NAV_PERMISSION['/attendance-entries'] },
 ];

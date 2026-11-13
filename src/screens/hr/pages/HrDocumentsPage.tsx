@@ -30,7 +30,7 @@ type DocumentRow = {
   uploadedAt: string;
   cycleName: string;
   appraisalReviewId: string;
-  overallHrScore?: number | null;
+  finalScore?: number | null;
 };
 
 function toDocumentRow(review: HrAppraisalReview): DocumentRow {
@@ -39,10 +39,11 @@ function toDocumentRow(review: HrAppraisalReview): DocumentRow {
     employeeName: review.employeeName,
     title: review.archivedDocumentTitle ?? `${review.cycleName} — ${review.formTemplateName}`,
     category: 'Appraisal Archive',
-    uploadedAt: review.completedAt?.slice(0, 10) ?? review.dueDate,
+    // Local calendar date (en-CA gives YYYY-MM-DD); slicing the ISO string would give the UTC date.
+    uploadedAt: review.completedAt ? new Date(review.completedAt).toLocaleDateString('en-CA') : review.dueDate,
     cycleName: review.cycleName,
     appraisalReviewId: review.id,
-    overallHrScore: review.overallHrScore,
+    finalScore: review.overallSupervisorScore,
   };
 }
 
@@ -112,7 +113,7 @@ export default function HrDocumentsPage() {
                 <TableHead>Document</TableHead>
                 <TableHead>Cycle</TableHead>
                 <TableHead>Filed</TableHead>
-                <TableHead>HR score</TableHead>
+                <TableHead>Final score</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -136,7 +137,7 @@ export default function HrDocumentsPage() {
                     <TableCell>{d.title}</TableCell>
                     <TableCell>{d.cycleName}</TableCell>
                     <TableCell>{d.uploadedAt}</TableCell>
-                    <TableCell>{d.overallHrScore != null ? `${d.overallHrScore}%` : '—'}</TableCell>
+                    <TableCell>{d.finalScore != null ? `${d.finalScore}%` : '—'}</TableCell>
                     <TableCell>
                       <Button
                         variant="ghost"
@@ -163,16 +164,13 @@ export default function HrDocumentsPage() {
       </Card>
 
       <Dialog open={!!printReview} onOpenChange={() => setPrintReview(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto print:max-w-none">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           {printReview ? (
             <>
               <DialogHeader className="print:hidden">
                 <DialogTitle>Archived appraisal</DialogTitle>
               </DialogHeader>
               <AppraisalPrintView review={printReview} />
-              <DialogFooter className="print:hidden">
-                <Button onClick={() => window.print()}>Print / Save as PDF</Button>
-              </DialogFooter>
             </>
           ) : null}
         </DialogContent>

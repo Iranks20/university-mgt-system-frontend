@@ -1,675 +1,444 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Link } from 'react-router';
+import { ChevronLeft, ChevronRight, Eye, Rocket, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { ChevronLeft, ChevronRight, Eye, FileStack, Rocket, Users } from 'lucide-react';
-import { toast } from 'sonner';
 import { HrAppraisalFormPreview } from '@/components/hr/HrAppraisalFormPreview';
-import { staffService } from '@/services/staff.service';
+import { StaffSearchPicker } from '@/components/hr/appraisal/StaffSearchPicker';
 import { hrAppraisalService, type CycleLaunchReadiness } from '@/services/hr-appraisal.service';
-import {
-  categoriesInScope,
-  defaultFormAssignmentsForScope,
-  employeeInScope,
-  EMPLOYEE_CATEGORY_LABELS,
-  getTemplatesForCategory,
-  inferEmployeeCategory,
-  resolveTemplateForStaff,
-} from '@/features/hr/appraisal-form-utils';
-import {
-  createAndLaunchAppraisalCycle,
-  getAppraisalFormTemplates,
-  getHrAppraisalCycles,
-} from '@/features/hr/hr-appraisal-store';
+import { ALL_EMPLOYEE_CATEGORIES, EMPLOYEE_CATEGORY_LABELS } from '@/features/hr/appraisal-form-utils';
+import { getAppraisalFormTemplates, getHrAppraisalCycles } from '@/features/hr/hr-appraisal-store';
 import { getApiErrorMessage } from '@/lib/api';
-import type { Staff } from '@/types';
-import type {
-  AppraisalCycleScope,
-  AppraisalFormTemplate,
-  CreateAppraisalCycleInput,
-  CycleFormAssignment,
+import {
+  APPRAISAL_JOB_CATEGORY_LABELS,
+  APPRAISAL_TYPE_OPTIONS,
+  type AppraisalAssignmentRule,
+  type AppraisalCycleKind,
+  type AppraisalFormTemplate,
+  type AppraisalJobCategory,
+  type EmployeeCategory,
 } from '@/features/hr/types';
-import { Link } from 'react-router';
+import type { Staff } from '@/types';
 
-const STEPS = [
-  { id: 1, title: 'Cycle details', description: 'Name and performance period' },
-  { id: 2, title: 'Appraisal forms', description: 'Form type per staff category' },
-  { id: 3, title: 'Participation', description: 'Who is included' },
-  { id: 4, title: 'Timeline', description: 'Deadlines for each stage' },
-  { id: 5, title: 'Launch', description: 'Review and open cycle' },
-] as const;
+const STEPS = ['Appraisal details', 'Who is appraised', 'Forms', 'Deadlines', 'Launch'] as const;
 
-type HrNewAppraisalCycleDialogProps = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onLaunched: () => void;
+type FormState = {
+  kind: AppraisalCycleKind;
+  name: string;
+  periodLabel: string;
+  startDate: string;
+  endDate: string;
+  selfDeadline: string;
+  supervisorDeadline: string;
+  scopeCategories: EmployeeCategory[];
+  closePreviousOpen: boolean;
 };
 
-function defaultForm(): CreateAppraisalCycleInput {
+function defaultForm(): FormState {
   const year = new Date().getFullYear();
-  const scope: AppraisalCycleScope = 'all';
   return {
-    name: `Annual Performance Review ${year}`,
-    periodLabel: `Jan ${year} – Dec ${year}`,
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: `${year}-08-31`,
-    selfAssessmentDeadline: `${year}-07-15`,
-    supervisorDeadline: `${year}-08-15`,
-    scope,
-    categorySelections: [],
+    kind: 'Annual',
+    name: `Annual Appraisal ${year}/${year + 1}`,
+    periodLabel: `July ${year} – June ${year + 1}`,
+    startDate: `${year}-07-01`,
+    endDate: `${year + 1}-06-30`,
+    selfDeadline: `${year + 1}-05-31`,
+    supervisorDeadline: `${year + 1}-06-15`,
+    scopeCategories: [...ALL_EMPLOYEE_CATEGORIES],
     closePreviousOpen: true,
   };
-}
-
-function syncAssignmentsForScope(
-  scope: AppraisalCycleScope,
-  current: CycleFormAssignment[],
-  templates: AppraisalFormTemplate[]
-): CycleFormAssignment[] {
-  const categories = categoriesInScope(scope);
-  const defaults = defaultFormAssignmentsForScope(templates, scope);
-  return categories.map((category) => {
-    const existing = current.find((a) => a.category === category);
-    return {
-      category,
-      templateId: existing?.templateId ?? defaults.find((a) => a.category === category)?.templateId ?? '',
-    };
-  });
 }
 
 export function HrNewAppraisalCycleDialog({
   open,
   onOpenChange,
   onLaunched,
-}: HrNewAppraisalCycleDialogProps) {
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState<CreateAppraisalCycleInput>(defaultForm);
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onLaunched: () => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState<FormState>(defaultForm);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [templates, setTemplates] = useState<AppraisalFormTemplate[]>([]);
+  const [rules, setRules] = useState<AppraisalAssignmentRule[]>([]);
   const [openCycleName, setOpenCycleName] = useState<string | null>(null);
-  const [launching, setLaunching] = useState(false);
-  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
-  const [liveStaff, setLiveStaff] = useState<Staff[]>([]);
   const [readiness, setReadiness] = useState<CycleLaunchReadiness | null>(null);
-  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const individual = APPRAISAL_TYPE_OPTIONS.find((o) => o.value === form.kind)?.individual ?? false;
+  const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
 
   useEffect(() => {
     if (!open) return;
-    staffService
-      .getStaff({ status: 'Active', limit: 500, page: 1 })
-      .then((result) => setLiveStaff(result.data))
-      .catch(() => setLiveStaff([]));
-    getAppraisalFormTemplates()
-      .then((rows) => {
-        setTemplates(rows);
-        setForm((prev) => ({
-          ...prev,
-          categorySelections: syncAssignmentsForScope(prev.scope, prev.categorySelections ?? [], rows),
-        }));
+    Promise.all([getAppraisalFormTemplates(), hrAppraisalService.getDefaultAssignments(), getHrAppraisalCycles()])
+      .then(([tpls, defaults, cycles]) => {
+        setTemplates(tpls);
+        setRules(defaults);
+        setOpenCycleName(cycles.find((c) => c.status === 'Open' && !c.isIndividual)?.name ?? null);
       })
-      .catch(() => setTemplates([]));
-    getHrAppraisalCycles()
-      .then((rows) => setOpenCycleName(rows.find((c) => c.status === 'Open')?.name ?? null))
-      .catch(() => setOpenCycleName(null));
+      .catch((error) => toast.error(getApiErrorMessage(error, 'Could not load appraisal forms')));
   }, [open]);
 
-  const templateById = useMemo(
-    () => new Map(templates.map((template) => [template.id, template])),
-    [templates]
-  );
-  const getTemplateById = (id: string) => templateById.get(id);
-
-  const scopedCategories = useMemo(() => categoriesInScope(form.scope), [form.scope]);
-  const categorySelections = form.categorySelections ?? [];
-
-  const eligibleCount = useMemo(() => {
-    return liveStaff.filter((member) => {
-      const departmentName = (member as Staff & { departmentName?: string }).departmentName ?? '';
-      const category = inferEmployeeCategory(undefined, member.role, departmentName);
-      return employeeInScope(form.scope, category);
-    }).length;
-  }, [liveStaff, form.scope]);
-
-  const formCountsByTemplate = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const member of liveStaff) {
-      const departmentName = (member as Staff & { departmentName?: string }).departmentName ?? '';
-      const category = inferEmployeeCategory(undefined, member.role, departmentName);
-      if (!employeeInScope(form.scope, category)) continue;
-      const template = resolveTemplateForStaff({
-        templates,
-        category,
-        jobTitle: member.role,
-        department: departmentName,
-        preferredTemplateId: categorySelections.find((a) => a.category === category)?.templateId,
-      });
-      if (!template) continue;
-      counts.set(template.id, (counts.get(template.id) ?? 0) + 1);
-    }
-    return counts;
-  }, [liveStaff, form.scope, categorySelections, templates]);
-
-  const previewTemplate = previewTemplateId ? getTemplateById(previewTemplateId) : null;
-
-  useEffect(() => {
-    if (!open || !templates.length) return;
-    setForm((prev) => ({
-      ...prev,
-      categorySelections: syncAssignmentsForScope(prev.scope, prev.categorySelections ?? [], templates),
-    }));
-  }, [form.scope, open, templates]);
-
   const reset = () => {
-    setStep(1);
+    setStep(0);
     setForm(defaultForm());
-    setLaunching(false);
-    setPreviewTemplateId(null);
+    setStaff([]);
     setReadiness(null);
-    setReadinessLoading(false);
+    setLaunching(false);
   };
 
-  const handleClose = (next: boolean) => {
+  const close = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
   };
 
-  const setAssignmentTemplate = (category: CycleFormAssignment['category'], templateId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      categorySelections: (prev.categorySelections ?? []).map((a) =>
-        a.category === category ? { ...a, templateId } : a
-      ),
-    }));
-  };
-
-  const launchAssignments = useMemo(
-    () =>
-      categorySelections
-        .filter((assignment) => assignment.templateId)
-        .map((assignment) => ({
-          ruleType: 'category' as const,
-          category: assignment.category,
-          templateId: assignment.templateId,
-        })),
-    [categorySelections]
-  );
-
-  const canProceed = () => {
-    if (step === 1) {
-      return form.name.trim() && form.periodLabel.trim() && form.startDate && form.endDate;
-    }
-    if (step === 2) {
-      return categorySelections.length > 0 && categorySelections.every((a) => a.templateId);
-    }
-    if (step === 4) {
-      return (
-        form.selfAssessmentDeadline &&
-        form.supervisorDeadline &&
-        form.selfAssessmentDeadline <= form.supervisorDeadline &&
-        form.supervisorDeadline <= form.endDate
-      );
-    }
-    if (step === 5) return eligibleCount > 0;
-    return true;
-  };
+  const payloadBase = () => ({
+    scopeCategories: form.scopeCategories.length ? form.scopeCategories : [...ALL_EMPLOYEE_CATEGORIES],
+    formAssignments: rules,
+    ...(individual ? { staffIds: staff.map((s) => s.id) } : {}),
+  });
 
   useEffect(() => {
-    if (!open || step !== 5 || !canProceed()) {
-      if (step !== 5) setReadiness(null);
-      return;
-    }
-
+    if (!open || step !== 4) return;
     let cancelled = false;
-    setReadinessLoading(true);
+    setChecking(true);
     hrAppraisalService
-      .getCycleLaunchReadiness({
-        scopeCategories: categoriesInScope(form.scope),
-        formAssignments: launchAssignments,
-      })
-      .then((data) => {
-        if (!cancelled) setReadiness(data);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setReadiness(null);
-          toast.error(getApiErrorMessage(error, 'Could not check launch readiness'));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setReadinessLoading(false);
-      });
-
+      .getCycleLaunchReadiness(payloadBase())
+      .then((r) => !cancelled && setReadiness(r))
+      .catch((error) => !cancelled && toast.error(getApiErrorMessage(error, 'Could not check who will be included')))
+      .finally(() => !cancelled && setChecking(false));
     return () => {
       cancelled = true;
     };
-  }, [open, step, form.scope, launchAssignments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step]);
 
-  const handleLaunch = async () => {
-    if (!canProceed()) {
-      toast.error('Complete all required fields before launching');
-      return;
-    }
+  const canProceed = (): boolean => {
+    if (step === 0) return !!(form.name.trim() && form.periodLabel.trim() && form.startDate && form.endDate && form.startDate <= form.endDate);
+    if (step === 1) return individual ? staff.length > 0 : form.scopeCategories.length > 0;
+    if (step === 2) return rules.length > 0;
+    if (step === 3) return !!(form.selfDeadline && form.supervisorDeadline && form.selfDeadline <= form.supervisorDeadline);
+    return !!readiness?.readyToLaunch;
+  };
+
+  const setKind = (kind: AppraisalCycleKind) => {
+    const option = APPRAISAL_TYPE_OPTIONS.find((o) => o.value === kind)!;
+    setForm((prev) => ({
+      ...prev,
+      kind,
+      name: option.individual ? option.label : prev.name,
+      closePreviousOpen: option.individual ? false : prev.closePreviousOpen,
+    }));
+  };
+
+  const ruleTemplateId = (jobCategory: AppraisalJobCategory) => {
+    const rule = rules.find((r) => (jobCategory === 'other' ? r.ruleType === 'default' : r.ruleType === 'jobCategory' && r.jobCategory === jobCategory));
+    return rule?.templateId ?? '';
+  };
+
+  const setRuleTemplate = (jobCategory: AppraisalJobCategory, templateId: string) => {
+    setRules((prev) => {
+      const isTarget = (r: AppraisalAssignmentRule) =>
+        jobCategory === 'other' ? r.ruleType === 'default' : r.ruleType === 'jobCategory' && r.jobCategory === jobCategory;
+      const next = prev.filter((r) => !isTarget(r));
+      if (templateId) {
+        next.push(
+          jobCategory === 'other' ? { ruleType: 'default', templateId } : { ruleType: 'jobCategory', jobCategory, templateId }
+        );
+      }
+      // The default rule must stay last so specific rules are checked first.
+      return [...next.filter((r) => r.ruleType !== 'default'), ...next.filter((r) => r.ruleType === 'default')];
+    });
+  };
+
+  const launch = async () => {
     setLaunching(true);
     try {
-      const cycle = await createAndLaunchAppraisalCycle(form);
-      toast.success(`Cycle launched — ${cycle.employeeCount} employees enrolled with assigned forms`);
+      const cycle = await hrAppraisalService.createCycle({
+        kind: form.kind,
+        name: form.name.trim(),
+        periodLabel: form.periodLabel.trim(),
+        startDate: form.startDate,
+        endDate: form.endDate,
+        selfDeadline: form.selfDeadline,
+        supervisorDeadline: form.supervisorDeadline,
+        closePreviousOpen: !individual && form.closePreviousOpen,
+        ...payloadBase(),
+      });
+      toast.success(`${cycle.name} opened — ${cycle.employeeCount} appraisal(s) created`);
       onLaunched();
-      handleClose(false);
+      close(false);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, 'Failed to launch appraisal cycle'));
+      toast.error(getApiErrorMessage(error, 'Could not open the appraisal period'));
     } finally {
       setLaunching(false);
     }
   };
 
+  const jobCategories = Object.keys(APPRAISAL_JOB_CATEGORY_LABELS) as AppraisalJobCategory[];
+
   return (
     <>
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={open} onOpenChange={close}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle>New appraisal cycle</DialogTitle>
+            <DialogTitle>New appraisal period</DialogTitle>
             <DialogDescription>
-              Configure appraisal form types, participation, and launch a university-wide review cycle
+              Opens appraisals for staff. Each person fills in their Appraisal Information and self-rating, then
+              their supervisor, HR and the Vice Chancellor sign it off.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {STEPS.map((s) => (
-              <div
-                key={s.id}
-                className={`flex-1 min-w-[100px] rounded-lg border p-2 text-center text-xs ${
-                  step === s.id ? 'border-[#015F2B] bg-green-50' : 'border-gray-200'
+          <ol className="flex gap-2 overflow-x-auto pb-1 text-xs">
+            {STEPS.map((label, i) => (
+              <li
+                key={label}
+                className={`flex-1 min-w-[90px] rounded-md border px-2 py-1.5 text-center ${
+                  step === i ? 'border-[#015F2B] bg-green-50 font-semibold' : 'border-gray-200 text-gray-500'
                 }`}
               >
-                <div className="font-semibold">{s.id}. {s.title}</div>
-                <div className="text-gray-500 hidden sm:block">{s.description}</div>
-              </div>
+                {i + 1}. {label}
+              </li>
             ))}
-          </div>
+          </ol>
 
-          {step === 1 ? (
+          {step === 0 ? (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="cycle-name">Cycle name</Label>
-                <Input
-                  id="cycle-name"
-                  className="mt-1"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Annual Performance Review 2027"
-                />
+                <Label htmlFor="nc-kind">Appraisal Type</Label>
+                <select
+                  id="nc-kind"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+                  value={form.kind}
+                  onChange={(e) => setKind(e.target.value as AppraisalCycleKind)}
+                >
+                  {APPRAISAL_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                      {o.individual ? ' (selected staff)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
-                <Label htmlFor="period-label">Performance period label</Label>
-                <Input
-                  id="period-label"
-                  className="mt-1"
-                  value={form.periodLabel}
-                  onChange={(e) => setForm({ ...form, periodLabel: e.target.value })}
-                  placeholder="Jan 2027 – Dec 2027"
-                />
+                <Label htmlFor="nc-name">Name</Label>
+                <Input id="nc-name" className="mt-1" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="nc-label">Period label</Label>
+                <Input id="nc-label" className="mt-1" value={form.periodLabel} onChange={(e) => setForm({ ...form, periodLabel: e.target.value })} />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="cycle-start">Cycle opens</Label>
-                  <Input
-                    id="cycle-start"
-                    type="date"
-                    className="mt-1"
-                    value={form.startDate}
-                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                  />
+                  <Label htmlFor="nc-from">Period of appraisal — from</Label>
+                  <Input id="nc-from" type="date" className="mt-1" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
                 </div>
                 <div>
-                  <Label htmlFor="cycle-end">Cycle closes</Label>
-                  <Input
-                    id="cycle-end"
-                    type="date"
-                    className="mt-1"
-                    value={form.endDate}
-                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                  />
+                  <Label htmlFor="nc-to">Period of appraisal — to</Label>
+                  <Input id="nc-to" type="date" className="mt-1" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
                 </div>
               </div>
+              <p className="text-xs text-gray-500">Staff see these dates pre-filled on their Appraisal Information and can correct them.</p>
             </div>
           ) : null}
 
-          {step === 2 ? (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-dashed p-3 text-sm text-gray-600 flex gap-2">
-                <FileStack className="h-5 w-5 shrink-0 text-[#015F2B]" />
-                <p>
-                  Choose which appraisal form template is generated for each staff category in this cycle.
-                  Employees receive the form matching their category when the cycle launches.
-                </p>
-              </div>
-
-              {scopedCategories.map((category) => {
-                const assignment = categorySelections.find((a) => a.category === category);
-                const options = getTemplatesForCategory(templates, category);
-                const selected = assignment ? getTemplateById(assignment.templateId) : undefined;
-
-                return (
-                  <Card key={category}>
-                    <CardContent className="pt-4 space-y-3">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                        <div className="flex-1">
-                          <Label>{EMPLOYEE_CATEGORY_LABELS[category]}</Label>
-                          <Select
-                            value={assignment?.templateId ?? ''}
-                            onValueChange={(v) => setAssignmentTemplate(category, v)}
-                          >
-                            <SelectTrigger className="mt-1">
-                              <SelectValue placeholder="Select appraisal form" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {options.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>
-                                  {t.name} ({t.code})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {assignment?.templateId ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPreviewTemplateId(assignment.templateId)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" /> Preview form
-                          </Button>
-                        ) : null}
-                      </div>
-                      {selected ? (
-                        <p className="text-xs text-gray-500">{selected.description}</p>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-
-              <div className="rounded-lg bg-gray-50 border p-3 text-sm">
-                <p className="font-medium text-gray-900 mb-2">Forms to be generated on launch</p>
+          {step === 1 ? (
+            individual ? (
+              <div className="space-y-3">
+                <p className="text-sm text-gray-600">Choose the staff member(s) to appraise.</p>
+                <StaffSearchPicker
+                  excludeIds={staff.map((s) => s.id)}
+                  onPick={(s) => setStaff((prev) => [...prev, s])}
+                />
                 <div className="flex flex-wrap gap-2">
-                  {[...formCountsByTemplate.entries()].map(([templateId, count]) => {
-                    const template = getTemplateById(templateId);
-                    if (!template) return null;
-                    return (
-                      <Badge key={templateId} variant="secondary">
-                        {template.code}: {count} employees
-                      </Badge>
-                    );
-                  })}
+                  {staff.map((s) => (
+                    <Badge key={s.id} variant="secondary" className="gap-1 py-1">
+                      {s.firstName} {s.lastName}
+                      <button type="button" aria-label={`Remove ${s.firstName}`} onClick={() => setStaff((prev) => prev.filter((p) => p.id !== s.id))}>
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
                 </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">Active staff in these categories get an appraisal.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ALL_EMPLOYEE_CATEGORIES.map((cat) => (
+                    <label key={cat} className="flex items-center gap-2 rounded-md border p-3 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={form.scopeCategories.includes(cat)}
+                        onCheckedChange={(checked) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            scopeCategories: checked
+                              ? [...prev.scopeCategories, cat]
+                              : prev.scopeCategories.filter((c) => c !== cat),
+                          }))
+                        }
+                      />
+                      {EMPLOYEE_CATEGORY_LABELS[cat]}
+                    </label>
+                  ))}
+                </div>
+                <label className="flex items-start gap-2 rounded-md border p-3 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={form.closePreviousOpen}
+                    onCheckedChange={(checked) => setForm({ ...form, closePreviousOpen: checked === true })}
+                  />
+                  <span>
+                    Close the currently open appraisal period
+                    <span className="block text-xs text-gray-500">
+                      {openCycleName ? `Closes "${openCycleName}".` : 'No appraisal period is open.'} Individual reviews are not affected.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )
+          ) : null}
+
+          {step === 2 ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Each staff member gets the form for their job category, as before. Heads of department, the Registrar,
+                Librarian, ICT Manager, Lab Technologists and Director Finance are recognised from their post; academic
+                staff from their rank.
+              </p>
+              <div className="rounded-md border divide-y">
+                {jobCategories.map((jc) => {
+                  const templateId = ruleTemplateId(jc);
+                  return (
+                    <div key={jc} className="flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
+                      <span className="sm:w-48 text-sm font-medium">{APPRAISAL_JOB_CATEGORY_LABELS[jc]}</span>
+                      <select
+                        aria-label={`Form for ${APPRAISAL_JOB_CATEGORY_LABELS[jc]}`}
+                        className="min-w-0 w-full flex-1 truncate rounded-md border px-2 py-1.5 text-sm"
+                        value={templateId}
+                        onChange={(e) => setRuleTemplate(jc, e.target.value)}
+                      >
+                        <option value="">— Select form —</option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      {templateId ? (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setPreviewId(templateId)} aria-label="Preview form">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
 
           {step === 3 ? (
-            <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label>Employee scope</Label>
-                <Select
-                  value={form.scope}
-                  onValueChange={(v) => {
-                    const scope = v as AppraisalCycleScope;
-                    setForm((prev) => ({
-                      ...prev,
-                      scope,
-                      categorySelections: syncAssignmentsForScope(scope, prev.categorySelections ?? [], templates),
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All active employees</SelectItem>
-                    <SelectItem value="academic">Academic staff only (lecturers)</SelectItem>
-                    <SelectItem value="administrative">Administrative staff</SelectItem>
-                    <SelectItem value="support">Support staff</SelectItem>
-                    <SelectItem value="clinical">Clinical staff</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="nc-self">Self-assessment deadline</Label>
+                <Input id="nc-self" type="date" className="mt-1" value={form.selfDeadline} onChange={(e) => setForm({ ...form, selfDeadline: e.target.value })} />
               </div>
-              <Card>
-                <CardContent className="pt-4 flex items-center gap-3">
-                  <Users className="h-8 w-8 text-[#015F2B]" />
-                  <div>
-                    <p className="font-semibold">{eligibleCount} employees</p>
-                    <p className="text-sm text-gray-500">
-                      Will receive the selected appraisal forms when the cycle is launched
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-              <div className="flex items-start gap-2 rounded-lg border p-3">
-                <Checkbox
-                  id="close-previous"
-                  checked={form.closePreviousOpen}
-                  onCheckedChange={(checked) =>
-                    setForm({ ...form, closePreviousOpen: checked === true })
-                  }
-                />
-                <div>
-                  <Label htmlFor="close-previous" className="cursor-pointer">
-                    Close any currently open cycle
-                  </Label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {openCycleName
-                      ? `Will close "${openCycleName}" before opening the new cycle.`
-                      : 'No open cycle detected — safe to proceed.'}
-                  </p>
-                </div>
+              <div>
+                <Label htmlFor="nc-sup">Supervisor rating deadline</Label>
+                <Input id="nc-sup" type="date" className="mt-1" value={form.supervisorDeadline} onChange={(e) => setForm({ ...form, supervisorDeadline: e.target.value })} />
               </div>
+              <p className="sm:col-span-2 text-xs text-gray-500">
+                HR and the Vice Chancellor sign off after the supervisor; there is no fixed deadline for those steps.
+              </p>
             </div>
           ) : null}
 
           {step === 4 ? (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">
-                Set deadlines for each stage of the standard appraisal workflow.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="self-deadline">Self-assessment deadline</Label>
-                  <Input
-                    id="self-deadline"
-                    type="date"
-                    className="mt-1"
-                    value={form.selfAssessmentDeadline}
-                    onChange={(e) =>
-                      setForm({ ...form, selfAssessmentDeadline: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="supervisor-deadline">Supervisor review deadline</Label>
-                  <Input
-                    id="supervisor-deadline"
-                    type="date"
-                    className="mt-1"
-                    value={form.supervisorDeadline}
-                    onChange={(e) =>
-                      setForm({ ...form, supervisorDeadline: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {step === 5 ? (
-            <div className="space-y-4">
-              <Card
-                className={
-                  readiness && !readiness.readyToLaunch
-                    ? 'bg-amber-50 border-amber-200'
-                    : 'bg-green-50 border-green-200'
-                }
-              >
-                <CardContent className="pt-4 space-y-2 text-sm">
-                  <p
-                    className={`font-semibold ${
-                      readiness && !readiness.readyToLaunch ? 'text-amber-900' : 'text-green-900'
-                    }`}
-                  >
-                    {readiness && !readiness.readyToLaunch
-                      ? 'Launch blocked until supervisors are fixed'
-                      : 'Ready to launch'}
-                  </p>
-                  <dl
-                    className={`grid grid-cols-2 gap-2 ${
-                      readiness && !readiness.readyToLaunch ? 'text-amber-900' : 'text-green-900'
-                    }`}
-                  >
-                    <dt className="text-green-700">Cycle</dt>
-                    <dd>{form.name}</dd>
-                    <dt className="text-green-700">Period</dt>
-                    <dd>{form.periodLabel}</dd>
-                    <dt className="text-green-700">Employees</dt>
-                    <dd>{readiness?.eligibleCount ?? eligibleCount}</dd>
-                    <dt className="text-green-700">Ready with supervisor</dt>
-                    <dd>{readiness?.readyCount ?? '—'}</dd>
-                    <dt className="text-green-700">Missing supervisor</dt>
-                    <dd>{readiness?.missingSupervisorCount ?? (readinessLoading ? 'Checking…' : '—')}</dd>
-                    <dt className="text-green-700">Self-assessment due</dt>
-                    <dd>{form.selfAssessmentDeadline}</dd>
-                    <dt className="text-green-700">Supervisor due</dt>
-                    <dd>{form.supervisorDeadline}</dd>
-                    <dt className="text-green-700">Cycle closes</dt>
-                    <dd>{form.endDate}</dd>
-                  </dl>
-                </CardContent>
-              </Card>
-
+            <div className="space-y-4 text-sm">
+              <dl className="grid grid-cols-2 gap-2 rounded-md border p-4">
+                <dt className="text-gray-500">Appraisal type</dt>
+                <dd>{APPRAISAL_TYPE_OPTIONS.find((o) => o.value === form.kind)?.label}</dd>
+                <dt className="text-gray-500">Name</dt>
+                <dd>{form.name}</dd>
+                <dt className="text-gray-500">Period</dt>
+                <dd>
+                  {form.startDate} to {form.endDate}
+                </dd>
+                <dt className="text-gray-500">Staff to appraise</dt>
+                <dd>{checking ? 'Checking…' : readiness?.eligibleCount ?? '—'}</dd>
+                <dt className="text-gray-500">Self-assessment due</dt>
+                <dd>{form.selfDeadline}</dd>
+                <dt className="text-gray-500">Supervisors due</dt>
+                <dd>{form.supervisorDeadline}</dd>
+              </dl>
               {readiness?.missingSupervisorCount ? (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 space-y-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="font-medium">
-                        {readiness.missingSupervisorCount} staff member(s) in scope still have no
-                        supervisor or department HOD.
-                      </p>
-                      <p className="text-amber-900/80">
-                        Update reporting lines first, then launch again.
-                      </p>
-                    </div>
-                    <Button variant="outline" asChild>
-                      <Link to="/hr/employees?supervision=missing" onClick={() => handleClose(false)}>
-                        Open employee directory
-                      </Link>
-                    </Button>
-                  </div>
-
-                  {readiness.missingSupervisorDepartments.length ? (
-                    <div>
-                      <p className="font-medium mb-2">Most affected departments</p>
-                      <div className="flex flex-wrap gap-2">
-                        {readiness.missingSupervisorDepartments.slice(0, 8).map((row) => (
-                          <Badge key={row.department} variant="outline">
-                            {row.department}: {row.count}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div>
-                    <p className="font-medium mb-2">Examples</p>
-                    <ul className="list-disc pl-5 space-y-1">
-                      {readiness.missingSupervisors.map((label) => (
-                        <li key={label}>{label}</li>
-                      ))}
-                    </ul>
-                  </div>
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-950 space-y-2">
+                  <p className="font-medium">
+                    {readiness.missingSupervisorCount} staff member(s) have no supervisor on the organisation chart.
+                  </p>
+                  <p>
+                    Their appraisals are still created. Assign a supervisor from Staff Progress before they submit, or fix
+                    the reporting line in the organisation chart.
+                  </p>
+                  <ul className="list-disc pl-5">
+                    {readiness.missingSupervisors.slice(0, 8).map((label) => (
+                      <li key={label}>{label}</li>
+                    ))}
+                  </ul>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/hr/employees?supervision=missing" onClick={() => close(false)}>
+                      Open employee directory
+                    </Link>
+                  </Button>
                 </div>
               ) : null}
-
-              <div className="rounded-lg border p-4 text-sm">
-                <p className="font-medium text-gray-900 mb-2">Appraisal forms in this cycle</p>
-                <ul className="space-y-2">
-                  {categorySelections.map((assignment) => {
-                    const template = getTemplateById(assignment.templateId);
-                    const count = formCountsByTemplate.get(assignment.templateId) ?? 0;
-                    return (
-                      <li key={assignment.category} className="flex justify-between gap-2">
-                        <span>
-                          <strong>{EMPLOYEE_CATEGORY_LABELS[assignment.category]}:</strong>{' '}
-                          {template?.name ?? assignment.templateId}
-                        </span>
-                        <Badge variant="outline">{count} forms</Badge>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+              {readiness && !readiness.readyToLaunch ? (
+                <p className="rounded-md bg-red-50 p-3 text-red-800">Nobody matches this selection.</p>
+              ) : null}
             </div>
           ) : null}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {step > 1 ? (
-              <Button type="button" variant="outline" onClick={() => setStep(step - 1)}>
+            {step > 0 ? (
+              <Button variant="outline" onClick={() => setStep(step - 1)}>
                 <ChevronLeft className="h-4 w-4 mr-1" /> Back
               </Button>
             ) : (
-              <Button type="button" variant="outline" onClick={() => handleClose(false)}>
+              <Button variant="outline" onClick={() => close(false)}>
                 Cancel
               </Button>
             )}
             <div className="flex-1" />
-            {step < 5 ? (
-              <Button
-                type="button"
-                disabled={!canProceed()}
-                onClick={() => setStep(step + 1)}
-              >
+            {step < STEPS.length - 1 ? (
+              <Button disabled={!canProceed()} onClick={() => setStep(step + 1)}>
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             ) : (
-              <Button
-                type="button"
-                disabled={launching || !canProceed() || readinessLoading || readiness?.readyToLaunch === false}
-                onClick={handleLaunch}
-              >
-                <Rocket className="h-4 w-4 mr-2" />
-                {launching ? 'Launching...' : 'Launch cycle'}
+              <Button disabled={launching || checking || !canProceed()} onClick={launch}>
+                <Rocket className="h-4 w-4 mr-2" /> {launching ? 'Opening…' : 'Open appraisal period'}
               </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!previewTemplate} onOpenChange={() => setPreviewTemplateId(null)}>
+      <Dialog open={!!previewId} onOpenChange={() => setPreviewId(null)}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          {previewTemplate ? (
+          {previewId && templateById.get(previewId) ? (
             <>
               <DialogHeader>
                 <DialogTitle>Form preview</DialogTitle>
-                <DialogDescription>
-                  Structure employees and supervisors will complete for this template
-                </DialogDescription>
+                <DialogDescription>{templateById.get(previewId)!.name}</DialogDescription>
               </DialogHeader>
-              <HrAppraisalFormPreview template={previewTemplate} />
+              <HrAppraisalFormPreview template={templateById.get(previewId)!} />
             </>
           ) : null}
         </DialogContent>
