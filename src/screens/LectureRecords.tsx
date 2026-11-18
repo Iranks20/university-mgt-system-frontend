@@ -2724,6 +2724,12 @@ export default function LectureRecords() {
                       This session is not on the timetable. It will appear on student attendance for this date after you save it.
                     </p>
                   ) : null}
+                  {sessionChoice === 'extra' && !daySessionsLoading && extraClasses.length === 0 ? (
+                    <p className="text-xs text-amber-600">
+                      This lecturer has no active-term classes to record an extra class for. Assign the class to the
+                      lecturer in the current term first.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -2804,7 +2810,11 @@ export default function LectureRecords() {
                       name="class" 
                         value={selectedClassName || ''}
                         onChange={(e) => setSelectedClassName(e.target.value)}
-                        placeholder="Lecturer not assigned to any class"
+                        placeholder={
+                          sessionChoice === 'extra'
+                            ? 'No active-term classes for this lecturer'
+                            : 'Lecturer not assigned to any class'
+                        }
                     />
                   )}
                 </div>
