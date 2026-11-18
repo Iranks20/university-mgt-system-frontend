@@ -2,6 +2,7 @@ import api from '@/lib/api';
 import type { Student, StudentAttendance } from '@/types';
 import type {
   ClassAttendanceSummaryReport,
+  ClassAttendanceStudentBreakdown,
   CourseWiseAttendanceSummaryReport,
   DailyMarkingCoverage,
   DailyMarkingGrid,
@@ -280,6 +281,17 @@ export const studentService = {
       console.error('Error fetching class attendance summary report:', error);
       throw error;
     }
+  },
+
+  getClassAttendanceStudentBreakdown: async (
+    params: Record<string, string | number>,
+    studentId: string
+  ): Promise<ClassAttendanceStudentBreakdown> => {
+    const res = await api.get<ClassAttendanceStudentBreakdown | { data: ClassAttendanceStudentBreakdown }>(
+      '/students/attendance/class-summary-report/student-breakdown',
+      { ...params, studentId }
+    );
+    return (res as { data?: ClassAttendanceStudentBreakdown })?.data ?? (res as ClassAttendanceStudentBreakdown);
   },
 
   getDailyMarkingGrid: async (params: {

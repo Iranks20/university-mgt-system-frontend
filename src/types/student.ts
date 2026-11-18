@@ -127,6 +127,10 @@ export interface ClassAttendanceSummaryRow {
   totalAttendedClasses: number;
   totalLateClasses: number;
   totalMissedClasses: number;
+  /** Optional for older API responses. */
+  totalExcusedClasses?: number;
+  /** Class sessions the student was not marked for (shown, not used in the percentage). */
+  totalNotMarkedClasses?: number;
   expectedAttendance: number;
   percentage: number;
 }
@@ -158,6 +162,8 @@ export interface ClassAttendanceSummaryReport {
     totalAttendedClasses: number;
     totalLateClasses: number;
     totalMissedClasses: number;
+    totalExcusedClasses?: number;
+    totalNotMarkedClasses?: number;
     expectedAttendance: number;
   };
 }
@@ -368,4 +374,56 @@ export interface CourseWiseAttendanceSummaryReport {
     totalPresents: number;
     totalAbsents: number;
   };
+}
+
+export type ClassAttendanceMarkStatus = 'Present' | 'Late' | 'Absent' | 'Excused';
+export type ClassAttendanceSessionStatus = ClassAttendanceMarkStatus | 'NotMarked';
+
+/**
+ * How one student's row in the class/course attendance summary report was calculated.
+ * Expected = class sessions per course unit the student takes; % = attended ÷ (present + late + absent).
+ */
+export interface ClassAttendanceStudentBreakdown {
+  student: { studentId: string; studentName: string; registrationNumber: string };
+  filters: { startDate: string | null; endDate: string | null };
+  summary: {
+    totalAttendedClasses: number;
+    totalLateClasses: number;
+    totalMissedClasses: number;
+    totalExcusedClasses: number;
+    totalNotMarkedClasses: number;
+    expectedAttendance: number;
+    percentage: number;
+    presentSessions: number;
+    mergedSessions: number;
+    marksWithoutActiveEnrollment: number;
+  };
+  byCourse: Array<{
+    courseKey: string;
+    courseId: string | null;
+    courseCode: string | null;
+    courseName: string | null;
+    classNames: string[];
+    /** marked = classes the student was marked in; enrollment = no marks, so their enrolled class. */
+    basis: 'marked' | 'enrollment';
+    expected: number;
+    present: number;
+    late: number;
+    absent: number;
+    excused: number;
+    notMarked: number;
+    attended: number;
+    percentage: number;
+  }>;
+  sessions: Array<{
+    sessionKey: string;
+    courseId: string | null;
+    courseCode: string | null;
+    courseName: string | null;
+    date: string;
+    status: ClassAttendanceSessionStatus;
+    remarks: string | null;
+    classNames: string[];
+    marks: Array<{ classId: string; className: string; status: string; enrolled: boolean }>;
+  }>;
 }
