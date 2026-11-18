@@ -18,6 +18,7 @@ import { adminService, type UserAccessDetails } from '@/services/admin.service';
 import { academicService } from '@/services';
 import { getApiErrorMessage } from '@/lib/api';
 import type { AccessGrant } from '@/contexts/AuthContext';
+import { menuOpen, menuPermissionSets, visibleMenus } from '@/lib/sidebar-nav';
 
 type NamedOption = { value: string; label: string };
 type ScopeKey = 'schoolIds' | 'departmentIds' | 'programIds';
@@ -145,6 +146,22 @@ export function UserAccessDialog({ userId, userName, onClose }: UserAccessDialog
     }
   };
 
+  /** Each menu this person sees, with the grant(s) that open it, so "why can they see this?" has an answer. */
+  const menuSources = useMemo(() => {
+    if (!details) return [];
+    const have = new Set(details.permissions);
+    const grantName = (g: AccessGrant) => `${SOURCE_LABEL[g.source]}: ${g.positionTitle ?? g.name}`;
+    return visibleMenus(details.permissions).map((menu) => {
+      const alone = details.grants.filter((g) => menuOpen(g.permissions, menu.path));
+      if (alone.length) return { menu, sources: alone.map(grantName), together: false };
+      const openingSets = menuPermissionSets(menu.path).filter((set) => set.every((c) => have.has(c)));
+      const contributors = details.grants.filter((g) =>
+        openingSets.some((set) => set.some((c) => g.permissions.includes(c)))
+      );
+      return { menu, sources: contributors.map(grantName), together: true };
+    });
+  }, [details]);
+
   const scope = details?.scope;
   const scopeSummary = !scope
     ? null
@@ -236,6 +253,50 @@ export function UserAccessDialog({ userId, userName, onClose }: UserAccessDialog
                   )}
                 </TableBody>
               </Table>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold">Menus this person sees</h3>
+                <p className="text-xs text-muted-foreground">
+                  To take a menu away, switch it off on <strong>every</strong> source listed for it (Roles &amp;
+                  Permissions › Permissions › Menus). If a source is a position, ending the appointment also removes it.
+                </p>
+              </div>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Menu</TableHead>
+                      <TableHead>Given by</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {menuSources.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="py-6 text-center text-muted-foreground">
+                          Only the Dashboard.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      menuSources.map(({ menu, sources, together }) => (
+                        <TableRow key={menu.path}>
+                          <TableCell>
+                            <div className="font-medium">{menu.label}</div>
+                            <div className="text-xs text-muted-foreground">{menu.sectionLabel}</div>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {sources.join(together ? ' + ' : ' · ')}
+                            {together ? (
+                              <span className="block text-xs text-muted-foreground">These together open it</span>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
             <div className="space-y-4">

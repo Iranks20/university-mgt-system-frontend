@@ -23,14 +23,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { menuLabelsForPermission } from '@/lib/nav-permissions';
+import { SIDEBAR_SECTIONS, menuLabel, menuOpen, menuPermissionSets, withMenuOff, withMenuOn } from '@/lib/sidebar-nav';
 
 const SCOPE_MODE_INFO =
   'University-wide: permissions apply across the institution. Unit: when used on a post, permissions cover that unit and units under it.';
 
 type MainTab = 'roles' | 'organisation' | 'permissions';
-type RoleTypeFilter = 'all' | 'position_profile' | 'custom' | 'portal';
+type RoleTypeFilter = 'all' | 'account_type' | 'position_profile' | 'custom' | 'portal';
 
 const PORTAL_ROLE_CODES = new Set(['Admin', 'Student']);
+
+/**
+ * Account types every login starts from (chosen in HR › Employees). They give everyone their baseline
+ * menus, so they must be editable here, otherwise a menu they grant can never be switched off.
+ */
+const ACCOUNT_TYPE_ROLE_CODES = new Set(['Staff', 'Lecturer', 'Timekeeper', 'Graduation']);
 
 function isPositionRole(r: CustomRoleRow): boolean {
   return r.kind === 'position_profile' || !!r.isPositionProfile;
@@ -40,12 +47,17 @@ function isPortalRole(r: CustomRoleRow): boolean {
   return PORTAL_ROLE_CODES.has(String(r.code || '').trim());
 }
 
+function isAccountTypeRole(r: CustomRoleRow): boolean {
+  return ACCOUNT_TYPE_ROLE_CODES.has(String(r.code || '').trim());
+}
+
 function isListedRole(r: CustomRoleRow): boolean {
-  return isPositionRole(r) || r.kind === 'custom' || isPortalRole(r);
+  return isPositionRole(r) || r.kind === 'custom' || isPortalRole(r) || isAccountTypeRole(r);
 }
 
 function roleTypeLabel(r: CustomRoleRow): string {
   if (isPositionRole(r)) return 'Position';
+  if (isAccountTypeRole(r)) return 'Account type';
   if (r.kind === 'custom') return 'Custom';
   if (isPortalRole(r)) return 'Portal';
   return 'Other';
@@ -85,6 +97,7 @@ export default function AdminCustomRoles() {
   const [workingPerms, setWorkingPerms] = useState<Set<string>>(new Set());
   const [permSearch, setPermSearch] = useState('');
   const [permGroupFilter, setPermGroupFilter] = useState<string>('all');
+  const [permView, setPermView] = useState<'menus' | 'advanced'>('menus');
 
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groups, setGroups] = useState<PermissionGroupRow[]>([]);
@@ -181,6 +194,7 @@ export default function AdminCustomRoles() {
 
   const visibleRoles = useMemo(() => {
     if (typeFilter === 'all') return roles;
+    if (typeFilter === 'account_type') return roles.filter(isAccountTypeRole);
     if (typeFilter === 'position_profile') return roles.filter(isPositionRole);
     if (typeFilter === 'custom') return roles.filter((r) => r.kind === 'custom');
     if (typeFilter === 'portal') return roles.filter(isPortalRole);
@@ -244,6 +258,7 @@ export default function AdminCustomRoles() {
       setWorkingPerms(new Set(rolePerm.permissionCodes || []));
       setPermSearch('');
       setPermGroupFilter('all');
+      setPermView('menus');
       setPermOpen(true);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to load permissions');
@@ -290,6 +305,25 @@ export default function AdminCustomRoles() {
       return { key: g.key, label: g.label, total: codes.length, selected };
     });
   }, [permissionGroups, permSearch, workingPerms]);
+
+  const permissionLabel = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of permissionGroups) for (const c of g.codes) map.set(c.code, c.label);
+    return (code: string) => map.get(code) ?? code;
+  }, [permissionGroups]);
+
+  /** Switching a menu off removes every permission on this role that would still open it. */
+  const setMenu = (path: string, on: boolean) => {
+    if (on) {
+      setWorkingPerms((prev) => withMenuOn(prev, path));
+      return;
+    }
+    const { permissions, alsoClosed } = withMenuOff(workingPerms, path);
+    setWorkingPerms(permissions);
+    if (alsoClosed.length) {
+      toast.info(`Also switched off (they share permissions): ${alsoClosed.map(menuLabel).join(', ')}`);
+    }
+  };
 
   const togglePerm = (code: string) => {
     setWorkingPerms((prev) => {
@@ -415,9 +449,10 @@ export default function AdminCustomRoles() {
                 <div>
                   <CardTitle>Roles</CardTitle>
                   <CardDescription>
-                    Position roles for office posts, Portal roles for Admin and Student (not on the org chart), and
-                    custom packs. Lecturers are created in HR; their access follows the lecturer employee path, not a
-                    separate legacy account type list.
+                    A person&apos;s menus are the sum of their <strong>account type</strong> (Staff, Lecturer, Timekeeper,
+                    Graduation — set in HR › Employees), every <strong>position</strong> they hold on the organisation
+                    chart, and any extra <strong>custom</strong> role. Admin and Student are <strong>portal</strong> roles.
+                    To switch a menu off for someone, check every source in Users &amp; accounts › View access.
                   </CardDescription>
                 </div>
                 <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={() => setCreateOpen(true)}>
@@ -440,6 +475,7 @@ export default function AdminCustomRoles() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All types</SelectItem>
+                    <SelectItem value="account_type">Account type</SelectItem>
                     <SelectItem value="position_profile">Position</SelectItem>
                     <SelectItem value="portal">Portal</SelectItem>
                     <SelectItem value="custom">Custom</SelectItem>
@@ -515,14 +551,17 @@ export default function AdminCustomRoles() {
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(r)}
-                              disabled={saving}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {isAccountTypeRole(r) || isPortalRole(r) ? null : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(r)}
+                                disabled={saving}
+                                aria-label={isPositionRole(r) ? `Deactivate ${r.name}` : `Delete ${r.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -816,13 +855,20 @@ export default function AdminCustomRoles() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={editForm.isActive}
-                onCheckedChange={(v) => setEditForm((f) => ({ ...f, isActive: !!v }))}
-              />
-              <span className="text-sm text-muted-foreground">Active</span>
-            </div>
+            {selected && (isAccountTypeRole(selected) || isPortalRole(selected)) ? (
+              <p className="text-sm text-muted-foreground">
+                Account types and portal roles are always active. To remove access, switch menus off under
+                Permissions.
+              </p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={editForm.isActive}
+                  onCheckedChange={(v) => setEditForm((f) => ({ ...f, isActive: !!v }))}
+                />
+                <span className="text-sm text-muted-foreground">Active</span>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                 Cancel
@@ -849,22 +895,81 @@ export default function AdminCustomRoles() {
                 ) : null}
               </DialogDescription>
             </DialogHeader>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="Search by name, code, or menu..."
-                  value={permSearch}
-                  onChange={(e) => setPermSearch(e.target.value)}
-                />
-              </div>
-              <p className="shrink-0 text-sm text-muted-foreground sm:px-1">
-                <span className="font-medium text-foreground">{workingPerms.size}</span> selected
-              </p>
+            <div className="mt-3 inline-flex rounded-lg border p-1 text-sm" role="tablist" aria-label="Edit by">
+              {(['menus', 'advanced'] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  role="tab"
+                  aria-selected={permView === view}
+                  onClick={() => setPermView(view)}
+                  className={`rounded-md px-3 py-1.5 ${
+                    permView === view ? 'bg-[#015F2B] text-white' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {view === 'menus' ? 'Menus' : 'Advanced permissions'}
+                </button>
+              ))}
             </div>
+            {permView === 'advanced' ? (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search by name, code, or menu..."
+                    value={permSearch}
+                    onChange={(e) => setPermSearch(e.target.value)}
+                  />
+                </div>
+                <p className="shrink-0 text-sm text-muted-foreground sm:px-1">
+                  <span className="font-medium text-foreground">{workingPerms.size}</span> selected
+                </p>
+              </div>
+            ) : null}
           </div>
 
+          {permView === 'menus' ? (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Switch menus on or off for everyone who gets this role. Switching a menu off removes every
+                permission on this role that opens it. People may still see a menu if their account type or
+                another post gives it; check them in <strong>Users &amp; accounts › View access</strong>. Changes
+                apply after <strong>Save</strong>.
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {SIDEBAR_SECTIONS.map((section) => (
+                  <section key={section.id} className="rounded-lg border">
+                    <h3 className="border-b bg-muted/40 px-3 py-2 text-sm font-semibold">{section.label}</h3>
+                    <ul className="divide-y">
+                      {section.items.map((item) => {
+                        const on = menuOpen(workingPerms, item.path);
+                        const routes = menuPermissionSets(item.path);
+                        return (
+                          <li key={item.path} className="flex items-start justify-between gap-3 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className={`text-sm font-medium ${on ? 'text-gray-900' : 'text-muted-foreground'}`}>
+                                {item.label}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Opens with: {routes.map((set) => set.map(permissionLabel).join(' + ')).join(' — or — ')}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={on}
+                              onCheckedChange={(next) => setMenu(item.path, next)}
+                              disabled={saving}
+                              aria-label={`${item.label} menu`}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </div>
+          ) : (
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             <aside className="shrink-0 border-b md:w-56 md:overflow-y-auto md:border-b-0 md:border-r lg:w-64">
               <div className="flex gap-1 overflow-x-auto p-2 md:flex-col md:overflow-x-visible md:p-3">
@@ -980,6 +1085,7 @@ export default function AdminCustomRoles() {
               )}
             </div>
           </div>
+          )}
 
           <div className="flex shrink-0 flex-col-reverse gap-2 border-t bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p className="text-sm text-muted-foreground">

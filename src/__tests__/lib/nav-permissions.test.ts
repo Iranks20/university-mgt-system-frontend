@@ -167,6 +167,12 @@ describe('HR module access', () => {
     expect(navAllowed(['hr.appraisal_submit'], '/hr/dashboard')).toBe(false);
   });
 
+  it('shows the appraisal final review only to the Vice Chancellor permission', () => {
+    expect(navAllowed(['hr.appraisal_vc', 'hr.appraisal_submit'], '/appraisals/vc')).toBe(true);
+    expect(navAllowed(['hr.appraisal_submit'], '/appraisals/vc')).toBe(false);
+    expect(navAllowed(hrPerms, '/appraisals/vc')).toBe(false);
+  });
+
   it('HR can open workforce and appraisal management routes', () => {
     expect(navAllowed(hrPerms, '/hr/employees')).toBe(true);
     expect(navAllowed(hrPerms, '/hr/organisation')).toBe(true);

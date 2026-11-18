@@ -1,82 +1,171 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { BarChart3, Eye, Pencil, Plus, Search, Signature } from 'lucide-react';
+import { toast } from 'sonner';
 import { HrPageShell } from '@/components/hr/HrPageShell';
 import { HrNewAppraisalCycleDialog } from '@/components/hr/HrNewAppraisalCycleDialog';
 import { appraisalStatusBadge, cycleStatusBadge } from '@/components/hr/HrBadges';
-import {
-  getHrAppraisalCycles,
-  getHrAppraisalReviewById,
-  getAppraisalFormTemplates,
-  saveAppraisalReview,
-  getCalibrationForCycle,
-  updateAppraisalCycleStatus,
-} from '@/features/hr/hr-appraisal-store';
 import { HrAppraisalFormPreview } from '@/components/hr/HrAppraisalFormPreview';
 import { HrTemplateEditorDialog } from '@/components/hr/HrTemplateEditorDialog';
-import { AppraisalSectionForm } from '@/components/hr/AppraisalSectionForm';
-import { AppraisalPrintView } from '@/components/hr/AppraisalPrintView';
-import { EMPLOYEE_CATEGORY_LABELS } from '@/features/hr/appraisal-form-utils';
-import { emptyResponsesForSections } from '@/features/hr/appraisal-form-utils';
+import { HrReviewDetail } from '@/components/hr/appraisal/HrReviewDetail';
+import { DoneBadge } from '@/components/hr/appraisal/AppraiseesRegistry';
+import {
+  getAppraisalFormTemplates,
+  getCalibrationForCycle,
+  getHrAppraisalCycles,
+  updateAppraisalCycleStatus,
+} from '@/features/hr/hr-appraisal-store';
+import { EMPLOYEE_CATEGORY_LABELS, formatPercent } from '@/features/hr/appraisal-form-utils';
 import type { AppraisalFormTemplate, HrAppraisalCycle, HrAppraisalReview } from '@/features/hr/types';
 import { hrAppraisalService, type CalibrationRow } from '@/services/hr-appraisal.service';
 import { TablePagination } from '@/components/ui/table-pagination';
 import { emptyPage, type Paged } from '@/lib/pagination';
 import { usePaging } from '@/hooks/usePaging';
+import { getApiErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Eye, ClipboardCheck, Plus, Printer, BarChart3, Pencil } from 'lucide-react';
-import { toast } from 'sonner';
+import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-function formatScore(value?: number | null) {
-  return value == null ? '—' : `${value}%`;
+type TabKey = 'received' | 'progress' | 'cycles' | 'forms' | 'calibration';
+
+function hrStatusLabel(review: HrAppraisalReview) {
+  return review.progress.hrSigned ? (
+    <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-800">
+      Signed &amp; Verified by HR
+    </span>
+  ) : (
+    <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+      Awaiting HR Review
+    </span>
+  );
+}
+
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="relative w-full sm:w-72">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      <Input className="pl-9" placeholder="Search staff" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function useDebounced(value: string, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
 }
 
 export default function HrAppraisalsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (searchParams.get('tab') as TabKey | null) ?? 'received';
+  const openReviewId = searchParams.get('review');
+
   const [cycles, setCycles] = useState<HrAppraisalCycle[]>([]);
-  const [queue, setQueue] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
-  const [allReviews, setAllReviews] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
-  const [reviewsVersion, setReviewsVersion] = useState(0);
-  const queuePaging = usePaging('queue');
-  const allPaging = usePaging('all');
-  const [formTemplates, setFormTemplates] = useState<AppraisalFormTemplate[]>([]);
+  const [templates, setTemplates] = useState<AppraisalFormTemplate[]>([]);
   const [calibration, setCalibration] = useState<CalibrationRow[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editReview, setEditReview] = useState<HrAppraisalReview | null>(null);
+  const [received, setReceived] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
+  const [progress, setProgress] = useState<Paged<HrAppraisalReview>>(() => emptyPage());
+  const [progressCycleId, setProgressCycleId] = useState<string>('');
+  const [receivedSearch, setReceivedSearch] = useState('');
+  const [progressSearch, setProgressSearch] = useState('');
+  const debouncedReceived = useDebounced(receivedSearch);
+  const debouncedProgress = useDebounced(progressSearch);
+  const [version, setVersion] = useState(0);
+  const receivedPaging = usePaging('received');
+  const progressPaging = usePaging('progress');
+  const [loading, setLoading] = useState(true);
   const [newCycleOpen, setNewCycleOpen] = useState(false);
   const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
   const [templateEditId, setTemplateEditId] = useState<string | null>(null);
   const [newTemplateDraft, setNewTemplateDraft] = useState<AppraisalFormTemplate | null>(null);
-  const [printReview, setPrintReview] = useState<HrAppraisalReview | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const templateById = useMemo(
-    () => new Map(formTemplates.map((template) => [template.id, template])),
-    [formTemplates]
-  );
-  const previewTemplate = templatePreviewId ? templateById.get(templatePreviewId) : null;
-  const editTemplate =
-    newTemplateDraft ?? (templateEditId ? templateById.get(templateEditId) ?? null : null);
+  const setParam = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null) next.delete(k);
+      else next.set(k, v);
+    }
+    setSearchParams(next);
+  };
+
+  const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
+  const activeCycle = cycles.find((c) => c.status === 'Open' && !c.isIndividual);
+
+  const refreshMeta = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [nextCycles, nextTemplates] = await Promise.all([getHrAppraisalCycles(), getAppraisalFormTemplates()]);
+      setCycles(nextCycles);
+      setTemplates(nextTemplates);
+      const active = nextCycles.find((c) => c.status === 'Open' && !c.isIndividual);
+      setCalibration(active ? await getCalibrationForCycle(active.id) : []);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not load appraisals'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMeta();
+  }, [refreshMeta]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hrAppraisalService
+      .getReviews({ inbox: 'hr', page: receivedPaging.page, limit: receivedPaging.pageSize, search: debouncedReceived || undefined })
+      .then((r) => !cancelled && setReceived(r))
+      .catch(() => !cancelled && setReceived(emptyPage(receivedPaging.pageSize)));
+    return () => {
+      cancelled = true;
+    };
+  }, [receivedPaging.page, receivedPaging.pageSize, debouncedReceived, version]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hrAppraisalService
+      .getReviews({
+        cycleId: progressCycleId || undefined,
+        page: progressPaging.page,
+        limit: progressPaging.pageSize,
+        search: debouncedProgress || undefined,
+      })
+      .then((r) => !cancelled && setProgress(r))
+      .catch(() => !cancelled && setProgress(emptyPage(progressPaging.pageSize)));
+    return () => {
+      cancelled = true;
+    };
+  }, [progressCycleId, progressPaging.page, progressPaging.pageSize, debouncedProgress, version]);
+
+  const refreshAll = () => {
+    setVersion((v) => v + 1);
+    void refreshMeta();
+  };
+
+  const changeCycleStatus = async (cycle: HrAppraisalCycle, status: HrAppraisalCycle['status'], message: string) => {
+    try {
+      await updateAppraisalCycleStatus(cycle.id, status);
+      toast.success(message);
+      refreshAll();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Could not update the cycle'));
+    }
+  };
 
   const openNewTemplate = () => {
     setTemplateEditId(null);
     setNewTemplateDraft({
       id: '',
       code: `CUSTOM-${Date.now().toString(36).toUpperCase()}`,
-      name: 'New appraisal template',
+      name: 'New appraisal form',
       description: '',
       intendedFor: 'Custom staff group',
       categories: ['Administrative'],
@@ -85,146 +174,46 @@ export default function HrAppraisalsPage() {
       ratingScaleMax: 3,
       ratingIncludesNa: true,
       cycleKind: 'Annual',
-      includesDevelopmentPlan: true,
+      includesDevelopmentPlan: false,
       includesTrainingNeeds: true,
-      goals: [],
-      competencies: [],
       sections: [
         {
           id: 'sec-1',
           title: 'Key performance indicators',
           kind: 'kpi',
+          maxSectionScore: 3,
           criteria: [
-            {
-              id: 'sec-1-c1',
-              title: 'Core duty performance',
-              targetPrompt: 'Describe expected standard',
-              meansOfVerification: 'Evidence / reports',
-              weight: 3,
-            },
+            { id: 'sec-1-c1', title: 'Core duty performance', targetPrompt: 'Describe expected standard', meansOfVerification: 'Evidence / reports', weight: 3 },
           ],
         },
       ],
     });
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    hrAppraisalService
-      .getReviews({ openOnly: true, page: queuePaging.page, limit: queuePaging.pageSize })
-      .then((result) => {
-        if (!cancelled) setQueue(result);
-      })
-      .catch(() => {
-        if (!cancelled) setQueue(emptyPage(queuePaging.pageSize));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [queuePaging.page, queuePaging.pageSize, reviewsVersion]);
+  const editTemplate = newTemplateDraft ?? (templateEditId ? templateById.get(templateEditId) ?? null : null);
+  const previewTemplate = templatePreviewId ? templateById.get(templatePreviewId) : null;
 
-  useEffect(() => {
-    let cancelled = false;
-    hrAppraisalService
-      .getReviews({ page: allPaging.page, limit: allPaging.pageSize })
-      .then((result) => {
-        if (!cancelled) setAllReviews(result);
-      })
-      .catch(() => {
-        if (!cancelled) setAllReviews(emptyPage(allPaging.pageSize));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [allPaging.page, allPaging.pageSize, reviewsVersion]);
-
-  const refreshAll = useCallback(async () => {
-    setLoading(true);
-    setReviewsVersion((v) => v + 1);
-    try {
-      const [nextCycles, nextTemplates] = await Promise.all([
-        getHrAppraisalCycles(),
-        getAppraisalFormTemplates(),
-      ]);
-      setCycles(nextCycles);
-      setFormTemplates(nextTemplates);
-      const active = nextCycles.find((cycle) => cycle.status === 'Open');
-      if (active) {
-        setCalibration(await getCalibrationForCycle(active.id));
-      } else {
-        setCalibration([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
-
-  const openReview = async (id: string) => {
-    const r = await getHrAppraisalReviewById(id);
-    if (r) {
-      setEditReview(JSON.parse(JSON.stringify(r)) as HrAppraisalReview);
-      setSelectedId(id);
-    }
-  };
-
-  const handleFinalize = async () => {
-    if (!editReview) return;
-    try {
-      await saveAppraisalReview(editReview, 'complete');
-      await refreshAll();
-      setSelectedId(null);
-      setEditReview(null);
-      toast.success('Appraisal finalized and archived to HR documents');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to finalize appraisal');
-    }
-  };
-
-  const handleAdvanceToHr = async (id: string) => {
-    const r = await getHrAppraisalReviewById(id);
-    if (!r) return;
-    try {
-      await saveAppraisalReview(r, 'advance_hr');
-      await refreshAll();
-      toast.success('Moved to HR review queue');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update review');
-    }
-  };
-
-  const handleCloseCycle = async (cycle: HrAppraisalCycle) => {
-    try {
-      await updateAppraisalCycleStatus(cycle.id, 'Closed');
-      await refreshAll();
-      toast.success(`Closed cycle: ${cycle.name}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to close cycle');
-    }
-  };
-
-  const handleMoveCycleToReview = async (cycle: HrAppraisalCycle) => {
-    try {
-      await updateAppraisalCycleStatus(cycle.id, 'Review');
-      await refreshAll();
-      toast.success(`Cycle moved to Review: ${cycle.name}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update cycle');
-    }
-  };
-
-  const activeCycle = cycles.find((c) => c.status === 'Open');
+  if (openReviewId) {
+    return (
+      <HrPageShell title="Performance Appraisal" description="Detailed appraisal review">
+        <HrReviewDetail
+          key={openReviewId}
+          reviewId={openReviewId}
+          templates={templates}
+          onBack={() => setParam({ review: null })}
+          onChanged={() => setVersion((v) => v + 1)}
+        />
+      </HrPageShell>
+    );
+  }
 
   return (
     <HrPageShell
       title="Performance Appraisal"
-      description="Review cycles, form templates, and calibration"
+      description="Received appraisals, staff progress, appraisal periods and forms"
       actions={
         <Button variant="outline" onClick={() => setNewCycleOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New Cycle
+          <Plus className="h-4 w-4 mr-2" /> New appraisal period
         </Button>
       }
     >
@@ -238,18 +227,19 @@ export default function HrAppraisalsPage() {
                   {cycleStatusBadge(activeCycle.status)}
                 </CardTitle>
                 <CardDescription>
-                  Review period: {activeCycle.periodLabel} · Due by {activeCycle.endDate}
+                  {activeCycle.kindLabel} · {activeCycle.periodLabel} · Self-assessment due {activeCycle.selfDeadline} ·
+                  Supervisors due {activeCycle.supervisorDeadline}
                 </CardDescription>
               </div>
               <div className="w-full sm:w-64">
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Completion</span>
+                  <span>Completed</span>
                   <span>
                     {activeCycle.completedCount} / {activeCycle.employeeCount}
                   </span>
                 </div>
                 <Progress
-                  value={(activeCycle.completedCount / activeCycle.employeeCount) * 100}
+                  value={activeCycle.employeeCount ? (activeCycle.completedCount / activeCycle.employeeCount) * 100 : 0}
                   className="h-2"
                 />
               </div>
@@ -258,95 +248,238 @@ export default function HrAppraisalsPage() {
         </Card>
       ) : null}
 
-      <Tabs defaultValue="queue">
-        <TabsList>
-          <TabsTrigger value="queue">Review Queue</TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => setParam({ tab: v })}>
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="received">Received Appraisals</TabsTrigger>
+          <TabsTrigger value="progress">Staff Progress</TabsTrigger>
+          <TabsTrigger value="cycles">Appraisal Periods</TabsTrigger>
           <TabsTrigger value="forms">Form Templates</TabsTrigger>
-          <TabsTrigger value="cycles">Cycles</TabsTrigger>
           <TabsTrigger value="calibration">Calibration</TabsTrigger>
-          <TabsTrigger value="all">All Reviews</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="queue" className="mt-4">
+        <TabsContent value="received" className="mt-4">
           <Card>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base">Appraisal Verification Inflow</CardTitle>
+                <CardDescription>Appraisals rated by supervisors, waiting for HR or already signed.</CardDescription>
+              </div>
+              <SearchBox value={receivedSearch} onChange={(v) => { setReceivedSearch(v); receivedPaging.setPage(1); }} />
+            </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Form type</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Supervisor</TableHead>
+                    <TableHead>Staff Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Form</TableHead>
+                    <TableHead>Self / Supervisor</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Due</TableHead>
-                    <TableHead>Ratings (Self / Sup / HR)</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {queue.data.length === 0 ? (
+                  {received.data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-gray-500 py-8">
-                        {loading ? 'Loading…' : 'No appraisals awaiting review'}
+                      <TableCell colSpan={6} className="py-10 text-center text-gray-500">
+                        {loading ? 'Loading…' : 'Appraisal inbox is empty'}
                       </TableCell>
                     </TableRow>
                   ) : null}
-                  {queue.data.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell>
-                          <div className="font-medium">{r.employeeName}</div>
-                          <div className="text-xs text-gray-500">{r.jobTitle}</div>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <Badge variant="outline">{r.formTemplateName}</Badge>
-                        </TableCell>
-                        <TableCell>{r.department}</TableCell>
-                        <TableCell className="text-sm">{r.supervisorName}</TableCell>
-                        <TableCell>{appraisalStatusBadge(r.status)}</TableCell>
-                        <TableCell>{r.dueDate}</TableCell>
-                        <TableCell className="text-sm">
-                          {formatScore(r.overallSelfScore)} / {formatScore(r.overallSupervisorScore)} /{' '}
-                          {formatScore(r.overallHrScore)}
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button variant="ghost" size="sm" onClick={() => openReview(r.id)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {r.status === 'Supervisor Review' ? (
-                            <Button size="sm" variant="outline" onClick={() => handleAdvanceToHr(r.id)}>
-                              To HR
-                            </Button>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                  {received.data.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-semibold">{r.employeeName}</TableCell>
+                      <TableCell className="text-sm text-gray-600">{r.employeeEmail}</TableCell>
+                      <TableCell className="text-sm">{r.formTemplateName}</TableCell>
+                      <TableCell className="text-sm">
+                        {formatPercent(r.overallSelfScore)} / {formatPercent(r.overallSupervisorScore)}
+                      </TableCell>
+                      <TableCell>{hrStatusLabel(r)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" variant={r.progress.hrSigned ? 'outline' : 'default'} onClick={() => setParam({ review: r.id })}>
+                          {r.progress.hrSigned ? (
+                            <>
+                              <BarChart3 className="h-4 w-4 mr-1" /> View Results
+                            </>
+                          ) : (
+                            <>
+                              <Signature className="h-4 w-4 mr-1" /> Review &amp; Sign
+                            </>
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
               <TablePagination
-                page={queuePaging.page}
-                pageSize={queuePaging.pageSize}
-                total={queue.total}
-                onPageChange={queuePaging.setPage}
-                onPageSizeChange={queuePaging.setPageSize}
+                page={receivedPaging.page}
+                pageSize={receivedPaging.pageSize}
+                total={received.total}
+                onPageChange={receivedPaging.setPage}
+                onPageSizeChange={receivedPaging.setPageSize}
               />
             </CardContent>
           </Card>
         </TabsContent>
 
+        <TabsContent value="progress" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base">Staff Appraisal Progress</CardTitle>
+                <CardDescription>Every appraisal and how far it has gone. Open one to assign a supervisor or change its form.</CardDescription>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  className="rounded-md border px-3 py-2 text-sm"
+                  aria-label="Appraisal period"
+                  value={progressCycleId}
+                  onChange={(e) => {
+                    setProgressCycleId(e.target.value);
+                    progressPaging.setPage(1);
+                  }}
+                >
+                  <option value="">All appraisal periods</option>
+                  {cycles.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <SearchBox value={progressSearch} onChange={(v) => { setProgressSearch(v); progressPaging.setPage(1); }} />
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Form</TableHead>
+                    <TableHead>Supervisor</TableHead>
+                    <TableHead>Information</TableHead>
+                    <TableHead>Self Rating</TableHead>
+                    <TableHead>Supervisor Rating</TableHead>
+                    <TableHead>HR</TableHead>
+                    <TableHead>VC</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {progress.data.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="py-10 text-center text-gray-500">
+                        {loading ? 'Loading…' : 'No appraisals yet'}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  {progress.data.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <div className="font-medium">{r.employeeName}</div>
+                        <div className="text-xs text-gray-500">{r.cycleName}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{r.formTemplateCode}</TableCell>
+                      <TableCell className="text-sm">
+                        {r.supervisorName ?? <span className="font-semibold text-red-600">Not assigned</span>}
+                      </TableCell>
+                      <TableCell>
+                        <DoneBadge done={!!r.agreement.savedAt} doneLabel="Submitted" />
+                      </TableCell>
+                      <TableCell>
+                        <DoneBadge done={r.progress.selfAssessment} />
+                      </TableCell>
+                      <TableCell>
+                        <DoneBadge done={r.progress.supervisorRating} />
+                      </TableCell>
+                      <TableCell>
+                        <DoneBadge done={r.progress.hrSigned} doneLabel="Signed" />
+                      </TableCell>
+                      <TableCell>
+                        <DoneBadge done={r.progress.vcSigned} doneLabel="Signed" />
+                      </TableCell>
+                      <TableCell>{appraisalStatusBadge(r.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" variant="ghost" onClick={() => setParam({ review: r.id })} aria-label={`Open ${r.employeeName}`}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination
+                page={progressPaging.page}
+                pageSize={progressPaging.pageSize}
+                total={progress.total}
+                onPageChange={progressPaging.setPage}
+                onPageSizeChange={progressPaging.setPageSize}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cycles" className="mt-4">
+          <div className="grid gap-4">
+            {cycles.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 text-center text-gray-500">
+                  No appraisal periods yet. Use “New appraisal period” to open one.
+                </CardContent>
+              </Card>
+            ) : null}
+            {cycles.map((c) => (
+              <Card key={c.id}>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex flex-wrap items-center gap-2">
+                      {c.name}
+                      {c.isIndividual ? <Badge variant="outline">Individual</Badge> : null}
+                    </CardTitle>
+                    <CardDescription>
+                      {c.kindLabel} · {c.periodLabel} · {c.startDate} to {c.endDate}
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {cycleStatusBadge(c.status)}
+                    {c.status === 'Open' ? (
+                      <Button size="sm" variant="outline" onClick={() => changeCycleStatus(c, 'Review', `Self-assessment closed for ${c.name}`)}>
+                        Close self-assessment
+                      </Button>
+                    ) : null}
+                    {c.status === 'Open' || c.status === 'Review' ? (
+                      <Button size="sm" variant="outline" onClick={() => changeCycleStatus(c, 'Closed', `Closed ${c.name}`)}>
+                        Close period
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardHeader>
+                <CardContent className="text-sm text-gray-600">
+                  {c.completedCount} of {c.employeeCount} appraisals completed · self-assessment due {c.selfDeadline} ·
+                  supervisors due {c.supervisorDeadline}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
         <TabsContent value="forms" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button variant="outline" onClick={openNewTemplate}>
-              <Plus className="h-4 w-4 mr-2" /> New template
+              <Plus className="h-4 w-4 mr-2" /> New form
             </Button>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            {formTemplates.map((template) => (
+            {templates.map((template) => (
               <Card key={template.id}>
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <CardTitle className="text-lg">{template.name}</CardTitle>
-                      <CardDescription>{template.code} · {template.intendedFor}</CardDescription>
+                      <CardDescription>
+                        {template.code} · {template.intendedFor}
+                      </CardDescription>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => setTemplatePreviewId(template.id)}>
@@ -359,7 +492,6 @@ export default function HrAppraisalsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="text-sm space-y-2">
-                  <p className="text-gray-600 line-clamp-2">{template.description}</p>
                   <div className="flex flex-wrap gap-1">
                     {template.categories.map((cat) => (
                       <Badge key={cat} variant="secondary" className="font-normal">
@@ -368,55 +500,10 @@ export default function HrAppraisalsPage() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {(template.sections?.length ?? template.goals.length)} sections · rating 0–
-                    {template.ratingScaleMax ?? 3}
+                    {template.sections?.length ?? 0} sections ·{' '}
+                    {template.sections?.reduce((n, s) => n + s.criteria.length, 0) ?? 0} items · rating 0–
+                    {template.ratingScaleMax ?? 3} or N/A
                   </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="cycles" className="mt-4">
-          <div className="grid gap-4">
-            {cycles.map((c) => (
-              <Card key={c.id}>
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
-                  <div>
-                    <CardTitle className="text-lg">{c.name}</CardTitle>
-                    <CardDescription>{c.periodLabel}</CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {cycleStatusBadge(c.status)}
-                    {c.status === 'Open' ? (
-                      <Button size="sm" variant="outline" onClick={() => handleMoveCycleToReview(c)}>
-                        Move to Review
-                      </Button>
-                    ) : null}
-                    {c.status === 'Open' || c.status === 'Review' ? (
-                      <Button size="sm" variant="outline" onClick={() => handleCloseCycle(c)}>
-                        Close cycle
-                      </Button>
-                    ) : null}
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm text-gray-600 space-y-3">
-                  <p>{c.completedCount} of {c.employeeCount} reviews completed</p>
-                  {c.formAssignments?.length ? (
-                    <div>
-                      <p className="font-medium text-gray-900 mb-1">Assignment rules</p>
-                      <ul className="space-y-1">
-                        {c.formAssignments.slice(0, 6).map((assignment, index) => {
-                          const template = templateById.get(assignment.templateId);
-                          return (
-                            <li key={`${assignment.ruleType}-${index}`} className="text-xs">
-                              {assignment.ruleType}: {template?.name ?? assignment.templateId}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ) : null}
                 </CardContent>
               </Card>
             ))}
@@ -430,16 +517,14 @@ export default function HrAppraisalsPage() {
                 <BarChart3 className="h-5 w-5" />
                 Calibration by department
               </CardTitle>
-              <CardDescription>
-                Compare average self and supervisor scores across departments for the active cycle.
-              </CardDescription>
+              <CardDescription>Average self and supervisor scores per department for the open appraisal period.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Department</TableHead>
-                    <TableHead>Reviews</TableHead>
+                    <TableHead>Appraisals</TableHead>
                     <TableHead>Completed</TableHead>
                     <TableHead>Avg self</TableHead>
                     <TableHead>Avg supervisor</TableHead>
@@ -452,14 +537,14 @@ export default function HrAppraisalsPage() {
                         <TableCell>{row.department}</TableCell>
                         <TableCell>{row.count}</TableCell>
                         <TableCell>{row.completed}</TableCell>
-                        <TableCell>{formatScore(row.avgSelf)}</TableCell>
-                        <TableCell>{formatScore(row.avgSupervisor)}</TableCell>
+                        <TableCell>{formatPercent(row.avgSelf)}</TableCell>
+                        <TableCell>{formatPercent(row.avgSupervisor)}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                        {loading ? 'Loading calibration...' : 'Open a cycle to view calibration data.'}
+                      <TableCell colSpan={5} className="py-8 text-center text-gray-500">
+                        {loading ? 'Loading…' : 'Open an appraisal period to see calibration.'}
                       </TableCell>
                     </TableRow>
                   )}
@@ -468,180 +553,9 @@ export default function HrAppraisalsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="all" className="mt-4">
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Cycle</TableHead>
-                    <TableHead>Form</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Final HR Rating</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allReviews.data.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                        {loading ? 'Loading…' : 'No appraisal reviews yet'}
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                  {allReviews.data.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell>{r.employeeName}</TableCell>
-                      <TableCell>{r.cycleName}</TableCell>
-                      <TableCell className="text-sm">{r.formTemplateName}</TableCell>
-                      <TableCell>{appraisalStatusBadge(r.status)}</TableCell>
-                      <TableCell>
-                        {r.overallHrScore != null ? formatScore(r.overallHrScore) : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <TablePagination
-                page={allPaging.page}
-                pageSize={allPaging.pageSize}
-                total={allReviews.total}
-                onPageChange={allPaging.setPage}
-                onPageSizeChange={allPaging.setPageSize}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
-      <Dialog open={!!selectedId && !!editReview} onOpenChange={() => { setSelectedId(null); setEditReview(null); }}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          {editReview ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <ClipboardCheck className="h-5 w-5" />
-                  {editReview.employeeName} — Appraisal Review
-                </DialogTitle>
-                <DialogDescription>
-                  {editReview.cycleName} · {editReview.formTemplateName} · Supervisor: {editReview.supervisorName}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4 text-sm">
-                {(editReview.sections ?? []).map((section) => (
-                  <section key={section.id}>
-                    <h4 className="font-semibold mb-2">{section.title}</h4>
-                    <AppraisalSectionForm
-                      section={section}
-                      responses={editReview.responses ?? emptyResponsesForSections(editReview.sections ?? [])}
-                      onChange={(responses) => setEditReview({ ...editReview, responses })}
-                      mode={editReview.status === 'HR Review' ? 'hr' : 'readonly'}
-                      ratingScaleMax={editReview.ratingScaleMax ?? 3}
-                      ratingIncludesNa={editReview.ratingIncludesNa ?? true}
-                    />
-                  </section>
-                ))}
-
-                {editReview.selfStrengths ? (
-                  <section>
-                    <h4 className="font-semibold">Employee self-assessment</h4>
-                    <p className="text-gray-600 mt-1"><strong>Strengths:</strong> {editReview.selfStrengths}</p>
-                    <p className="text-gray-600"><strong>Improvements:</strong> {editReview.selfImprovements}</p>
-                    <p className="text-gray-600"><strong>Development plan:</strong> {editReview.selfDevelopmentPlan}</p>
-                  </section>
-                ) : null}
-
-                {editReview.supervisorComments ? (
-                  <section>
-                    <h4 className="font-semibold">Supervisor comments</h4>
-                    <p className="text-gray-600 mt-1">{editReview.supervisorComments}</p>
-                  </section>
-                ) : null}
-
-                <section className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <Label>Overall self</Label>
-                    <p className="mt-1">{formatScore(editReview.overallSelfScore)}</p>
-                  </div>
-                  <div>
-                    <Label>Overall supervisor</Label>
-                    <p className="mt-1">{formatScore(editReview.overallSupervisorScore)}</p>
-                  </div>
-                  <div>
-                    <Label>Overall HR score (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={editReview.overallHrScore ?? ''}
-                      onChange={(e) =>
-                        setEditReview({
-                          ...editReview,
-                          overallHrScore: e.target.value ? Number(e.target.value) : null,
-                        })
-                      }
-                    />
-                  </div>
-                </section>
-
-                <section>
-                  <Label>HR comments & calibration notes</Label>
-                  <Textarea
-                    className="mt-1"
-                    rows={3}
-                    value={editReview.hrComments}
-                    onChange={(e) => setEditReview({ ...editReview, hrComments: e.target.value })}
-                    placeholder="Final HR notes, calibration decisions, promotion recommendations..."
-                  />
-                </section>
-
-                {editReview.archivedDocumentTitle ? (
-                  <p className="text-xs text-gray-500">
-                    HR document archive title: {editReview.archivedDocumentTitle}
-                  </p>
-                ) : null}
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setPrintReview(editReview)}>
-                  <Printer className="h-4 w-4 mr-2" /> Print / PDF
-                </Button>
-                <Button variant="outline" onClick={() => { setSelectedId(null); setEditReview(null); }}>
-                  Close
-                </Button>
-                {editReview.status === 'HR Review' ? (
-                  <Button onClick={handleFinalize}>Finalize appraisal</Button>
-                ) : null}
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!printReview} onOpenChange={() => setPrintReview(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto print:max-w-none">
-          {printReview ? (
-            <>
-              <DialogHeader className="print:hidden">
-                <DialogTitle>Print appraisal</DialogTitle>
-                <DialogDescription>Use browser print to save as PDF</DialogDescription>
-              </DialogHeader>
-              <AppraisalPrintView review={printReview} />
-              <DialogFooter className="print:hidden">
-                <Button onClick={() => window.print()}>Print</Button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      <HrNewAppraisalCycleDialog
-        open={newCycleOpen}
-        onOpenChange={setNewCycleOpen}
-        onLaunched={refreshAll}
-      />
+      <HrNewAppraisalCycleDialog open={newCycleOpen} onOpenChange={setNewCycleOpen} onLaunched={refreshAll} />
 
       <HrTemplateEditorDialog
         open={!!editTemplate}
@@ -655,7 +569,7 @@ export default function HrAppraisalsPage() {
         onSaved={async () => {
           setNewTemplateDraft(null);
           setTemplateEditId(null);
-          await refreshAll();
+          await refreshMeta();
         }}
       />
 
@@ -664,8 +578,8 @@ export default function HrAppraisalsPage() {
           {previewTemplate ? (
             <>
               <DialogHeader>
-                <DialogTitle>Appraisal form template</DialogTitle>
-                <DialogDescription>Standard structure for this staff category</DialogDescription>
+                <DialogTitle>Appraisal form</DialogTitle>
+                <DialogDescription>Sections and items on this form</DialogDescription>
               </DialogHeader>
               <HrAppraisalFormPreview template={previewTemplate} />
             </>

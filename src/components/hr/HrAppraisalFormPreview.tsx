@@ -72,19 +72,6 @@ export function HrAppraisalFormPreview({ template, compact = false }: HrAppraisa
             </div>
           ))}
 
-        {!sections.length && template.goals.length ? (
-          <div>
-            <p className="font-medium text-gray-900 mb-2">Legacy goals</p>
-            <ul className="space-y-2">
-              {template.goals.map((goal) => (
-                <li key={goal.id} className="rounded-md border p-3">
-                  <span className="font-medium">{goal.title}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
         <div className="flex flex-wrap gap-2 text-xs">
           {template.includesDevelopmentPlan ? (
             <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Development plan section</Badge>

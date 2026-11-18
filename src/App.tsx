@@ -60,6 +60,7 @@ import HrDocumentsPage from './screens/hr/pages/HrDocumentsPage'
 import HrAppraisalsPage from './screens/hr/pages/HrAppraisalsPage'
 import HrReportsPage from './screens/hr/pages/HrReportsPage'
 import StaffAppraisal from './screens/StaffAppraisal'
+import VcAppraisalsPage from './screens/VcAppraisalsPage'
 import GraduationRegistration from './screens/GraduationRegistration'
 import StudentInfoCorrection from './screens/StudentInfoCorrection'
 import AdminStudentInfoForms from './screens/AdminStudentInfoForms'
@@ -303,6 +304,7 @@ function AppRoutes() {
 			<Route path="/hr/appraisals" element={<ProtectedRoute {...routeGuardProps('/hr/appraisals')}><HrAppraisalsPage /></ProtectedRoute>} />
 			<Route path="/hr/reports" element={<ProtectedRoute {...routeGuardProps('/hr/reports')}><HrReportsPage /></ProtectedRoute>} />
 			<Route path="/staff-appraisal" element={<ProtectedRoute {...routeGuardProps('/staff-appraisal')}><StaffAppraisal /></ProtectedRoute>} />
+			<Route path="/appraisals/vc" element={<ProtectedRoute {...routeGuardProps('/appraisals/vc')}><VcAppraisalsPage /></ProtectedRoute>} />
 			
 			{/* Admin Routes */}
 			<Route 

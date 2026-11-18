@@ -1,496 +1,284 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { ArrowLeft, ClipboardCheck, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { ClipboardCheck, Send, Save, Loader2, Users } from 'lucide-react';
-import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  getTeamAppraisalReviews,
-  resolveAppraisalReviewForAccount,
-  saveAppraisalReview,
-} from '@/features/hr/hr-appraisal-store';
-import type { AppraisalReviewResponses, HrAppraisalReview } from '@/features/hr/types';
+import { hrAppraisalService } from '@/services/hr-appraisal.service';
+import type { HrAppraisalReview } from '@/features/hr/types';
 import { appraisalStatusBadge } from '@/components/hr/HrBadges';
-import { AppraisalSectionForm } from '@/components/hr/AppraisalSectionForm';
-import { emptyResponsesForSections } from '@/features/hr/appraisal-form-utils';
+import { AgreementForm } from '@/components/hr/appraisal/AgreementForm';
+import { SelfAssessmentForm } from '@/components/hr/appraisal/SelfAssessmentForm';
+import { AppraisalReport } from '@/components/hr/appraisal/AppraisalReport';
+import { AppraisalProgressTracker } from '@/components/hr/appraisal/AppraisalSummaryParts';
+import { AppraiseesRegistry } from '@/components/hr/appraisal/AppraiseesRegistry';
+import { SupervisorRatingForm } from '@/components/hr/appraisal/SupervisorRatingForm';
+import { PrintAppraisalButton } from '@/components/hr/AppraisalPrintView';
 
-function formatScore(value?: number | null) {
-  return value == null ? '—' : `${value}%`;
+type TabKey = 'info' | 'self' | 'results' | 'appraisees';
+
+const SELF_STAGES = ['NotStarted', 'SelfPending', 'Overdue'];
+
+function defaultTab(review: HrAppraisalReview | null, hasTeam: boolean): TabKey {
+  if (!review) return hasTeam ? 'appraisees' : 'info';
+  if (SELF_STAGES.includes(review.statusCode)) return review.agreement.savedAt ? 'self' : 'info';
+  return 'results';
 }
 
 export default function StaffAppraisalPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [review, setReview] = useState<HrAppraisalReview | null>(null);
-  const [draft, setDraft] = useState<HrAppraisalReview | null>(null);
-  const [teamReviews, setTeamReviews] = useState<HrAppraisalReview[]>([]);
-  const [teamDraft, setTeamDraft] = useState<HrAppraisalReview | null>(null);
+  const [team, setTeam] = useState<HrAppraisalReview[]>([]);
+  const [rating, setRating] = useState<HrAppraisalReview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const ratingReportRef = useRef<HTMLDivElement>(null);
 
-  const reload = async () => {
-    const [resolved, team] = await Promise.all([
-      resolveAppraisalReviewForAccount(),
-      getTeamAppraisalReviews().catch(() => [] as HrAppraisalReview[]),
+  const load = useCallback(async () => {
+    const [mine, mineTeam] = await Promise.all([
+      hrAppraisalService.getMyReview().catch(() => null),
+      hrAppraisalService.getTeamReviews().catch(() => [] as HrAppraisalReview[]),
     ]);
-    if (resolved) {
-      setReview(resolved);
-      setDraft(JSON.parse(JSON.stringify(resolved)) as HrAppraisalReview);
-    } else {
-      setReview(null);
-      setDraft(null);
-    }
-    setTeamReviews(team);
-  };
+    setReview(mine);
+    setTeam(mineTeam);
+    return { mine, mineTeam };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
-      if (!user?.email) {
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        await reload();
-      } catch {
-        if (!cancelled) {
-          setReview(null);
-          setDraft(null);
-          setTeamReviews([]);
+    setLoading(true);
+    load()
+      .then(({ mine, mineTeam }) => {
+        if (cancelled) return;
+        const requested = searchParams.get('tab') as TabKey | null;
+        if (!requested) {
+          setSearchParams({ tab: defaultTab(mine, mineTeam.length > 0) }, { replace: true });
         }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
+      })
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [user?.email]);
+    // Load once per user; tab changes are handled through the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, load]);
+
+  const tab = (searchParams.get('tab') as TabKey | null) ?? defaultTab(review, team.length > 0);
+  const goTo = (next: TabKey) => setSearchParams({ tab: next });
+
+  const replaceTeamRow = (updated: HrAppraisalReview) =>
+    setTeam((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
 
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[40vh] text-gray-500">
         <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        Loading your appraisal...
+        Loading your appraisal…
       </div>
     );
   }
 
-  const pendingTeam = teamReviews.filter((r) => r.status === 'Supervisor Review');
-  const hasSelf = !!review && !!draft;
-  const hasTeam = teamReviews.length > 0;
-
-  if (!hasSelf && !hasTeam) {
+  if (!review && team.length === 0) {
     return (
       <div className="p-6">
         <Card>
           <CardContent className="py-12 text-center text-gray-500">
-            No active appraisal cycle is open for your profile, and you have no team reviews waiting.
-            Contact HR when the next review period begins.
+            No appraisal is open for you at the moment, and you have no appraisees waiting. HR will notify you when
+            the next appraisal period begins.
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const sections = draft?.sections ?? [];
-  const responses: AppraisalReviewResponses =
-    draft?.responses ?? emptyResponsesForSections(sections);
-  const canEdit =
-    !!draft &&
-    (draft.status === 'Self Assessment Pending' || draft.status === 'Not Started');
-  const submitted = !!draft && !canEdit;
+  // Supervisor working on one appraisee: full page, as in the previous system.
+  if (tab === 'appraisees' && rating) {
+    const canRate = rating.statusCode === 'SupervisorReview';
+    return (
+      <div className="p-6 space-y-5 max-w-6xl mx-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <Button variant="ghost" size="sm" onClick={() => setRating(null)}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Appraisees Registry
+            </Button>
+            <h1 className="mt-2 text-2xl font-bold text-gray-900">
+              {canRate ? 'Supervisor Rating' : 'Rating Results'} — {rating.employeeName}
+            </h1>
+            <p className="text-gray-500">
+              {rating.appraisalTypeLabel}: {rating.agreement.periodFrom} — {rating.agreement.periodTo} ·{' '}
+              {rating.formTemplateName}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {appraisalStatusBadge(rating.status)}
+            {!canRate ? <PrintAppraisalButton targetRef={ratingReportRef} review={rating} /> : null}
+          </div>
+        </div>
+        {canRate ? (
+          <SupervisorRatingForm
+            key={rating.id}
+            review={rating}
+            defaultSignerName={user?.name ?? ''}
+            onSaved={(saved) => {
+              setRating(saved);
+              replaceTeamRow(saved);
+            }}
+            onSubmitted={(saved) => {
+              setRating(saved);
+              replaceTeamRow(saved);
+            }}
+          />
+        ) : (
+          <div ref={ratingReportRef}>
+            <AppraisalReport review={rating} showHeader />
+          </div>
+        )}
+      </div>
+    );
+  }
 
-  const updateResponses = (next: AppraisalReviewResponses) => {
-    if (!draft) return;
-    setDraft({ ...draft, responses: next });
-  };
-
-  const handleSaveDraft = async () => {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      const saved = await saveAppraisalReview({ ...draft, responses }, 'save');
-      setReview(saved);
-      setDraft(saved);
-      toast.success('Draft saved');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save draft');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!draft) return;
-    const kpiCriteria = sections
-      .filter((section) => section.kind === 'kpi')
-      .flatMap((section) => section.criteria);
-    const incomplete = kpiCriteria.some((criterion) => {
-      const row = responses.criteria.find((item) => item.criterionId === criterion.id);
-      return row?.selfRating === null || row?.selfRating === undefined;
-    });
-    if (incomplete) {
-      toast.error('Please rate all KPI rows before submitting');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const saved = await saveAppraisalReview({ ...draft, responses }, 'submit_self');
-      setReview(saved);
-      setDraft(saved);
-      toast.success('Self-assessment submitted to your supervisor');
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to submit appraisal');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openTeamReview = (row: HrAppraisalReview) => {
-    setTeamDraft(JSON.parse(JSON.stringify(row)) as HrAppraisalReview);
-  };
-
-  const handleSaveSupervisor = async () => {
-    if (!teamDraft) return;
-    setSaving(true);
-    try {
-      const saved = await saveAppraisalReview(teamDraft, 'save');
-      setTeamDraft(saved);
-      toast.success('Supervisor review draft saved');
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save supervisor review');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmitSupervisor = async () => {
-    if (!teamDraft) return;
-    const teamSections = teamDraft.sections ?? [];
-    const teamResponses = teamDraft.responses ?? emptyResponsesForSections(teamSections);
-    const kpiCriteria = teamSections
-      .filter((section) => section.kind === 'kpi')
-      .flatMap((section) => section.criteria);
-    const incomplete = kpiCriteria.some((criterion) => {
-      const row = teamResponses.criteria.find((item) => item.criterionId === criterion.id);
-      return row?.supervisorRating === null || row?.supervisorRating === undefined;
-    });
-    if (incomplete) {
-      toast.error('Please provide supervisor ratings for all KPI rows before submitting');
-      return;
-    }
-    if (!teamDraft.supervisorComments.trim()) {
-      toast.error('Add supervisor comments before submitting to HR');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await saveAppraisalReview(teamDraft, 'submit_supervisor');
-      setTeamDraft(null);
-      toast.success('Supervisor review submitted to HR');
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to submit supervisor review');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const defaultTab = hasSelf ? 'mine' : 'team';
+  const inSelfStage = !!review && SELF_STAGES.includes(review.statusCode);
+  const pendingTeam = team.filter((r) => r.statusCode === 'SupervisorReview').length;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <ClipboardCheck className="h-7 w-7 text-[#015F2B]" />
-          Performance Appraisal
-        </h1>
-        <p className="text-gray-500 mt-1">Self-assessment and team reviews</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <ClipboardCheck className="h-7 w-7 text-[#015F2B]" />
+            {review ? review.formTemplateName : 'Performance Appraisal'}
+          </h1>
+          {review ? (
+            <p className="text-gray-500 mt-1">
+              {review.appraisalTypeLabel}
+              {review.cycleName !== review.appraisalTypeLabel ? ` · ${review.cycleName}` : ''} · Due {review.dueDate}
+              {review.isOverdue ? <span className="ml-2 font-semibold text-red-600">Overdue</span> : null}
+            </p>
+          ) : null}
+        </div>
+        {review ? appraisalStatusBadge(review.status) : null}
       </div>
 
-      <Tabs defaultValue={defaultTab}>
-        <TabsList>
-          {hasSelf ? <TabsTrigger value="mine">My appraisal</TabsTrigger> : null}
-          <TabsTrigger value="team">
-            Team reviews{pendingTeam.length ? ` (${pendingTeam.length})` : ''}
-          </TabsTrigger>
+      <Tabs value={tab} onValueChange={(v) => goTo(v as TabKey)}>
+        <TabsList className="flex-wrap h-auto">
+          {review ? (
+            <>
+              <TabsTrigger value="info">Appraisal Information</TabsTrigger>
+              <TabsTrigger value="self">Self Assessment</TabsTrigger>
+              <TabsTrigger value="results">Results</TabsTrigger>
+            </>
+          ) : null}
+          {team.length ? (
+            <TabsTrigger value="appraisees">Appraisees{pendingTeam ? ` (${pendingTeam})` : ''}</TabsTrigger>
+          ) : null}
         </TabsList>
 
-        {hasSelf && draft ? (
-          <TabsContent value="mine" className="mt-4 space-y-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>{draft.formTemplateName}</CardTitle>
-                  <CardDescription>
-                    {draft.cycleName} · {draft.formTemplateCode} · Due {draft.dueDate} · Supervisor:{' '}
-                    {draft.supervisorName}
-                  </CardDescription>
-                </div>
-                {appraisalStatusBadge(draft.status)}
-              </CardHeader>
-              <CardContent className="text-sm text-gray-600">
-                <p>
-                  <strong>Workflow:</strong> You complete this form → Supervisor reviews → HR
-                  finalizes.
-                  {submitted
-                    ? ' Your submission is with your supervisor.'
-                    : ' Save a draft anytime before submitting.'}
-                </p>
-                {draft.overallSelfScore != null ? (
-                  <p className="mt-2">Current self score: {draft.overallSelfScore}%</p>
-                ) : null}
-              </CardContent>
-            </Card>
-
-            {sections.map((section) => (
-              <Card key={section.id}>
+        {review ? (
+          <>
+            <TabsContent value="info" className="mt-4">
+              <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">{section.title}</CardTitle>
+                  <CardTitle>Fill this form to begin your appraisal</CardTitle>
                   <CardDescription>
-                    {section.kind === 'scorecard'
-                      ? 'Summary domain scores (0–3 scale)'
-                      : 'Complete achievement evidence and self-ratings for each KPI'}
+                    Performance Agreement. Most details come from your HR record; correct anything that is out of date.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <AppraisalSectionForm
-                    section={section}
-                    responses={responses}
-                    onChange={updateResponses}
-                    mode={canEdit ? 'self' : 'readonly'}
-                    ratingScaleMax={draft.ratingScaleMax ?? 3}
-                    ratingIncludesNa={draft.ratingIncludesNa ?? true}
+                  <AgreementForm
+                    key={`${review.id}-${review.agreement.savedAt ?? 'new'}`}
+                    review={review}
+                    editable={inSelfStage}
+                    onSaved={(saved) => {
+                      const first = !review.agreement.savedAt;
+                      setReview(saved);
+                      if (first) goTo('self');
+                    }}
                   />
                 </CardContent>
               </Card>
-            ))}
+            </TabsContent>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Reflection & development</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Key strengths this period</Label>
-                  <Textarea
-                    className="mt-1"
-                    rows={3}
-                    disabled={!canEdit}
-                    value={draft.selfStrengths}
-                    onChange={(e) => setDraft({ ...draft, selfStrengths: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Areas for improvement</Label>
-                  <Textarea
-                    className="mt-1"
-                    rows={3}
-                    disabled={!canEdit}
-                    value={draft.selfImprovements}
-                    onChange={(e) => setDraft({ ...draft, selfImprovements: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Professional development plan</Label>
-                  <Textarea
-                    className="mt-1"
-                    rows={3}
-                    disabled={!canEdit}
-                    value={draft.selfDevelopmentPlan}
-                    onChange={(e) => setDraft({ ...draft, selfDevelopmentPlan: e.target.value })}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {canEdit ? (
-              <div className="flex flex-wrap gap-3 justify-end">
-                <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>
-                  <Save className="h-4 w-4 mr-2" /> Save draft
-                </Button>
-                <Button onClick={handleSubmit} disabled={saving}>
-                  <Send className="h-4 w-4 mr-2" /> Submit to supervisor
-                </Button>
-              </div>
-            ) : (
-              <Card className="bg-green-50 border-green-200">
-                <CardContent className="py-4 text-sm text-green-900">
-                  Self-assessment submitted. You will be notified when your supervisor completes their
-                  review.
-                  {draft.supervisorComments ? (
-                    <p className="mt-2">
-                      <strong>Supervisor feedback:</strong> {draft.supervisorComments}
+            <TabsContent value="self" className="mt-4 space-y-4">
+              {!inSelfStage ? (
+                <Card className="bg-green-50 border-green-200">
+                  <CardContent className="py-6 text-center space-y-3">
+                    <p className="font-semibold text-green-900">Self Assessment Already Done</p>
+                    <p className="text-sm text-green-900/80">
+                      Your self-assessment has been submitted. You will be notified as it moves through your supervisor,
+                      HR and the Vice Chancellor.
                     </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
+                    <Button onClick={() => goTo('results')}>View results</Button>
+                  </CardContent>
+                </Card>
+              ) : !review.agreement.savedAt ? (
+                <Card>
+                  <CardContent className="py-8 text-center space-y-3">
+                    <p className="text-gray-700">
+                      Please complete the Appraisal Information form first before starting your self-assessment.
+                    </p>
+                    <Button onClick={() => goTo('info')}>Go to Appraisal Information</Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Self Assessment Rating</CardTitle>
+                      <CardDescription>
+                        {review.appraisalTypeLabel}: {review.agreement.periodFrom} — {review.agreement.periodTo} ·
+                        Supervisor: {review.supervisorName ?? 'not assigned yet (HR will assign one)'}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                  <SelfAssessmentForm
+                    key={review.id}
+                    review={review}
+                    onSaved={setReview}
+                    onSubmitted={(saved) => {
+                      setReview(saved);
+                      goTo('results');
+                    }}
+                  />
+                </>
+              )}
+            </TabsContent>
+
+            <TabsContent value="results" className="mt-4 space-y-5">
+              {inSelfStage ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-gray-600">
+                    Your results will appear here once you submit your self-assessment.
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div className="flex justify-end">
+                    <PrintAppraisalButton targetRef={reportRef} review={review} />
+                  </div>
+                  <AppraisalProgressTracker progress={review.progress} />
+                  <div ref={reportRef}>
+                    <AppraisalReport review={review} showHeader />
+                  </div>
+                </>
+              )}
+            </TabsContent>
+          </>
         ) : null}
 
-        <TabsContent value="team" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Users className="h-5 w-5" />
-                Direct reports
-              </CardTitle>
-              <CardDescription>
-                Reviews where you are the assigned supervisor. Complete ratings, then submit to HR.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Form</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Self / Sup</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {teamReviews.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                        No team appraisals assigned to you in an open cycle.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    teamReviews.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          <div className="font-medium">{row.employeeName}</div>
-                          <div className="text-xs text-gray-500">{row.department}</div>
-                        </TableCell>
-                        <TableCell className="text-sm">{row.formTemplateName}</TableCell>
-                        <TableCell>{appraisalStatusBadge(row.status)}</TableCell>
-                        <TableCell className="text-sm">
-                          {formatScore(row.overallSelfScore)} / {formatScore(row.overallSupervisorScore)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant={row.status === 'Supervisor Review' ? 'default' : 'outline'}
-                            onClick={() => openTeamReview(row)}
-                          >
-                            {row.status === 'Supervisor Review' ? 'Review' : 'View'}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {team.length ? (
+          <TabsContent value="appraisees" className="mt-4 space-y-3">
+            <div>
+              <h2 className="text-lg font-semibold">Appraisees Registry</h2>
+              <p className="text-sm text-gray-500">
+                Staff you supervise. Start rating once they have submitted their self-assessment.
+              </p>
+            </div>
+            <AppraiseesRegistry reviews={team} onOpen={setRating} />
+          </TabsContent>
+        ) : null}
       </Tabs>
-
-      <Dialog open={!!teamDraft} onOpenChange={(open) => !open && setTeamDraft(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          {teamDraft ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  {teamDraft.employeeName} — Supervisor review
-                </DialogTitle>
-                <DialogDescription>
-                  {teamDraft.cycleName} · {teamDraft.formTemplateName} · Due {teamDraft.dueDate}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                {(teamDraft.sections ?? []).map((section) => (
-                  <section key={section.id}>
-                    <h4 className="font-semibold mb-2">{section.title}</h4>
-                    <AppraisalSectionForm
-                      section={section}
-                      responses={
-                        teamDraft.responses ?? emptyResponsesForSections(teamDraft.sections ?? [])
-                      }
-                      onChange={(next) => setTeamDraft({ ...teamDraft, responses: next })}
-                      mode={teamDraft.status === 'Supervisor Review' ? 'supervisor' : 'readonly'}
-                      ratingScaleMax={teamDraft.ratingScaleMax ?? 3}
-                      ratingIncludesNa={teamDraft.ratingIncludesNa ?? true}
-                    />
-                  </section>
-                ))}
-
-                <section className="grid gap-3 sm:grid-cols-2 text-sm">
-                  <div>
-                    <Label>Employee strengths</Label>
-                    <p className="mt-1 text-gray-600">{teamDraft.selfStrengths || '—'}</p>
-                  </div>
-                  <div>
-                    <Label>Employee improvements</Label>
-                    <p className="mt-1 text-gray-600">{teamDraft.selfImprovements || '—'}</p>
-                  </div>
-                </section>
-
-                <section>
-                  <Label>Supervisor comments</Label>
-                  <Textarea
-                    className="mt-1"
-                    rows={3}
-                    disabled={teamDraft.status !== 'Supervisor Review'}
-                    value={teamDraft.supervisorComments}
-                    onChange={(e) =>
-                      setTeamDraft({ ...teamDraft, supervisorComments: e.target.value })
-                    }
-                  />
-                </section>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setTeamDraft(null)}>
-                  Close
-                </Button>
-                {teamDraft.status === 'Supervisor Review' ? (
-                  <>
-                    <Button variant="outline" onClick={handleSaveSupervisor} disabled={saving}>
-                      <Save className="h-4 w-4 mr-2" /> Save draft
-                    </Button>
-                    <Button onClick={handleSubmitSupervisor} disabled={saving}>
-                      <Send className="h-4 w-4 mr-2" /> Submit to HR
-                    </Button>
-                  </>
-                ) : null}
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

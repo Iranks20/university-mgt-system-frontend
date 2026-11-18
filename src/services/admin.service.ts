@@ -132,6 +132,32 @@ export interface LecturerLoginResult {
 
 export const LECTURER_PASSWORD_MIN_LENGTH = 8;
 
+export type DatabaseBackupRow = {
+  id: string;
+  filename: string;
+  database: string;
+  sizeBytes: number;
+  createdAt: string;
+  createdByUserId: string | null;
+  sha256: string | null;
+};
+
+function getApiBase(): string {
+  return (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+}
+
+function authHeaders(): HeadersInit {
+  const token = localStorage.getItem('kcu-token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
 export const adminService = {
   getSettings: async (): Promise<SystemSettings> => {
     try {
@@ -426,6 +452,48 @@ export const adminService = {
     return await api.put<{ message: string }>(`/admin/users/${userId}/custom-roles`, { customRoleIds });
   },
 
+  listDatabaseBackups: async (): Promise<DatabaseBackupRow[]> => {
+    const res = await api.get<{ data: DatabaseBackupRow[] }>('/admin/database-backups');
+    return Array.isArray((res as any)?.data) ? (res as any).data : Array.isArray(res) ? (res as any) : [];
+  },
+
+  createDatabaseBackup: async (): Promise<DatabaseBackupRow> => {
+    const res = await api.post<{ data: DatabaseBackupRow }>('/admin/database-backups', {});
+    return (res as any)?.data ?? (res as any);
+  },
+
+  downloadDatabaseBackup: async (id: string, filenameHint?: string): Promise<void> => {
+    const response = await fetch(`${getApiBase()}/admin/database-backups/${encodeURIComponent(id)}/download`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      let message = 'Failed to download backup';
+      try {
+        const body = await response.json();
+        message = body?.message || body?.error || message;
+      } catch {
+      }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = /filename="?([^"]+)"?/i.exec(disposition);
+    const filename = match?.[1] || filenameHint || `${id}.sql`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  deleteDatabaseBackup: async (id: string): Promise<void> => {
+    await api.delete(`/admin/database-backups/${encodeURIComponent(id)}`);
+  },
+
+  formatDatabaseBackupSize: formatBytes,
 };
 
 export interface AuditLogEntry {

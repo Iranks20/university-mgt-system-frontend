@@ -21,11 +21,22 @@ import { Label } from '@/components/ui/label';
 import { LabelWithInfo } from '@/components/ui/label-with-info';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
 import { studentService, staffService, academicService, enrollmentService } from '@/services';
 import type { CohortPromotionStatusResult } from '@/services';
-import { adminService } from '@/services/admin.service';
+import { adminService, type DatabaseBackupRow } from '@/services/admin.service';
+import { usePermissions } from '@/contexts/AuthContext';
 import { timetableService, type TimetableClass } from '@/services/timetable.service';
 import { downloadStudentImportTemplateExcel } from '@/utils/excel';
 import { toast } from 'sonner';
@@ -3573,8 +3584,15 @@ function VenuesTab({
 // SUB-COMPONENT: Settings / Config Tab
 // -----------------------------------------------------------------------------
 function SettingsTab() {
+  const { can } = usePermissions();
+  const canBackupDb = can('admin.database_backup');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [backups, setBackups] = useState<DatabaseBackupRow[]>([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [backupCreating, setBackupCreating] = useState(false);
+  const [backupBusyId, setBackupBusyId] = useState<string | null>(null);
+  const [confirmBackupOpen, setConfirmBackupOpen] = useState(false);
   const [form, setForm] = useState({
     geofenceName: 'Main Campus',
     geofenceLat: '0.3476',
@@ -3595,9 +3613,28 @@ function SettingsTab() {
     attendanceAtRisk: '0',
   });
 
+  const loadBackups = useCallback(async () => {
+    if (!canBackupDb) {
+      setBackups([]);
+      return;
+    }
+    setBackupsLoading(true);
+    try {
+      setBackups(await adminService.listDatabaseBackups());
+    } catch (error: any) {
+      toast.error(getApiErrorMessage(error, 'Failed to load database backups'));
+    } finally {
+      setBackupsLoading(false);
+    }
+  }, [canBackupDb]);
+
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    loadBackups();
+  }, [loadBackups]);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -3931,35 +3968,168 @@ function SettingsTab() {
       <Card className="md:col-span-2">
         <CardHeader>
           <CardTitle>System Maintenance</CardTitle>
-          <CardDescription>Backup and critical system actions.</CardDescription>
+          <CardDescription>Database backups and critical system actions.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-           <div className="flex items-center justify-between border-b pb-4">
-             <div>
-               <h4 className="font-medium">Database Backup</h4>
-               <p className="text-sm text-gray-500">Create a full backup of student and attendance data.</p>
-             </div>
-             <Button
-               variant="outline"
-               onClick={() => toast.info('Database backup is not available in-app yet. Use your server backup process.')}
-             >
-               Run Backup Now
-             </Button>
-           </div>
-           <div className="flex items-center justify-between pt-2">
-             <div>
-               <h4 className="font-medium text-red-600">Danger Zone</h4>
-               <p className="text-sm text-gray-500">Reset academic year or archive old data.</p>
-             </div>
-             <Button
-               variant="destructive"
-               onClick={() => toast.info('Archive is not available in-app yet.')}
-             >
-               Archive Data
-             </Button>
-           </div>
+        <CardContent className="space-y-6">
+          <div className="space-y-4 border-b pb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <LabelWithInfo info="Creates a full mysqldump of the live ERP database on the API server, then lets you download the .sql file in the browser. Dumps include personal data and credentials hashes — store and share them only through ICT-approved channels. Retention keeps the newest backups only.">
+                  Database backup
+                </LabelWithInfo>
+                <p className="text-sm text-muted-foreground">
+                  Full SQL snapshot of the production database used by this environment. Requires the Database backup permission.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="shrink-0"
+                disabled={!canBackupDb || backupCreating}
+                onClick={() => setConfirmBackupOpen(true)}
+              >
+                {backupCreating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Database className="h-4 w-4 mr-2" />}
+                Create backup
+              </Button>
+            </div>
+            {!canBackupDb ? (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                Your account can open Settings but does not have <span className="font-medium">admin.database_backup</span>. Ask an Admin to grant Database backup.
+              </p>
+            ) : backupsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading backups…
+              </div>
+            ) : backups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No backups on this server yet. Create one to download a `.sql` file without SSH.</p>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Database</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {backups.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {new Date(row.createdAt).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div className="font-medium">{row.database}</div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[240px]" title={row.filename}>
+                            {row.filename}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right text-sm whitespace-nowrap">
+                          {adminService.formatDatabaseBackupSize(row.sizeBytes)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={backupBusyId === row.id || backupCreating}
+                              onClick={async () => {
+                                setBackupBusyId(row.id);
+                                try {
+                                  await adminService.downloadDatabaseBackup(row.id, row.filename);
+                                  toast.success('Backup download started');
+                                } catch (error: any) {
+                                  toast.error(getApiErrorMessage(error, 'Download failed'));
+                                } finally {
+                                  setBackupBusyId(null);
+                                }
+                              }}
+                            >
+                              {backupBusyId === row.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5" />
+                              )}
+                              <span className="ml-1.5">Download</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600"
+                              disabled={backupBusyId === row.id || backupCreating}
+                              onClick={async () => {
+                                if (!confirm(`Delete backup ${row.filename}? This cannot be undone.`)) return;
+                                setBackupBusyId(row.id);
+                                try {
+                                  await adminService.deleteDatabaseBackup(row.id);
+                                  toast.success('Backup deleted');
+                                  await loadBackups();
+                                } catch (error: any) {
+                                  toast.error(getApiErrorMessage(error, 'Delete failed'));
+                                } finally {
+                                  setBackupBusyId(null);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-2">
+            <div>
+              <h4 className="font-medium text-red-600">Danger Zone</h4>
+              <p className="text-sm text-gray-500">Reset academic year or archive old data.</p>
+            </div>
+            <Button
+              variant="destructive"
+              onClick={() => toast.info('Archive is not available in-app yet.')}
+            >
+              Archive Data
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={confirmBackupOpen} onOpenChange={setConfirmBackupOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create a full database backup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This exports the live database as a `.sql` file on the API server. The file contains confidential student, staff, and account data. Download and store it only on approved secure media. Creating backups is rate-limited.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={backupCreating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={backupCreating}
+              onClick={async (e) => {
+                e.preventDefault();
+                setBackupCreating(true);
+                try {
+                  const created = await adminService.createDatabaseBackup();
+                  toast.success(`Backup ready (${adminService.formatDatabaseBackupSize(created.sizeBytes)})`);
+                  setConfirmBackupOpen(false);
+                  await loadBackups();
+                  await adminService.downloadDatabaseBackup(created.id, created.filename);
+                } catch (error: any) {
+                  toast.error(getApiErrorMessage(error, 'Backup failed'));
+                } finally {
+                  setBackupCreating(false);
+                }
+              }}
+            >
+              {backupCreating ? 'Creating…' : 'Create and download'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

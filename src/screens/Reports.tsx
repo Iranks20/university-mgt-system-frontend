@@ -38,7 +38,8 @@ import {
 } from '@/lib/attendance-metrics';
 import { UNIVERSITY_NAME } from '@/lib/institution';
 import { lectureCommentLabel } from '@/lib/lecture-outcome';
-import type { ClassAttendanceSummaryReport, CourseWiseAttendanceSummaryReport } from '@/types/student';
+import type { ClassAttendanceSummaryReport, ClassAttendanceSummaryRow, CourseWiseAttendanceSummaryReport } from '@/types/student';
+import ClassAttendanceStudentBreakdownDialog from '@/features/student/components/ClassAttendanceStudentBreakdownDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
@@ -175,6 +176,8 @@ export default function Reports() {
   const [courseWiseNameSort, setCourseWiseNameSort] = useState<CourseWiseRowSortDirection>('asc');
   const [lecturerPage, setLecturerPage] = useState(1);
   const [classAttendPage, setClassAttendPage] = useState(1);
+  const [classAttendReportParams, setClassAttendReportParams] = useState<Record<string, string | number> | null>(null);
+  const [classAttendDetailRow, setClassAttendDetailRow] = useState<ClassAttendanceSummaryRow | null>(null);
   const [courseWisePage, setCourseWisePage] = useState(1);
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
@@ -800,13 +803,16 @@ export default function Reports() {
     }
     setClassAttendLoading(true);
     try {
-      const report = await studentService.getClassAttendanceSummaryReport(buildClassAttendReportParams());
+      const params = buildClassAttendReportParams();
+      const report = await studentService.getClassAttendanceSummaryReport(params);
       if (!report) {
         toast.warning('No report data returned.');
         setClassAttendReport(null);
+        setClassAttendReportParams(null);
         return;
       }
       setClassAttendReport(report);
+      setClassAttendReportParams(params);
       setClassAttendPage(1);
       if (report.students.length === 0) {
         toast.info('No enrolled students found for the selected scope.');
@@ -1823,7 +1829,9 @@ export default function Reports() {
                       {classAttendReport.totals.studentCount} students ·{' '}
                       {formatWeightedAttendedCount(classAttendReport.totals.totalAttendedClasses)} attended ·{' '}
                       {classAttendReport.totals.totalLateClasses ?? 0} late · {classAttendReport.totals.totalMissedClasses} missed ·{' '}
-                      {classAttendReport.totals.expectedAttendance} expected sessions
+                      {classAttendReport.totals.totalNotMarkedClasses ?? 0} not marked ·{' '}
+                      {classAttendReport.totals.expectedAttendance} expected sessions · Percentage = attended ÷ (present + late +
+                      absent); not-marked sessions are not counted against the student.
                     </p>
                   )}
 
@@ -1837,24 +1845,27 @@ export default function Reports() {
                           <TableHead className="text-right">Total Attended</TableHead>
                           <TableHead className="text-right">Total Late</TableHead>
                           <TableHead className="text-right">Total Missed</TableHead>
+                          <TableHead className="text-right">Excused</TableHead>
+                          <TableHead className="text-right">Not Marked</TableHead>
                           <TableHead className="text-right">Expected</TableHead>
                           <TableHead className="text-right">Percentage</TableHead>
+                          <TableHead className="text-right">Details</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {classAttendLoading ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading report…</TableCell>
+                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Loading report…</TableCell>
                           </TableRow>
                         ) : !classAttendReport ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                               Choose filters and click Generate report.
                             </TableCell>
                           </TableRow>
                         ) : classAttendReport.students.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                               No enrolled students in this scope.
                             </TableCell>
                           </TableRow>
@@ -1871,11 +1882,18 @@ export default function Reports() {
                               </TableCell>
                               <TableCell className="text-right">{row.totalLateClasses ?? 0}</TableCell>
                               <TableCell className="text-right">{row.totalMissedClasses}</TableCell>
+                              <TableCell className="text-right">{row.totalExcusedClasses ?? 0}</TableCell>
+                              <TableCell className="text-right">{row.totalNotMarkedClasses ?? 0}</TableCell>
                               <TableCell className="text-right">{row.expectedAttendance}</TableCell>
                               <TableCell className="text-right">
                                 <span className={row.percentage < 75 ? 'text-red-600 font-medium' : ''}>
                                   {row.percentage.toFixed(2)}%
                                 </span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="outline" size="sm" onClick={() => setClassAttendDetailRow(row)}>
+                                  Details
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))
@@ -2454,6 +2472,15 @@ export default function Reports() {
               </Card>
           </TabsContent>
         </Tabs>
+
+        <ClassAttendanceStudentBreakdownDialog
+          open={classAttendDetailRow !== null}
+          onOpenChange={(open) => {
+            if (!open) setClassAttendDetailRow(null);
+          }}
+          row={classAttendDetailRow}
+          reportParams={classAttendReportParams}
+        />
 
         {/* Lecturer Details Dialog */}
         <Dialog

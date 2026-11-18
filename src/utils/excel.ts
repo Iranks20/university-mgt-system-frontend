@@ -169,7 +169,7 @@ export function exportClassAttendanceSummaryReport(
     [report.title],
     [filterParts.join(' | ')],
     [],
-    ['No.', "Student's Name", 'Registration No.', 'Total Attended Classes', 'Total Late Classes', 'Total Missed Classes', 'Expected Attendance', 'Percentage'],
+    ['No.', "Student's Name", 'Registration No.', 'Total Attended Classes', 'Total Late Classes', 'Total Missed Classes', 'Excused', 'Not Marked', 'Expected Attendance', 'Percentage'],
     ...report.students.map((row, index) => [
       index + 1,
       row.studentName,
@@ -177,13 +177,17 @@ export function exportClassAttendanceSummaryReport(
       row.totalAttendedClasses,
       row.totalLateClasses ?? 0,
       row.totalMissedClasses,
+      row.totalExcusedClasses ?? 0,
+      row.totalNotMarkedClasses ?? 0,
       row.expectedAttendance,
       `${row.percentage.toFixed(2)}%`,
     ]),
+    [],
+    ['Percentage = Attended ÷ (Present + Late + Absent). Late counts ½. Not-marked and excused sessions are not used in the percentage.'],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  const colCount = 8;
+  const colCount = 10;
 
   ws['!cols'] = [
     { wch: 6 },
@@ -192,6 +196,8 @@ export function exportClassAttendanceSummaryReport(
     { wch: 22 },
     { wch: 18 },
     { wch: 20 },
+    { wch: 10 },
+    { wch: 12 },
     { wch: 20 },
     { wch: 12 },
   ];
