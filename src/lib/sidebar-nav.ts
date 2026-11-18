@@ -216,6 +216,109 @@ export function visibleMenus(permissions: string[]): VisibleMenu[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Quality Assurance keeps the sidebar it had before the menus were regrouped (the production
+// layout QA staff are used to): Dashboard, a Graduation folder, then a flat list in a fixed order.
+
+/** QA staff: can review and record lecture QA, without admin or university-overview access. */
+export function usesQaLayout(permissions: string[]): boolean {
+  const have = new Set(permissions);
+  return (
+    have.has('qa.write') &&
+    have.has('qa.review') &&
+    !have.has('admin.console') &&
+    !have.has('analytics.mgmt_overview')
+  );
+}
+
+/** Flat menu order and labels of the earlier sidebar. */
+const QA_FLAT_ORDER: Array<{ path: string; label: string }> = [
+  { path: '/attendance-desk', label: 'Attendance Desk' },
+  { path: '/attendance-entries', label: 'My Entries' },
+  { path: '/timetable', label: 'Timetable' },
+  { path: '/timetable-builder', label: 'Timetable Builder' },
+  { path: '/lecture-records', label: 'Lecture Records' },
+  { path: '/cancellations', label: 'Cancellations' },
+  { path: '/student-records', label: 'Student Records' },
+  { path: '/curriculum-management', label: 'Curriculum' },
+  { path: '/presence', label: 'Mark Presence' },
+  { path: '/lecturer-course-attendance', label: 'Course Attendance' },
+  { path: '/lecturer-performance', label: 'Performance' },
+  { path: '/staff-appraisal', label: 'My Appraisal' },
+  { path: '/appraisals/vc', label: 'Appraisal Final Review' },
+  { path: '/student-classes', label: 'My Classes' },
+  { path: '/student-registration', label: 'Course registration' },
+  { path: '/student-history', label: 'Attendance History' },
+  { path: '/management-departments', label: 'Department Stats' },
+  { path: '/management-staff-performance', label: 'Staff Performance' },
+  { path: '/management-lecturer-performance', label: 'Lecturer Performance' },
+  { path: '/management-student-performance', label: 'Student Performance' },
+  { path: '/management-risk', label: 'Risk Register' },
+  { path: '/management-enrolment', label: 'Enrolment Health' },
+  { path: '/reports', label: 'Reports' },
+  { path: '/admin-courses', label: 'Courses' },
+  { path: '/admin-classes', label: 'Classes' },
+  { path: '/admin-timetables', label: 'Timetables' },
+  { path: '/admin-schools', label: 'Schools' },
+  { path: '/admin-venues', label: 'Venues' },
+  { path: '/admin-calendar', label: 'Calendar' },
+  { path: '/admin-strategic-goals', label: 'Strategic Goals' },
+];
+
+/** Graduation folder labels of the earlier sidebar. */
+const QA_GRADUATION_LABELS: Record<string, string> = {
+  '/graduation/dashboard': 'Dashboard',
+  '/graduation/event': 'Event setup',
+  '/graduation/committees': 'Committees',
+  '/graduation/registrations': 'Registrations',
+};
+
+function sectionMenus(menus: VisibleMenu[], sectionId: string): VisibleMenu[] {
+  return menus.filter((m) => m.sectionId === sectionId);
+}
+
+function pushSection(items: SidebarItem[], section: Section, menus: VisibleMenu[], labelFor?: (m: VisibleMenu) => string) {
+  if (menus.length === 1) {
+    const m = menus[0];
+    items.push({ type: 'single', label: m.standaloneLabel, path: m.path, icon: m.icon });
+  } else if (menus.length > 1) {
+    items.push({
+      type: 'folder',
+      id: section.id,
+      label: section.label,
+      icon: section.icon,
+      children: menus.map((m) => ({ label: labelFor ? labelFor(m) : m.label, path: m.path, icon: m.icon })),
+    });
+  }
+}
+
+function buildQaSidebar(dashboard: SidebarItem, menus: VisibleMenu[]): SidebarItem[] {
+  const sectionById = new Map(SIDEBAR_SECTIONS.map((s) => [s.id, s]));
+  const placed = new Set<string>();
+  const items: SidebarItem[] = [dashboard];
+
+  // Earlier order: Clinicals and Human Resources (if any), then Graduation, then the flat list.
+  for (const id of ['clinicals', 'human-resources', 'graduation']) {
+    const inSection = sectionMenus(menus, id);
+    inSection.forEach((m) => placed.add(m.path));
+    pushSection(items, sectionById.get(id)!, inSection, id === 'graduation' ? (m) => QA_GRADUATION_LABELS[m.path] ?? m.label : undefined);
+  }
+
+  const byPath = new Map(menus.map((m) => [m.path, m]));
+  for (const { path, label } of QA_FLAT_ORDER) {
+    const m = byPath.get(path);
+    if (!m || placed.has(path)) continue;
+    placed.add(path);
+    items.push({ type: 'single', label, path: m.path, icon: m.icon });
+  }
+
+  // Anything else this person can open (e.g. a menu added later) still appears, grouped by module.
+  for (const section of SIDEBAR_SECTIONS) {
+    pushSection(items, section, sectionMenus(menus, section.id).filter((m) => !placed.has(m.path)));
+  }
+  return items;
+}
+
 export function buildSidebar(permissions: string[]): SidebarItem[] {
   const dashboard: SidebarItem = {
     type: 'single',
@@ -224,6 +327,10 @@ export function buildSidebar(permissions: string[]): SidebarItem[] {
     path: dashboardPathFor(permissions),
   };
   const menus = visibleMenus(permissions);
+
+  if (usesQaLayout(permissions)) {
+    return buildQaSidebar(dashboard, menus);
+  }
 
   if (menus.length <= FLAT_LIST_LIMIT) {
     return [
