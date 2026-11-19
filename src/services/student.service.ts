@@ -6,6 +6,7 @@ import type {
   CourseWiseAttendanceSummaryReport,
   DailyMarkingCoverage,
   DailyMarkingGrid,
+  DailyMarkingGridSaveResult,
   WeeklyAttendanceMatrixReport,
   StudentAttendanceReport,
   ProgramAttendanceData,
@@ -324,12 +325,19 @@ export const studentService = {
     programIntakeId: string;
     date: string;
     records: Array<{ studentId: string; classId: string; status: string }>;
-  }): Promise<{ count: number }> => {
-    const res = await api.post<{ data: { count: number } }>(
+  }): Promise<DailyMarkingGridSaveResult> => {
+    // The api client already unwraps `data`; accept either shape.
+    const res = await api.post<DailyMarkingGridSaveResult | { data: DailyMarkingGridSaveResult }>(
       '/students/attendance/daily-marking-grid',
       payload
     );
-    return (res as { data?: { count: number } })?.data ?? { count: 0 };
+    const body = ((res as { data?: DailyMarkingGridSaveResult })?.data ?? res) as Partial<DailyMarkingGridSaveResult>;
+    return {
+      count: body?.count ?? 0,
+      enrolled: body?.enrolled ?? 0,
+      skippedUnenrolled: body?.skippedUnenrolled ?? 0,
+      skippedOtherStream: body?.skippedOtherStream ?? 0,
+    };
   },
 
   getWeeklyAttendanceMatrixReport: async (params: {
