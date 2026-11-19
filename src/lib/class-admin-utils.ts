@@ -7,7 +7,48 @@ export type EnrollCandidateRow = {
   name: string;
   studentId: string;
   email: string;
+  /** Set for students who are not in the class's own intake cohort (e.g. retakers). */
+  outsideCohort?: boolean;
+  /** Their own cohort, shown as a hint for outside-cohort students. */
+  cohortLabel?: string;
 };
+
+/** Search active students across the whole university (name, reg. no., email), optionally in one intake. */
+export async function searchStudentsUniversityWide(params: {
+  search?: string;
+  programIntakeId?: string | null;
+  limit?: number;
+}): Promise<
+  Array<EnrollCandidateRow & { programIntakeId: string | null; program: string; year: number | null; semester: number | null }>
+> {
+  const res = await studentService.getStudents({
+    status: 'Active',
+    search: params.search?.trim() || undefined,
+    programIntakeId: params.programIntakeId || undefined,
+    page: 1,
+    limit: params.limit ?? 30,
+  });
+  return ((res.data ?? []) as Array<{
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    studentNumber?: string;
+    email?: string;
+    programIntakeId?: string | null;
+    program?: string | null;
+    year?: number | null;
+    semester?: number | null;
+  }>).map((s) => ({
+    id: s.id,
+    name: `${s.firstName || ''} ${s.lastName || ''}`.trim() || s.email || s.id,
+    studentId: s.studentNumber ?? '',
+    email: s.email ?? '',
+    programIntakeId: s.programIntakeId ?? null,
+    program: s.program ?? '',
+    year: s.year ?? null,
+    semester: s.semester ?? null,
+  }));
+}
 
 export function extractEnrolledStudentIdsFromClassEnrollments(enrollments: unknown[]): string[] {
   const rows = Array.isArray(enrollments) ? enrollments : [];
