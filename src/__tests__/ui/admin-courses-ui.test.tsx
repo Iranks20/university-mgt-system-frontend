@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import AdminView from '@/components/AdminView';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -48,6 +48,29 @@ describe('AdminView - Courses tab', () => {
 
     expect(await screen.findByPlaceholderText(/Search courses/i)).toBeInTheDocument();
     expect(screen.queryByText(/Add Course/i)).not.toBeInTheDocument();
+  });
+
+  it('sends the search text when filtering courses', async () => {
+    localStorage.setItem('kcu-token', 'test');
+    localStorage.setItem('kcu-user', JSON.stringify({ id: 'u1', email: 'a@b.com', name: 'Admin', role: 'Admin', permissions: [] }));
+    localStorage.setItem('kcu-role', 'Admin');
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <AdminView defaultTab="courses" />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByPlaceholderText(/Search courses/i);
+    fireEvent.change(input, { target: { value: 'anatomy' } });
+
+    await screen.findByDisplayValue('anatomy');
+    await vi.waitFor(() => {
+      const courseCalls = vi.mocked(api.get).mock.calls.map((call) => String(call[0]));
+      expect(courseCalls.some((url) => url.includes('/academic/courses') && url.includes('search=anatomy'))).toBe(true);
+    });
   });
 });
 

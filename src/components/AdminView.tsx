@@ -465,6 +465,7 @@ function StudentsTab({
       if (!editForm.programId || !editForm.year || !editingStudent) {
         setPreviewCourses([]);
         setSelectedCourseIds([]);
+        setCurrentEnrollments([]);
         return;
       }
 
@@ -484,14 +485,22 @@ function StudentsTab({
         ]);
 
         setPreviewCourses(courses);
-        const enrolledClassIds = (enrollments as any[]).map((e: any) => e.classId || e.class?.id).filter(Boolean);
-        setCurrentEnrollments(enrolledClassIds);
+        // The API returns every enrollment row (Dropped/Inactive too); only Active ones are enrolled.
+        const enrolledClassIds = (enrollments as any[])
+          .filter((e: any) => (e.status ?? 'Active') === 'Active')
+          .map((e: any) => e.classId || e.class?.id)
+          .filter(Boolean);
         const enrollableIds = (courses as any[]).filter((c: any) => !c.noClass).map((c: any) => c.id);
-        setSelectedCourseIds(enrolledClassIds.filter((id: string) => enrollableIds.includes(id)));
+        // Only classes shown in this list can be changed here; other enrollments (retakes,
+        // other semesters) are left alone on save.
+        const shownEnrolledIds = enrolledClassIds.filter((id: string) => enrollableIds.includes(id));
+        setCurrentEnrollments(shownEnrolledIds);
+        setSelectedCourseIds(shownEnrolledIds);
       } catch (error) {
         console.error('Error loading preview courses:', error);
         setPreviewCourses([]);
         setSelectedCourseIds([]);
+        setCurrentEnrollments([]);
       } finally {
         setPreviewLoading(false);
       }
@@ -1620,7 +1629,8 @@ function StudentsTab({
                 for (const classId of toRemove) {
                   try {
                     const enrollment = studentEnrollmentsList.find(
-                      (e: any) => (e.classId || e.class?.id) === classId
+                      (e: any) =>
+                        (e.classId || e.class?.id) === classId && (e.status ?? 'Active') === 'Active'
                     );
                     if (enrollment?.id) {
                       await enrollmentService.deleteEnrollment(enrollment.id);
@@ -2921,7 +2931,7 @@ function CoursesTab() {
           enrollmentPolicy: courseForm.enrollmentPolicy,
         });
       }
-      await loadCourses(coursesPage);
+      await loadCourses(coursesPage, courseSearchTerm);
       setAddCourseOpen(false);
       setEditCourseOpen(false);
       setEditingCourse(null);
@@ -3002,7 +3012,7 @@ function CoursesTab() {
                           if (confirm(`Delete course "${course.name}"?`)) {
                             try {
                               await academicService.deleteCourse(course.id);
-                                await loadCourses(coursesPage);
+                                await loadCourses(coursesPage, courseSearchTerm);
                             } catch (error: any) {
                               console.error('Error deleting course:', error);
                               toast.error(`Failed to delete course: ${error?.message || 'Unknown error'}`);
@@ -7341,10 +7351,10 @@ function TimetablesTab({ onScheduleClass }: { onScheduleClass?: () => void }) {
             }
           />
               <Input
-            placeholder="Course Code"
+            placeholder="Course code or name"
             value={filters.courseCode}
             onChange={(e) => setFilters({ ...filters, courseCode: e.target.value })}
-            className="w-[150px]"
+            className="w-[200px]"
               />
           <ResetFiltersButton onClick={resetTimetableFilters} disabled={!hasTimetableFiltersApplied} />
             </div>
