@@ -114,6 +114,9 @@ export default function Reports() {
     missed?: number;
     expectedSessions?: number;
     attendedSessions?: number;
+    markedSessions?: number;
+    notMarked?: number;
+    excused?: number;
   }[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [atRiskMeta, setAtRiskMeta] = useState<{ thresholdPercent: number; minSessions: number } | null>(null);
@@ -923,7 +926,9 @@ export default function Reports() {
       classId?: string;
       level?: number;
       semester?: number;
-    } = { limit: studentAttendLimit };
+      programIntakeId?: string;
+      academicTermId?: string;
+    } = { limit: studentAttendLimit, ...termScopeQueryParam(academicTermId) };
     const dateFrom = attendDateFrom || presetDates?.dateFrom;
     const dateTo = attendDateTo || presetDates?.dateTo;
     if (dateFrom) params.dateFrom = dateFrom;
@@ -934,9 +939,12 @@ export default function Reports() {
     if (attendSelectedClassId !== ALL_VALUE) params.classId = attendSelectedClassId;
     if (attendSelectedYear !== ALL_VALUE) params.level = Number(attendSelectedYear);
     if (attendSelectedSemester !== ALL_VALUE) params.semester = Number(attendSelectedSemester);
+    if (attendSelectedProgramIntakeId !== ALL_VALUE) params.programIntakeId = attendSelectedProgramIntakeId;
     return params;
   }, [
     studentAttendLimit,
+    academicTermId,
+    attendSelectedProgramIntakeId,
     attendDateFrom,
     attendDateTo,
     attendSelectedSchool,
@@ -964,6 +972,9 @@ export default function Reports() {
           missed: s.missedCount ?? s.missed ?? 0,
           expectedSessions: s.expectedSessions,
           attendedSessions: s.attendedSessions,
+          markedSessions: s.markedSessions,
+          notMarked: s.notMarkedCount,
+          excused: s.excusedCount,
         }))
       );
       if (students.length === 0) {
@@ -1830,8 +1841,8 @@ export default function Reports() {
                       {formatWeightedAttendedCount(classAttendReport.totals.totalAttendedClasses)} attended ·{' '}
                       {classAttendReport.totals.totalLateClasses ?? 0} late · {classAttendReport.totals.totalMissedClasses} missed ·{' '}
                       {classAttendReport.totals.totalNotMarkedClasses ?? 0} not marked ·{' '}
-                      {classAttendReport.totals.expectedAttendance} expected sessions · Percentage = attended ÷ (present + late +
-                      absent); not-marked sessions are not counted against the student.
+                      {classAttendReport.totals.expectedAttendance} expected sessions · Percentage = attended (present + late) ÷
+                      expected; excused and not-marked sessions are shown separately and lower the percentage.
                     </p>
                   )}
 
@@ -2166,7 +2177,9 @@ export default function Reports() {
                 <CardTitle>Students at risk (low attendance)</CardTitle>
                 {atRiskMeta && (
                   <CardDescription>
-                    Students below {atRiskMeta.thresholdPercent}% attendance with at least {atRiskMeta.minSessions} counted sessions in the selected scope.
+                    Students below {atRiskMeta.thresholdPercent}% attendance with at least {atRiskMeta.minSessions} expected sessions, worked out
+                    exactly like the Student Attendance tab: Percentage = attended (present + late) ÷ expected;
+                    missed = absent marks; excused and not-marked sessions are shown separately.
                   </CardDescription>
                 )}
               </CardHeader>
@@ -2276,6 +2289,26 @@ export default function Reports() {
                     </Select>
                   </div>
                   <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Cohort / intake</label>
+                    <Select
+                      value={attendSelectedProgramIntakeId}
+                      onValueChange={setAttendSelectedProgramIntakeId}
+                      disabled={attendSelectedProgramId === ALL_VALUE}
+                    >
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder={attendSelectedProgramId === ALL_VALUE ? 'Select program first' : 'Cohort'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_VALUE}>All cohorts</SelectItem>
+                        {attendProgramIntakes.map((intake) => (
+                          <SelectItem key={intake.id} value={intake.id}>
+                            {intake.year} · Sem {intake.semester} · {intake.intakeType}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground">Date from</label>
                     <Input type="date" className="w-[150px]" value={attendDateFrom} onChange={(e) => setAttendDateFrom(e.target.value)} />
                   </div>
@@ -2312,18 +2345,20 @@ export default function Reports() {
                         <TableHead>Program</TableHead>
                         <TableHead className="text-right">Attendance %</TableHead>
                         <TableHead className="text-right">Attended</TableHead>
-                        <TableHead className="text-right">Expected</TableHead>
                         <TableHead className="text-right">Missed</TableHead>
+                        <TableHead className="text-right">Excused</TableHead>
+                        <TableHead className="text-right">Not Marked</TableHead>
+                        <TableHead className="text-right">Expected</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {studentsLoading ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell>
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell>
                         </TableRow>
                       ) : studentsReport.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                             Click Load report to see students below the attendance threshold.
                           </TableCell>
                         </TableRow>
@@ -2347,8 +2382,10 @@ export default function Reports() {
                             <TableCell className="text-right">
                               {s.attendedSessions != null ? formatWeightedAttendedCount(s.attendedSessions) : '—'}
                             </TableCell>
-                            <TableCell className="text-right">{s.expectedSessions ?? '—'}</TableCell>
                             <TableCell className="text-right">{s.missed ?? '—'}</TableCell>
+                            <TableCell className="text-right">{s.excused ?? 0}</TableCell>
+                            <TableCell className="text-right">{s.notMarked ?? 0}</TableCell>
+                            <TableCell className="text-right">{s.expectedSessions ?? '—'}</TableCell>
                           </TableRow>
                         ))
                       )}

@@ -61,9 +61,11 @@ export const analyticsService = {
     classId?: string;
     level?: number;
     semester?: number;
+    academicTermId?: string;
   } = {}) => {
     try {
       const params: Record<string, string> = {};
+      if (options.academicTermId) params.academicTermId = options.academicTermId;
       if (options.limit != null) params.limit = String(options.limit);
       if (options.dateFrom) params.dateFrom = options.dateFrom;
       if (options.dateTo) params.dateTo = options.dateTo;

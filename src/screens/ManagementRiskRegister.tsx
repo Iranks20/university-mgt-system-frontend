@@ -143,7 +143,7 @@ export default function ManagementRiskRegister() {
               Students below attendance threshold
             </CardTitle>
             <CardDescription>
-              Same policy as analytics worst-students (min {pack?.minSessions ?? '—'} taught sessions).
+              Same rules as Reports → Student Attendance (at least {pack?.minSessions ?? '—'} expected sessions).
             </CardDescription>
           </CardHeader>
           <CardContent>
