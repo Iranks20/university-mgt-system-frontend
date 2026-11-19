@@ -181,6 +181,7 @@ export default function Reports() {
   const [classAttendPage, setClassAttendPage] = useState(1);
   const [classAttendReportParams, setClassAttendReportParams] = useState<Record<string, string | number> | null>(null);
   const [classAttendDetailRow, setClassAttendDetailRow] = useState<ClassAttendanceSummaryRow | null>(null);
+  const [classAttendSearch, setClassAttendSearch] = useState('');
   const [courseWisePage, setCourseWisePage] = useState(1);
   const [attendProgramIntakes, setAttendProgramIntakes] = useState<
     Array<{ id: string; year: number; semester: number; intakeType: string }>
@@ -677,11 +678,25 @@ export default function Reports() {
     return courseWiseSortedRows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
   }, [courseWiseSortedRows, courseWisePage]);
 
-  const paginatedClassAttendRows = useMemo(() => {
+  // Search the generated report by student name or registration number (case-insensitive, any order of names).
+  const filteredClassAttendRows = useMemo(() => {
     const rows = classAttendReport?.students ?? [];
+    const terms = classAttendSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return rows;
+    return rows.filter((r) => {
+      const haystack = `${r.studentName ?? ''} ${r.registrationNumber ?? ''}`.toLowerCase();
+      return terms.every((t) => haystack.includes(t));
+    });
+  }, [classAttendReport, classAttendSearch]);
+
+  useEffect(() => {
+    setClassAttendPage(1);
+  }, [classAttendSearch]);
+
+  const paginatedClassAttendRows = useMemo(() => {
     const start = (classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE;
-    return rows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
-  }, [classAttendReport, classAttendPage]);
+    return filteredClassAttendRows.slice(start, start + REPORT_TABLE_PAGE_SIZE);
+  }, [filteredClassAttendRows, classAttendPage]);
 
   const getLecturerDateRangeLabel = (): string => {
     if (reportsScopedDates?.dateFrom || reportsScopedDates?.dateTo) {
@@ -895,6 +910,7 @@ export default function Reports() {
   };
 
   const resetClassAttendanceFilters = () => {
+    setClassAttendSearch('');
     setAttendSelectedSchool(ALL_VALUE);
     setAttendSelectedProgramId(ALL_VALUE);
     setAttendSelectedProgramIntakeId(ALL_VALUE);
@@ -1846,6 +1862,36 @@ export default function Reports() {
                     </p>
                   )}
 
+                  {classAttendReport && classAttendReport.students.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="relative w-full sm:w-[340px]">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search student name or reg. no."
+                          className="pl-8 pr-8"
+                          value={classAttendSearch}
+                          onChange={(e) => setClassAttendSearch(e.target.value)}
+                          aria-label="Search students in this report"
+                        />
+                        {classAttendSearch ? (
+                          <button
+                            type="button"
+                            onClick={() => setClassAttendSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1 text-sm text-muted-foreground hover:text-foreground"
+                            aria-label="Clear search"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                      {classAttendSearch.trim() ? (
+                        <span className="text-xs text-muted-foreground">
+                          {filteredClassAttendRows.length} of {classAttendReport.students.length} students match
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
+
                   <div className="rounded-md border overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -1880,6 +1926,12 @@ export default function Reports() {
                               No enrolled students in this scope.
                             </TableCell>
                           </TableRow>
+                        ) : filteredClassAttendRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                              No students match &quot;{classAttendSearch.trim()}&quot;.
+                            </TableCell>
+                          </TableRow>
                         ) : (
                           paginatedClassAttendRows.map((row, idx) => (
                             <TableRow key={row.studentId}>
@@ -1912,7 +1964,7 @@ export default function Reports() {
                       </TableBody>
                     </Table>
                     <ReportTablePagination
-                      total={classAttendReport?.students.length ?? 0}
+                      total={filteredClassAttendRows.length}
                       page={classAttendPage}
                       onPageChange={setClassAttendPage}
                     />

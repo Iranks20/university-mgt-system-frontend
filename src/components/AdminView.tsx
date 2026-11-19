@@ -215,6 +215,17 @@ function StudentsTab({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [currentEnrollments, setCurrentEnrollments] = useState<string[]>([]);
+  // Active enrollments of the student being edited (all classes, incl. retakes added from Classes).
+  const [editActiveEnrollments, setEditActiveEnrollments] = useState<any[]>([]);
+  // Other (outside program/semester) enrollments the admin unticked: removed on save.
+  const [otherEnrollmentRemoveIds, setOtherEnrollmentRemoveIds] = useState<string[]>([]);
+  // "+ Add class" picker in Other enrollments: classes chosen here are enrolled on save.
+  const [addClassOpen, setAddClassOpen] = useState(false);
+  const [addClassSearch, setAddClassSearch] = useState('');
+  const [addClassResults, setAddClassResults] = useState<any[]>([]);
+  const [addClassLoading, setAddClassLoading] = useState(false);
+  const [pendingExtraClasses, setPendingExtraClasses] = useState<any[]>([]);
+  const [intakeLabelMap, setIntakeLabelMap] = useState<Map<string, string>>(new Map());
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
   const [importPrograms, setImportPrograms] = useState<any[]>([]);
@@ -463,10 +474,19 @@ function StudentsTab({
 
   useEffect(() => {
     const loadPreview = async () => {
+      const activeOnly = (rows: unknown) =>
+        (Array.isArray(rows) ? rows : []).filter((e: any) => (e.status ?? 'Active') === 'Active');
+
       if (!editForm.programId || !editForm.year || !editingStudent) {
         setPreviewCourses([]);
         setSelectedCourseIds([]);
         setCurrentEnrollments([]);
+        if (editingStudent) {
+          const rows = await enrollmentService.getStudentEnrollments(editingStudent.id).catch(() => []);
+          setEditActiveEnrollments(activeOnly(rows));
+        } else {
+          setEditActiveEnrollments([]);
+        }
         return;
       }
 
@@ -487,13 +507,12 @@ function StudentsTab({
 
         setPreviewCourses(courses);
         // The API returns every enrollment row (Dropped/Inactive too); only Active ones are enrolled.
-        const enrolledClassIds = (enrollments as any[])
-          .filter((e: any) => (e.status ?? 'Active') === 'Active')
-          .map((e: any) => e.classId || e.class?.id)
-          .filter(Boolean);
+        const active = activeOnly(enrollments);
+        setEditActiveEnrollments(active);
+        const enrolledClassIds = active.map((e: any) => e.classId || e.class?.id).filter(Boolean);
         const enrollableIds = (courses as any[]).filter((c: any) => !c.noClass).map((c: any) => c.id);
-        // Only classes shown in this list can be changed here; other enrollments (retakes,
-        // other semesters) are left alone on save.
+        // The program/semester table manages only its own classes; everything else is listed
+        // under "Other enrollments" (see otherEnrollments) and is only removed if unticked there.
         const shownEnrolledIds = enrolledClassIds.filter((id: string) => enrollableIds.includes(id));
         setCurrentEnrollments(shownEnrolledIds);
         setSelectedCourseIds(shownEnrolledIds);
@@ -507,10 +526,156 @@ function StudentsTab({
       }
     };
 
+    setOtherEnrollmentRemoveIds([]);
     if (editOpen && editingStudent) {
       loadPreview();
     }
   }, [editForm.programId, editForm.departmentId, editForm.year, editForm.semester, editOpen, editingStudent]);
+
+  // Active enrollments outside the program/semester table above (retakes, classes added from
+  // Academic → Classes → Enrollments, other semesters) so the admin sees everything the student is in.
+  const otherEnrollments = useMemo(() => {
+    const shownIds = new Set(previewCourses.filter((c: any) => !c.noClass).map((c: any) => c.id));
+    return editActiveEnrollments
+      .filter((e: any) => {
+        const classId = e.classId || e.class?.id;
+        return classId && !shownIds.has(classId) && e.class?.isActive !== false;
+      })
+      .sort((a: any, b: any) =>
+        String(a.class?.course?.code ?? '').localeCompare(String(b.class?.course?.code ?? ''))
+      );
+  }, [editActiveEnrollments, previewCourses]);
+
+  // Reset the "+ Add class" picker for each student opened.
+  useEffect(() => {
+    setAddClassOpen(false);
+    setAddClassSearch('');
+    setAddClassResults([]);
+    setPendingExtraClasses([]);
+  }, [editOpen, editingStudent?.id]);
+
+  // Cohort labels for the picker (loaded once, when the picker is first opened).
+  useEffect(() => {
+    if (!addClassOpen || intakeLabelMap.size > 0) return;
+    void (async () => {
+      try {
+        const [intakes, programsRes] = await Promise.all([
+          academicService.getProgramIntakes(),
+          academicService.getPrograms(),
+        ]);
+        const programList = Array.isArray(programsRes) ? programsRes : (programsRes as { data?: any[] })?.data ?? [];
+        const programById = new Map(
+          programList.map((p: { id: string; code?: string; name?: string }) => [p.id, { code: p.code, name: p.name }])
+        );
+        setIntakeLabelMap(
+          new Map((Array.isArray(intakes) ? intakes : []).map((i: any) => [i.id, formatProgramIntakeOptionLabel(i, programById)]))
+        );
+      } catch {
+        /* labels are optional */
+      }
+    })();
+  }, [addClassOpen, intakeLabelMap.size]);
+
+  // Search active-term classes by course code, course name or class name (debounced).
+  useEffect(() => {
+    if (!addClassOpen) return;
+    const term = addClassSearch.trim();
+    if (term.length < 2) {
+      setAddClassResults([]);
+      setAddClassLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setAddClassLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await academicService.getClasses({ search: term, classStatus: 'active', limit: 25 });
+        if (!cancelled) setAddClassResults((res as any)?.data ?? []);
+      } catch {
+        if (!cancelled) setAddClassResults([]);
+      } finally {
+        if (!cancelled) setAddClassLoading(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [addClassOpen, addClassSearch]);
+
+  const toMinutes = (t?: string | null) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(t ?? '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+
+  /** Classes the student is (or will be after save) enrolled in, for clash / same-unit checks. */
+  const studentPlannedClasses = useMemo(() => {
+    const rows: Array<{ id: string; courseId?: string | null; dayOfWeek?: number | null; startTime?: string | null; endTime?: string | null; label: string }> = [];
+    const seen = new Set<string>();
+    const push = (c: any, label: string) => {
+      if (!c?.id || seen.has(c.id)) return;
+      seen.add(c.id);
+      rows.push({ id: c.id, courseId: c.courseId ?? c.course?.id, dayOfWeek: c.dayOfWeek, startTime: c.startTime, endTime: c.endTime, label });
+    };
+    for (const e of editActiveEnrollments) {
+      if (otherEnrollmentRemoveIds.includes(e.id)) continue;
+      const classId = e.classId || e.class?.id;
+      const inProgramTable = previewCourses.some((p: any) => p.id === classId);
+      if (inProgramTable && !selectedCourseIds.includes(classId)) continue;
+      push({ ...e.class, id: classId }, e.class?.course?.code ?? e.class?.name ?? 'class');
+    }
+    for (const p of previewCourses as any[]) {
+      if (selectedCourseIds.includes(p.id)) push({ ...p, courseId: p.courseId ?? p.course?.id }, p.course?.code ?? p.name);
+    }
+    for (const c of pendingExtraClasses) push(c, c.course?.code ?? c.name);
+    return rows;
+  }, [editActiveEnrollments, otherEnrollmentRemoveIds, previewCourses, selectedCourseIds, pendingExtraClasses]);
+
+  const classPickerStatus = (cls: any) => {
+    const enrolledIds = new Set(
+      editActiveEnrollments
+        .filter((e: any) => !otherEnrollmentRemoveIds.includes(e.id))
+        .map((e: any) => e.classId || e.class?.id)
+    );
+    const inProgramTable = previewCourses.some((p: any) => p.id === cls.id);
+    if (pendingExtraClasses.some((c) => c.id === cls.id)) return { state: 'pending' as const, warnings: [] as string[] };
+    if (inProgramTable ? selectedCourseIds.includes(cls.id) : enrolledIds.has(cls.id)) {
+      return { state: 'enrolled' as const, warnings: [] as string[] };
+    }
+    const warnings: string[] = [];
+    const others = studentPlannedClasses.filter((c) => c.id !== cls.id);
+    const sameUnit = others.find((c) => c.courseId && c.courseId === (cls.courseId ?? cls.course?.id));
+    if (sameUnit) warnings.push('Already in another class of this course unit');
+    const start = toMinutes(cls.startTime);
+    const end = toMinutes(cls.endTime);
+    if (cls.dayOfWeek != null && start != null && end != null) {
+      const clash = others.find((c) => {
+        const s = toMinutes(c.startTime);
+        const e = toMinutes(c.endTime);
+        return c.dayOfWeek === cls.dayOfWeek && s != null && e != null && start < e && s < end;
+      });
+      if (clash) warnings.push(`Time clash with ${clash.label}`);
+    }
+    if (typeof cls.capacity === 'number' && typeof cls.enrolledCount === 'number' && cls.enrolledCount >= cls.capacity) {
+      warnings.push(`Class is at capacity (${cls.enrolledCount}/${cls.capacity}); it will be raised by 1`);
+    }
+    return { state: inProgramTable ? ('program' as const) : ('available' as const), warnings };
+  };
+
+  const addClassFromPicker = (cls: any) => {
+    if (previewCourses.some((p: any) => p.id === cls.id)) {
+      // It belongs to the program table above: tick it there instead of duplicating it.
+      setSelectedCourseIds((prev) => (prev.includes(cls.id) ? prev : [...prev, cls.id]));
+      return;
+    }
+    const existing = editActiveEnrollments.find((e: any) => (e.classId || e.class?.id) === cls.id);
+    if (existing && otherEnrollmentRemoveIds.includes(existing.id)) {
+      // Re-adding a class unticked in this session: just keep it.
+      setOtherEnrollmentRemoveIds((prev) => prev.filter((id) => id !== existing.id));
+      return;
+    }
+    setPendingExtraClasses((prev) => (prev.some((c) => c.id === cls.id) ? prev : [...prev, cls]));
+  };
 
   useEffect(() => {
     if (editOpen && editingStudent && programs.length > 0 && !editForm.programId && editingStudent.dept) {
@@ -1643,6 +1808,35 @@ function StudentsTab({
                 }
               }
 
+              // "Other enrollments" the admin unticked (retakes / classes outside the program table).
+              const otherToRemove = otherEnrollments.filter((e: any) => otherEnrollmentRemoveIds.includes(e.id));
+              for (const enrollment of otherToRemove) {
+                try {
+                  await enrollmentService.deleteEnrollment(enrollment.id);
+                } catch (error: any) {
+                  enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                }
+              }
+              const removedCount = toRemove.length + otherToRemove.length;
+
+              // Classes added with "+ Add class" (retakes / extra course units).
+              for (const cls of pendingExtraClasses) {
+                try {
+                  // Enrolling refuses a full class; raise its capacity by one first (same as Classes → Enrollments).
+                  if (typeof cls.capacity === 'number' && typeof cls.enrolledCount === 'number' && cls.enrolledCount >= cls.capacity) {
+                    await academicService.updateClass(cls.id, { capacity: cls.enrolledCount + 1 } as any);
+                  }
+                  await enrollmentService.createEnrollment({ studentId: editingStudent.id, classId: cls.id, status: 'Active' });
+                  enrollmentSuccessCount++;
+                } catch (error: any) {
+                  if (error?.code === 'ENROLLMENT_ALREADY_EXISTS') {
+                    enrollmentSkippedCount++;
+                  } else {
+                    enrollmentErrors.push(`${cls.course?.code ?? cls.name}: ${error?.message || 'Failed to enroll'}`);
+                  }
+                }
+              }
+
               await loadStudents(1);
               
               setEditOpen(false);
@@ -1650,10 +1844,13 @@ function StudentsTab({
               setPreviewCourses([]);
               setSelectedCourseIds([]);
               setCurrentEnrollments([]);
+              setEditActiveEnrollments([]);
+              setOtherEnrollmentRemoveIds([]);
+              setPendingExtraClasses([]);
               setEditStudentPasswordVisible(false);
 
-              if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0) {
-                toast.success(`Student updated. Enrollments: ${enrollmentSuccessCount} added, ${enrollmentSkippedCount} skipped${toRemove.length > 0 ? `, ${toRemove.length} removed` : ''}`);
+              if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0 || removedCount > 0) {
+                toast.success(`Student updated. Enrollments: ${enrollmentSuccessCount} added, ${enrollmentSkippedCount} skipped${removedCount > 0 ? `, ${removedCount} removed` : ''}`);
               } else {
                 toast.success('Student updated successfully');
               }
@@ -2004,6 +2201,200 @@ function StudentsTab({
             </div>
                   )}
               </div>
+              )}
+
+              {/* Other enrollments: retakes / classes added from Academic → Classes → Enrollments or "+ Add class" */}
+              {!previewLoading && editingStudent && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        Other enrollments ({otherEnrollments.length + pendingExtraClasses.length})
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Classes outside this program, year and semester, such as retakes. Untick a class to unenroll the
+                        student, or add a class from any course unit. Changes apply when you save.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={addClassOpen ? 'secondary' : 'outline'}
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setAddClassOpen((v) => !v)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> {addClassOpen ? 'Close' : 'Add class'}
+                    </Button>
+                  </div>
+
+                  {addClassOpen && (
+                    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          autoFocus
+                          placeholder="Search active-term classes by course code or name (e.g. NSG 2105, Mental Health)"
+                          className="h-9 bg-white pl-8"
+                          value={addClassSearch}
+                          onChange={(e) => setAddClassSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.preventDefault();
+                          }}
+                        />
+                      </div>
+                      <div className="max-h-[38vh] overflow-y-auto rounded-md border bg-white">
+                        {addClassLoading ? (
+                          <div className="py-6 text-center">
+                            <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : addClassSearch.trim().length < 2 ? (
+                          <p className="py-6 text-center text-sm text-muted-foreground">
+                            Type at least 2 characters to find a class.
+                          </p>
+                        ) : addClassResults.length === 0 ? (
+                          <p className="py-6 text-center text-sm text-muted-foreground">
+                            No active classes in the current term match.
+                          </p>
+                        ) : (
+                          <ul className="divide-y">
+                            {addClassResults.map((cls: any) => {
+                              const status = classPickerStatus(cls);
+                              const cohortIds: string[] = cls.cohortProgramIntakeIds ?? (cls.programIntakeId ? [cls.programIntakeId] : []);
+                              const cohorts = cohortIds.map((id) => intakeLabelMap.get(id)).filter(Boolean).join(', ');
+                              const lecturerName = cls.lecturer
+                                ? `${cls.lecturer.firstName ?? ''} ${cls.lecturer.lastName ?? ''}`.trim()
+                                : '';
+                              const schedule =
+                                cls.dayOfWeek != null && cls.startTime && cls.endTime
+                                  ? `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]} ${cls.startTime}–${cls.endTime}`
+                                  : 'No schedule';
+                              return (
+                                <li key={cls.id} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-medium">
+                                      {cls.course?.code ?? '—'} · {cls.course?.name ?? cls.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {cls.name}
+                                      {cohorts ? ` · ${cohorts}` : ''} · {lecturerName || 'No lecturer'} · {schedule}
+                                      {typeof cls.enrolledCount === 'number' ? ` · ${cls.enrolledCount} enrolled` : ''}
+                                    </div>
+                                    {status.warnings.map((w) => (
+                                      <div key={w} className="mt-0.5 flex items-center gap-1 text-xs text-amber-700">
+                                        <AlertCircle className="h-3 w-3 shrink-0" /> {w}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="shrink-0">
+                                    {status.state === 'enrolled' ? (
+                                      <span className="text-xs font-medium text-green-700">Enrolled</span>
+                                    ) : status.state === 'pending' ? (
+                                      <span className="text-xs font-medium text-green-700">To add</span>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7"
+                                        onClick={() => addClassFromPicker(cls)}
+                                      >
+                                        <Plus className="mr-1 h-3.5 w-3.5" />
+                                        {status.state === 'program' ? 'Tick in program list' : 'Add'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {otherEnrollments.length + pendingExtraClasses.length === 0 ? (
+                    <p className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
+                      No enrollments outside this program, year and semester.
+                    </p>
+                  ) : (
+                  <div className="max-h-[40vh] overflow-y-auto border rounded-md">
+                    <Table className="w-full table-auto">
+                      <TableHeader className="sticky top-0 bg-white z-10 border-b">
+                        <TableRow>
+                          <TableHead className="w-12 px-3"></TableHead>
+                          <TableHead className="w-[120px] px-3">Course Code</TableHead>
+                          <TableHead className="min-w-[220px] px-3">Course Name</TableHead>
+                          <TableHead className="w-[140px] px-3">Class</TableHead>
+                          <TableHead className="min-w-[160px] px-3">Lecturer</TableHead>
+                          <TableHead className="w-[130px] px-3">Schedule</TableHead>
+                          <TableHead className="w-[140px] px-3">Venue</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[
+                          ...pendingExtraClasses.map((cls: any) => ({ key: `new-${cls.id}`, pending: true, enrollmentId: null as string | null, cls })),
+                          ...otherEnrollments.map((e: any) => ({ key: e.id, pending: false, enrollmentId: e.id as string | null, cls: e.class ?? {} })),
+                        ].map(({ key, pending, enrollmentId, cls }) => {
+                          const keep = pending || !otherEnrollmentRemoveIds.includes(enrollmentId as string);
+                          const lecturerName = cls.lecturer
+                            ? `${cls.lecturer.firstName ?? ''} ${cls.lecturer.lastName ?? ''}`.trim()
+                            : '';
+                          return (
+                            <TableRow key={key} className={pending ? 'bg-green-50/60' : keep ? 'bg-amber-50/40' : 'opacity-60'}>
+                              <TableCell className="px-3">
+                                <Checkbox
+                                  checked={keep}
+                                  aria-label={`Keep enrollment in ${cls.course?.code ?? cls.name ?? 'class'}`}
+                                  onCheckedChange={(checked) => {
+                                    if (pending) {
+                                      if (!checked) setPendingExtraClasses((prev) => prev.filter((c) => c.id !== cls.id));
+                                      return;
+                                    }
+                                    setOtherEnrollmentRemoveIds((prev) =>
+                                      checked ? prev.filter((id) => id !== enrollmentId) : [...prev, enrollmentId as string]
+                                    );
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
+                              <TableCell className="px-3">
+                                <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                {pending ? (
+                                  <div className="text-xs text-green-700 mt-0.5">To add: enrolled when you save</div>
+                                ) : !keep ? (
+                                  <div className="text-xs text-red-600 mt-0.5">Will be unenrolled on save</div>
+                                ) : null}
+                              </TableCell>
+                              <TableCell className="text-sm px-3 break-words">{cls.name || '—'}</TableCell>
+                              <TableCell className="text-sm px-3 break-words">{lecturerName || '—'}</TableCell>
+                              <TableCell className="text-sm px-3 whitespace-nowrap">
+                                {cls.dayOfWeek != null && cls.startTime && cls.endTime ? (
+                                  <div>
+                                    <div className="font-medium">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]}</div>
+                                    <div className="text-xs text-gray-500">{cls.startTime} - {cls.endTime}</div>
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                              <TableCell className="text-sm px-3 break-words">
+                                {cls.venue ? (
+                                  <div>
+                                    <div>{cls.venue.name}</div>
+                                    {cls.venue.code && <div className="text-xs text-gray-500">{cls.venue.code}</div>}
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  )}
+                </div>
               )}
                   </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
