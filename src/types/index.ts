@@ -93,6 +93,8 @@ export interface Course {
   name: string;
   departmentId: string;
   programId?: string | null;
+  /** Specialization stream: only students of this stream take the course unit. */
+  programStreamId?: string | null;
   lectureHours?: number;
   tutorialHours?: number;
   practicalHours?: number;

@@ -87,6 +87,7 @@ type StudentRow = {
   programId?: string;
   departmentId?: string;
   semester?: number;
+  programStreamId?: string | null;
 };
 type StaffRow = {
   id: string;
@@ -783,7 +784,7 @@ function StudentsTab({
         }
       }
       
-      await loadStudents(1);
+      runQuery(1); // keep the current search and filters
       
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: '' });
       setAddPreviewCourses([]);
@@ -836,7 +837,7 @@ function StudentsTab({
         toast.warning(`Some enrollment issues: ${resultData.enrollmentErrors.slice(0, 2).join(', ')}${resultData.enrollmentErrors.length > 2 ? '...' : ''}`);
       }
       
-      await loadStudents(1);
+      runQuery(1); // keep the current search and filters
       setImportOpen(false);
     } catch (error: any) {
       console.error('Error importing students:', error);
@@ -985,7 +986,13 @@ function StudentsTab({
               <SelectTrigger><SelectValue placeholder="Year (All)" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All years</SelectItem>
-                {Array.from({ length: 10 }).map((_, i) => (
+                {/* With a program selected, only that program's years (e.g. BBA: 1–3). */}
+                {Array.from({
+                  length:
+                    (filters.programId !== '__all__'
+                      ? Number((filterPrograms.find((p: any) => p.id === filters.programId) as any)?.duration) || 0
+                      : 0) || 10,
+                }).map((_, i) => (
                   <SelectItem key={i + 1} value={String(i + 1)}>{`Year ${i + 1}`}</SelectItem>
                 ))}
               </SelectContent>
@@ -1217,7 +1224,7 @@ function StudentsTab({
                           schoolId: dept?.schoolId ?? '',
                           departmentId: studentData?.departmentId ?? dept?.id ?? '',
                           programId: studentData?.programId ?? '',
-                          programStreamId: (studentData as any)?.programStreamId ?? '',
+                          programStreamId: studentData?.programStreamId ?? '',
                           year: `Year ${student.year}`,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
@@ -1852,7 +1859,7 @@ function StudentsTab({
                 }
               }
 
-              await loadStudents(1);
+              runQuery(studentsPage); // stay on the same page with the current filters
               
               setEditOpen(false);
               setEditingStudent(null);
@@ -2232,7 +2239,7 @@ function StudentsTab({
                         Other enrollments ({otherEnrollments.length + pendingExtraClasses.length})
                       </h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Classes outside this program, year and semester, such as retakes. Untick a class to unenroll the
+                        Classes outside this program, year and semester (such as retakes) and classes of another specialization. Untick a class to unenroll the
                         student, or add a class from any course unit. Changes apply when you save.
                       </p>
                     </div>
@@ -2355,7 +2362,21 @@ function StudentsTab({
                           ...pendingExtraClasses.map((cls: any) => ({ key: `new-${cls.id}`, pending: true, enrollmentId: null as string | null, cls })),
                           ...otherEnrollments.map((e: any) => ({ key: e.id, pending: false, enrollmentId: e.id as string | null, cls: e.class ?? {} })),
                         ].map(({ key, pending, enrollmentId, cls }) => {
-                          const keep = pending || !otherEnrollmentRemoveIds.includes(enrollmentId as string);
+                          // Specialization changed in the form: the old stream's classes of the student's
+                          // own program/year/semester are unenrolled by the server on save.
+                          const classStream = cls.programStreamId ?? cls.course?.programStreamId ?? null;
+                          const originalStream = (editingStudent?.programStreamId ?? null) || null;
+                          const newStream = editForm.programStreamId || null;
+                          const droppedByStreamChange =
+                            !pending &&
+                            newStream !== originalStream &&
+                            !!classStream &&
+                            classStream !== newStream &&
+                            cls.course?.programId === editForm.programId &&
+                            Number(cls.course?.level) === parseInt(editForm.year.replace('Year ', ''), 10) &&
+                            Number(cls.course?.semester) === parseInt(editForm.semester, 10);
+                          const keep =
+                            !droppedByStreamChange && (pending || !otherEnrollmentRemoveIds.includes(enrollmentId as string));
                           const lecturerName = cls.lecturer
                             ? `${cls.lecturer.firstName ?? ''} ${cls.lecturer.lastName ?? ''}`.trim()
                             : '';
@@ -2364,6 +2385,7 @@ function StudentsTab({
                               <TableCell className="px-3">
                                 <Checkbox
                                   checked={keep}
+                                  disabled={droppedByStreamChange}
                                   aria-label={`Keep enrollment in ${cls.course?.code ?? cls.name ?? 'class'}`}
                                   onCheckedChange={(checked) => {
                                     if (pending) {
@@ -2387,12 +2409,16 @@ function StudentsTab({
                                   return (
                                     <div className={`text-xs mt-0.5 ${otherStream ? 'text-amber-700' : 'text-indigo-700'}`}>
                                       {st ? `${st.name} (${st.code})` : 'Specialization'} class
-                                      {otherStream ? ' · not the student's specialization' : ''}
+                                      {otherStream ? " · not the student's specialization" : ''}
                                     </div>
                                   );
                                 })()}
                                 {pending ? (
                                   <div className="text-xs text-green-700 mt-0.5">To add: enrolled when you save</div>
+                                ) : droppedByStreamChange ? (
+                                  <div className="text-xs text-red-600 mt-0.5">
+                                    Will be unenrolled on save (specialization changed)
+                                  </div>
                                 ) : !keep ? (
                                   <div className="text-xs text-red-600 mt-0.5">Will be unenrolled on save</div>
                                 ) : null}
@@ -4953,7 +4979,7 @@ function SchoolsTab() {
   });
   /** The stream can be set only on a course unit's own program (not on one linked from another). */
   const nodeCourseStreamProgramId = editingCourse
-    ? editingCourse.programId && editingCourse.programId === selectedNode?.programId
+    ? editingCourse.programId && selectedNode?.type === 'yearSemester' && editingCourse.programId === selectedNode.programId
       ? editingCourse.programId
       : null
     : selectedNode?.type === 'yearSemester'
@@ -9065,6 +9091,8 @@ export default function AdminView({
         programId: s.programId,
         departmentId: s.departmentId,
         semester: s.semester,
+        // Needed by Edit Student: without it the form opened with "None" and saving cleared the stream.
+        programStreamId: s.programStreamId ?? null,
       })) : []);
       setStudentsTotal(res.total ?? 0);
       setStudentsPage(res.page ?? page);
