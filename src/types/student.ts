@@ -381,7 +381,8 @@ export type ClassAttendanceSessionStatus = ClassAttendanceMarkStatus | 'NotMarke
 
 /**
  * How one student's row in the class/course attendance summary report was calculated.
- * Expected = class sessions per course unit the student takes; % = attended ÷ (present + late + absent).
+ * Expected = class sessions per course unit the student takes; attended = present + late;
+ * missed = absent marks; excused and not marked are separate; % = attended ÷ expected.
  */
 export interface ClassAttendanceStudentBreakdown {
   student: { studentId: string; studentName: string; registrationNumber: string };
@@ -395,6 +396,8 @@ export interface ClassAttendanceStudentBreakdown {
     expectedAttendance: number;
     percentage: number;
     presentSessions: number;
+    /** Absent marks only (Missed also includes excused and not-marked sessions). */
+    absentSessions: number;
     mergedSessions: number;
     marksWithoutActiveEnrollment: number;
   };

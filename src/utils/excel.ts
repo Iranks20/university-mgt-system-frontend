@@ -183,7 +183,7 @@ export function exportClassAttendanceSummaryReport(
       `${row.percentage.toFixed(2)}%`,
     ]),
     [],
-    ['Percentage = Attended ÷ (Present + Late + Absent). Late counts ½. Not-marked and excused sessions are not used in the percentage.'],
+    ['Percentage = Attended ÷ Expected × 100. Attended = Present + Late. Missed = marked Absent. Excused and Not Marked are shown separately and are not attended.'],
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);

@@ -19,10 +19,10 @@ import type {
 
 const STATUS_LABEL: Record<ClassAttendanceSessionStatus, string> = {
   Present: 'Present',
-  Late: 'Late (counts ½)',
+  Late: 'Late (counts as attended)',
   Absent: 'Absent (missed)',
-  Excused: 'Excused (not counted)',
-  NotMarked: 'Not marked (not counted)',
+  Excused: 'Excused (not attended)',
+  NotMarked: 'Not marked (not attended)',
 };
 
 const STATUS_CLASS: Record<ClassAttendanceSessionStatus, string> = {
@@ -106,11 +106,10 @@ export default function ClassAttendanceStudentBreakdownDialog({ open, onOpenChan
   const statusCounts: Record<ClassAttendanceSessionStatus, number> = {
     Present: summary?.presentSessions ?? 0,
     Late: summary?.totalLateClasses ?? 0,
-    Absent: summary?.totalMissedClasses ?? 0,
+    Absent: summary?.absentSessions ?? 0,
     Excused: summary?.totalExcusedClasses ?? 0,
     NotMarked: summary?.totalNotMarkedClasses ?? 0,
   };
-  const markedCount = summary ? summary.presentSessions + summary.totalLateClasses + summary.totalMissedClasses : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -167,22 +166,25 @@ export default function ClassAttendanceStudentBreakdownDialog({ open, onOpenChan
                 </li>
                 <li>
                   Of these: Present {summary.presentSessions} · Late {summary.totalLateClasses} · Absent{' '}
-                  {summary.totalMissedClasses} · Excused {summary.totalExcusedClasses} · Not marked{' '}
+                  {summary.absentSessions} · Excused {summary.totalExcusedClasses} · Not marked{' '}
                   {summary.totalNotMarkedClasses}
                 </li>
                 <li>
-                  <strong>Attended</strong> = Present ({summary.presentSessions}) + ½ × Late ({summary.totalLateClasses}) ={' '}
+                  <strong>Attended</strong> = Present ({summary.presentSessions}) + Late ({summary.totalLateClasses}) ={' '}
                   {formatWeightedAttendedCount(summary.totalAttendedClasses)}
                 </li>
                 <li>
-                  <strong>Percentage</strong> = Attended ÷ (Present + Late + Absent) ={' '}
-                  {formatWeightedAttendedCount(summary.totalAttendedClasses)} ÷ {markedCount} ={' '}
+                  <strong>Missed</strong> = sessions marked Absent = {summary.totalMissedClasses}
+                </li>
+                <li>
+                  <strong>Percentage</strong> = Attended ÷ Expected × 100 ={' '}
+                  {formatWeightedAttendedCount(summary.totalAttendedClasses)} ÷ {summary.expectedAttendance} ={' '}
                   {summary.percentage.toFixed(2)}%
                 </li>
               </ul>
               <p className="text-xs text-muted-foreground">
-                Sessions where the student was not marked, and excused sessions, are shown but not counted against the
-                student.
+                Excused and not-marked sessions are not attended, so they lower the percentage; they have their own
+                columns so lecturers can follow them up.
               </p>
               {summary.mergedSessions > 0 ? (
                 <p className="text-xs text-amber-700">
@@ -239,7 +241,7 @@ export default function ClassAttendanceStudentBreakdownDialog({ open, onOpenChan
                           <TableCell className="text-right">{c.excused}</TableCell>
                           <TableCell className="text-right">{c.notMarked}</TableCell>
                           <TableCell className="text-right">
-                            {c.present + c.late + c.absent > 0 ? `${c.percentage.toFixed(2)}%` : '—'}
+                            {c.expected > 0 ? `${c.percentage.toFixed(2)}%` : '—'}
                           </TableCell>
                         </TableRow>
                       ))
