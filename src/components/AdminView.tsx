@@ -50,6 +50,7 @@ import {
   extractEnrolledStudentIdsFromClassEnrollments,
   fetchAllLecturers,
   fetchStudentsForEnrollmentScope,
+  searchStudentsUniversityWide,
   type EnrollCandidateRow,
   type LecturerOption,
 } from '@/lib/class-admin-utils';
@@ -5766,6 +5767,17 @@ function ClassesTab({
   const [enrollListFilter, setEnrollListFilter] = useState<'all' | 'enrolled' | 'not_enrolled'>('all');
   const [enrollScopeLabel, setEnrollScopeLabel] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  // Enrolled when the modal opened (to show pending changes) and the class's capacity.
+  const [enrollOriginalIds, setEnrollOriginalIds] = useState<string[]>([]);
+  const [enrollCapacity, setEnrollCapacity] = useState<number | null>(null);
+  // "Add from other cohorts" finder: search any active student in the university.
+  const [enrollView, setEnrollView] = useState<'cohort' | 'find'>('cohort');
+  const [enrollFindSearch, setEnrollFindSearch] = useState('');
+  const [enrollFindIntake, setEnrollFindIntake] = useState<string>('all');
+  const [enrollFindResults, setEnrollFindResults] = useState<
+    Awaited<ReturnType<typeof searchStudentsUniversityWide>>
+  >([]);
+  const [enrollFindLoading, setEnrollFindLoading] = useState(false);
   const [allLecturers, setAllLecturers] = useState<LecturerOption[]>([]);
   const [lecturersLoading, setLecturersLoading] = useState(false);
   const [form, setForm] = useState({ 
@@ -5993,6 +6005,86 @@ function ClassesTab({
     });
   }, [enrollCandidates, enrollSearch, enrollListFilter, selectedStudentIds]);
 
+  const intakeLabelById = useMemo(
+    () => new Map(programIntakeOptions.map((o) => [o.id, o.label])),
+    [programIntakeOptions]
+  );
+
+  // University-wide student search for the "Add from other cohorts" view (debounced).
+  useEffect(() => {
+    if (!enrollOpen || enrollView !== 'find') return;
+    const term = enrollFindSearch.trim();
+    const intake = enrollFindIntake === 'all' ? null : enrollFindIntake;
+    if (term.length < 2 && !intake) {
+      setEnrollFindResults([]);
+      setEnrollFindLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setEnrollFindLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const rows = await searchStudentsUniversityWide({ search: term, programIntakeId: intake, limit: 30 });
+        if (!cancelled) setEnrollFindResults(rows);
+      } catch {
+        if (!cancelled) setEnrollFindResults([]);
+      } finally {
+        if (!cancelled) setEnrollFindLoading(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [enrollOpen, enrollView, enrollFindSearch, enrollFindIntake]);
+
+  const enrollCohortIds = useMemo(
+    () => new Set(enrollCandidates.filter((c) => !c.outsideCohort).map((c) => c.id)),
+    [enrollCandidates]
+  );
+
+  const addStudentFromFinder = (row: (typeof enrollFindResults)[number]) => {
+    setSelectedStudentIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+    setEnrollCandidates((prev) => {
+      if (prev.some((c) => c.id === row.id)) return prev;
+      const cohortLabel =
+        (row.programIntakeId && intakeLabelById.get(row.programIntakeId)) ||
+        [row.program, row.year ? `Year ${row.year}` : '', row.semester ? `Sem ${row.semester}` : '']
+          .filter(Boolean)
+          .join(' · ');
+      return [...prev, { id: row.id, name: row.name, studentId: row.studentId, email: row.email, outsideCohort: true, cohortLabel }].sort(
+        (a, b) => a.name.localeCompare(b.name)
+      );
+    });
+  };
+
+  const removeStudentFromSelection = (studentId: string) => {
+    setSelectedStudentIds((prev) => prev.filter((id) => id !== studentId));
+  };
+
+  const enrollPendingAdds = selectedStudentIds.filter((id) => !enrollOriginalIds.includes(id));
+  const enrollPendingRemovals = enrollOriginalIds.filter((id) => !selectedStudentIds.includes(id));
+  const enrollOutsideCount = enrollCandidates.filter((c) => c.outsideCohort && selectedStudentIds.includes(c.id)).length;
+  const enrollCapacityShortfall =
+    enrollCapacity != null && enrollPendingAdds.length > 0 && selectedStudentIds.length > enrollCapacity
+      ? selectedStudentIds.length
+      : null;
+
+  const resetEnrollModal = () => {
+    setEnrollOpen(false);
+    setEnrollClass(null);
+    setEnrollCandidates([]);
+    setSelectedStudentIds([]);
+    setEnrollOriginalIds([]);
+    setEnrollCapacity(null);
+    setEnrollSearch('');
+    setEnrollListFilter('all');
+    setEnrollView('cohort');
+    setEnrollFindSearch('');
+    setEnrollFindIntake('all');
+    setEnrollFindResults([]);
+  };
+
   const allVisibleEnrollSelected =
     visibleEnrollCandidates.length > 0 &&
     visibleEnrollCandidates.every((st) => selectedStudentIds.includes(st.id));
@@ -6161,11 +6253,19 @@ function ClassesTab({
     setEnrollListFilter('all');
     setEnrollCandidates([]);
     setEnrollScopeLabel('');
+    setEnrollOriginalIds([]);
+    setEnrollCapacity(null);
+    setEnrollView('cohort');
+    setEnrollFindSearch('');
+    setEnrollFindIntake('all');
+    setEnrollFindResults([]);
     try {
       const classDetails = (await academicService.getClassById(cls.id)) as {
         programIntakeId?: string | null;
         cohortProgramIntakeIds?: string[];
+        capacity?: number | null;
       } | null;
+      setEnrollCapacity(typeof classDetails?.capacity === 'number' ? classDetails.capacity : null);
       const programIntakeIds = [
         ...(classDetails?.cohortProgramIntakeIds || []),
         ...(classDetails?.programIntakeId ? [classDetails.programIntakeId] : []),
@@ -6182,6 +6282,7 @@ function ClassesTab({
       const enrollmentRows = await enrollmentService.getClassEnrollments(cls.id);
       const enrolledIds = extractEnrolledStudentIdsFromClassEnrollments(enrollmentRows);
       setSelectedStudentIds(enrolledIds);
+      setEnrollOriginalIds(enrolledIds);
 
       const candidateGroups = await Promise.all(
         (programIntakeIds.length > 0 ? programIntakeIds : [null]).map((id) =>
@@ -6194,6 +6295,25 @@ function ClassesTab({
       const candidateMap = new Map<string, EnrollCandidateRow>();
       for (const group of candidateGroups) {
         for (const c of group) candidateMap.set(c.id, c);
+      }
+      // Students enrolled from other cohorts (retakers etc.) are listed too, so they can be seen and removed.
+      for (const row of enrollmentRows as Array<{
+        isImplicit?: boolean;
+        studentId?: string;
+        student?: { id?: string; firstName?: string; lastName?: string; studentNumber?: string; email?: string; programIntakeId?: string | null };
+      }>) {
+        if (row.isImplicit) continue;
+        const id = row.studentId ?? row.student?.id;
+        if (!id || candidateMap.has(id)) continue;
+        const s = row.student ?? {};
+        candidateMap.set(id, {
+          id,
+          name: `${s.firstName || ''} ${s.lastName || ''}`.trim() || s.email || id,
+          studentId: s.studentNumber ?? '',
+          email: s.email ?? '',
+          outsideCohort: true,
+          cohortLabel: (s.programIntakeId && intakeLabelById.get(s.programIntakeId)) || 'Other cohort',
+        });
       }
       const candidates = [...candidateMap.values()].sort((a, b) => a.name.localeCompare(b.name));
       if (candidates.length === 0 && !primaryProgramIntakeId) {
@@ -6229,24 +6349,33 @@ function ClassesTab({
         }
       }
       
+      let addErrors: string[] = [];
       if (toAdd.length > 0) {
-        await enrollmentService.bulkEnroll({
+        // Enrolling refuses students beyond the class capacity; raise it to fit the new total first.
+        const projected = currentStudentIds.length - toRemove.length + toAdd.length;
+        if (enrollCapacity != null && projected > enrollCapacity) {
+          await academicService.updateClass(enrollClass.id, { capacity: projected } as any);
+          setEnrollCapacity(projected);
+        }
+        const res = (await enrollmentService.bulkEnroll({
           classId: enrollClass.id,
           studentIds: toAdd,
           status: 'Active',
-        });
+        })) as { errors?: string[]; data?: { errors?: string[] } } | undefined;
+        addErrors = res?.errors ?? res?.data?.errors ?? [];
       }
-      
+
       const refreshed = await enrollmentService.getClassEnrollments(enrollClass.id);
       const finalIds = extractEnrolledStudentIdsFromClassEnrollments(refreshed);
+      if (addErrors.length > 0) {
+        toast.error(`Some students could not be enrolled: ${addErrors.slice(0, 3).join('; ')}`);
+      }
+      window.dispatchEvent(new CustomEvent('class-updated'));
 
       setClasses((prev) =>
         prev.map((c) => (c.id === enrollClass.id ? { ...c, students: finalIds.length } : c))
       );
-      setSelectedStudentIds(finalIds);
-      setEnrollOpen(false);
-      setEnrollClass(null);
-      setEnrollCandidates([]);
+      resetEnrollModal();
       await refreshClassData();
       toast.success(
         `Enrollments updated (${finalIds.length} student${finalIds.length !== 1 ? 's' : ''} enrolled).`
@@ -6774,17 +6903,10 @@ function ClassesTab({
       <Dialog
         open={enrollOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setEnrollOpen(false);
-            setEnrollClass(null);
-            setEnrollCandidates([]);
-            setSelectedStudentIds([]);
-            setEnrollSearch('');
-            setEnrollListFilter('all');
-          }
+          if (!open && !enrollSaving) resetEnrollModal();
         }}
       >
-        <DialogContent className="flex w-[95vw] max-w-3xl max-h-[min(90dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:w-full">
+        <DialogContent className="flex w-[95vw] max-w-4xl max-h-[min(90dvh,900px)] flex-col gap-0 overflow-hidden p-0 sm:w-full">
           <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6">
             <DialogTitle>Manage enrollments</DialogTitle>
             <DialogDescription>
@@ -6796,112 +6918,306 @@ function ClassesTab({
           {enrollLoading ? (
             <div className="flex flex-1 justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
+            </div>
           ) : (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
-              <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search name, reg. no., email..."
-                    className="pl-8 h-9"
-                    value={enrollSearch}
-                    onChange={(e) => setEnrollSearch(e.target.value)}
-                  />
-          </div>
-                <Select
-                  value={enrollListFilter}
-                  onValueChange={(v) => setEnrollListFilter(v as 'all' | 'enrolled' | 'not_enrolled')}
+              <div className="inline-flex rounded-md border bg-muted/40 p-1" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={enrollView === 'cohort'}
+                  onClick={() => setEnrollView('cohort')}
+                  className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                    enrollView === 'cohort' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  <SelectTrigger className="h-9 w-[160px]">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All students</SelectItem>
-                    <SelectItem value="enrolled">Enrolled only</SelectItem>
-                    <SelectItem value="not_enrolled">Not enrolled</SelectItem>
-                </SelectContent>
-             </Select>
-        </div>
-              <p className="text-xs text-muted-foreground">
-                {selectedStudentIds.length} enrolled · {enrollCandidates.length} in cohort ·{' '}
-                {visibleEnrollCandidates.length} shown
-              </p>
-              <div className="max-h-[min(45dvh,380px)] overflow-auto rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={allVisibleEnrollSelected}
-                          onCheckedChange={(c) => toggleEnrollSelectAllVisible(!!c)}
-                          aria-label="Select all visible"
-                        />
-                      </TableHead>
-                      <TableHead>Student</TableHead>
-                      <TableHead>Reg. no.</TableHead>
-                      <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-                    {enrollCandidates.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          No students in this class cohort. Assign a program intake to the class or add students to
-                          that intake.
-                        </TableCell>
-                      </TableRow>
-                    ) : visibleEnrollCandidates.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          No students match your search or filter.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      visibleEnrollCandidates.map((st) => (
-                        <TableRow key={st.id}>
-                          <TableCell>
-                            <Checkbox
-                              id={`enroll-st-${st.id}`}
-                              checked={selectedStudentIds.includes(st.id)}
-                              onCheckedChange={(c) =>
-                                setSelectedStudentIds((prev) =>
-                                  c ? [...prev, st.id] : prev.filter((id) => id !== st.id)
-                                )
-                              }
-                            />
-                    </TableCell>
-                          <TableCell className="font-medium">{st.name}</TableCell>
-                          <TableCell className="font-mono text-sm">{st.studentId || '—'}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{st.email || '—'}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                  Class list ({selectedStudentIds.length})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={enrollView === 'find'}
+                  onClick={() => setEnrollView('find')}
+                  className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                    enrollView === 'find' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add from other cohorts
+                </button>
               </div>
+
+              {enrollView === 'cohort' ? (
+                <>
+                  <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search name, reg. no., email..."
+                        className="pl-8 h-9"
+                        value={enrollSearch}
+                        onChange={(e) => setEnrollSearch(e.target.value)}
+                      />
+                    </div>
+                    <Select
+                      value={enrollListFilter}
+                      onValueChange={(v) => setEnrollListFilter(v as 'all' | 'enrolled' | 'not_enrolled')}
+                    >
+                      <SelectTrigger className="h-9 w-[160px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All students</SelectItem>
+                        <SelectItem value="enrolled">Enrolled only</SelectItem>
+                        <SelectItem value="not_enrolled">Not enrolled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedStudentIds.length} enrolled
+                    {enrollOutsideCount > 0 ? ` (${enrollOutsideCount} from other cohorts)` : ''} ·{' '}
+                    {enrollCohortIds.size} in cohort · {visibleEnrollCandidates.length} shown
+                  </p>
+                  <div className="max-h-[min(45dvh,380px)] overflow-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={allVisibleEnrollSelected}
+                              onCheckedChange={(c) => toggleEnrollSelectAllVisible(!!c)}
+                              aria-label="Select all visible"
+                            />
+                          </TableHead>
+                          <TableHead>Student</TableHead>
+                          <TableHead>Reg. no.</TableHead>
+                          <TableHead>Email</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enrollCandidates.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                              No students in this class cohort. Use &quot;Add from other cohorts&quot; to find any
+                              student, or link the class to a program intake.
+                            </TableCell>
+                          </TableRow>
+                        ) : visibleEnrollCandidates.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                              No students match your search or filter.{' '}
+                              <button
+                                type="button"
+                                className="text-[#015F2B] underline underline-offset-2"
+                                onClick={() => {
+                                  setEnrollFindSearch(enrollSearch);
+                                  setEnrollView('find');
+                                }}
+                              >
+                                Search the whole university
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          visibleEnrollCandidates.map((st) => (
+                            <TableRow key={st.id}>
+                              <TableCell>
+                                <Checkbox
+                                  id={`enroll-st-${st.id}`}
+                                  checked={selectedStudentIds.includes(st.id)}
+                                  onCheckedChange={(c) =>
+                                    setSelectedStudentIds((prev) =>
+                                      c ? [...prev, st.id] : prev.filter((id) => id !== st.id)
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span>{st.name}</span>
+                                  {st.outsideCohort ? (
+                                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 font-normal">
+                                      Other cohort
+                                    </Badge>
+                                  ) : null}
+                                  {enrollPendingAdds.includes(st.id) ? (
+                                    <Badge variant="outline" className="border-green-300 bg-green-50 text-green-800 font-normal">
+                                      To add
+                                    </Badge>
+                                  ) : enrollPendingRemovals.includes(st.id) ? (
+                                    <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700 font-normal">
+                                      To remove
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                {st.outsideCohort && st.cohortLabel ? (
+                                  <div className="text-xs font-normal text-muted-foreground">{st.cohortLabel}</div>
+                                ) : null}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{st.studentId || '—'}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{st.email || '—'}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Find any active student in the university (for example a retaker) and add them to this class.
+                  </p>
+                  <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        autoFocus
+                        placeholder="Name, reg. no. or email (min. 2 characters)"
+                        className="pl-8 h-9"
+                        value={enrollFindSearch}
+                        onChange={(e) => setEnrollFindSearch(e.target.value)}
+                      />
+                    </div>
+                    <Select value={enrollFindIntake} onValueChange={setEnrollFindIntake}>
+                      <SelectTrigger className="h-9 w-full sm:w-[260px]">
+                        <SelectValue placeholder="All cohorts" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All cohorts</SelectItem>
+                        {programIntakeOptions.map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="max-h-[min(45dvh,380px)] overflow-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Student</TableHead>
+                          <TableHead>Reg. no.</TableHead>
+                          <TableHead>Cohort</TableHead>
+                          <TableHead className="w-[130px] text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enrollFindLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="py-8 text-center">
+                              <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
+                            </TableCell>
+                          </TableRow>
+                        ) : enrollFindSearch.trim().length < 2 && enrollFindIntake === 'all' ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                              Type a name or reg. no., or pick a cohort, to find students.
+                            </TableCell>
+                          </TableRow>
+                        ) : enrollFindResults.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                              No active students match.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          enrollFindResults.map((row) => {
+                            const selected = selectedStudentIds.includes(row.id);
+                            const wasEnrolled = enrollOriginalIds.includes(row.id);
+                            const inCohort = enrollCohortIds.has(row.id);
+                            const cohort =
+                              (row.programIntakeId && intakeLabelById.get(row.programIntakeId)) ||
+                              [row.program, row.year ? `Year ${row.year}` : '', row.semester ? `Sem ${row.semester}` : '']
+                                .filter(Boolean)
+                                .join(' · ') ||
+                              '—';
+                            return (
+                              <TableRow key={row.id} className={selected ? 'bg-green-50/50' : ''}>
+                                <TableCell className="font-medium">
+                                  <div>{row.name}</div>
+                                  {row.email ? <div className="text-xs font-normal text-muted-foreground">{row.email}</div> : null}
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">{row.studentId || '—'}</TableCell>
+                                <TableCell className="text-sm">
+                                  {cohort}
+                                  {inCohort ? (
+                                    <Badge variant="outline" className="ml-1.5 font-normal">This class cohort</Badge>
+                                  ) : null}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {selected ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <span className="text-xs font-medium text-green-700">
+                                        {wasEnrolled ? 'Enrolled' : 'Added'}
+                                      </span>
+                                      {!wasEnrolled ? (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 px-2 text-xs"
+                                          onClick={() => removeStudentFromSelection(row.id)}
+                                        >
+                                          Undo
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7"
+                                      onClick={() => addStudentFromFinder(row)}
+                                    >
+                                      <Plus className="mr-1 h-3.5 w-3.5" /> Add
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {enrollFindResults.length >= 30 ? (
+                    <p className="text-xs text-muted-foreground">Showing the first 30 matches. Refine the search to narrow it down.</p>
+                  ) : null}
+                </>
+              )}
+
+              {enrollCapacityShortfall != null ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    This class has a capacity of {enrollCapacity}. Saving will raise it to {enrollCapacityShortfall} so
+                    the new students can be enrolled.
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
-          <DialogFooter className="shrink-0 gap-2 border-t bg-background px-5 py-4 sm:px-6">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setEnrollOpen(false);
-                setEnrollClass(null);
-                setEnrollCandidates([]);
-              }}
-              disabled={enrollSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void saveEnrollmentsForClass()}
-              className="bg-[#015F2B]"
-              disabled={enrollLoading || enrollSaving || !enrollClass}
-            >
-              {enrollSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Save enrollments
-            </Button>
+          <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p className="text-xs text-muted-foreground">
+              {enrollPendingAdds.length === 0 && enrollPendingRemovals.length === 0
+                ? 'No changes yet'
+                : `Pending: ${enrollPendingAdds.length} to add · ${enrollPendingRemovals.length} to remove`}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={resetEnrollModal} disabled={enrollSaving}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void saveEnrollmentsForClass()}
+                className="bg-[#015F2B]"
+                disabled={enrollLoading || enrollSaving || !enrollClass}
+              >
+                {enrollSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Save enrollments
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
