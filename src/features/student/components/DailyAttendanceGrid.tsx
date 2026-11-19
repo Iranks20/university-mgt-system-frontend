@@ -70,7 +70,7 @@ export default function DailyAttendanceGrid({
   /** Unenrolled students and other-specialization classes cannot be marked. */
   const cellLocked = (student: DailyMarkingGrid['students'][number], classId: string) => {
     const access = student.access?.[classId];
-    return access === 'unenrolled' || access === 'other_stream';
+    return access === 'unenrolled' || access === 'other_stream' || access === 'not_enrolled';
   };
 
   useEffect(() => {
@@ -255,10 +255,18 @@ export default function DailyAttendanceGrid({
     setStudentSortDirection('asc');
   };
 
+  // Cohort students first, then retakers / other cohorts (each group sorted).
   const sortedStudents = useMemo(() => {
     if (!grid) return [];
-    return sortDailyGridStudents(grid.students, studentSortField, studentSortDirection);
+    const cohort = grid.students.filter((s) => !s.outsideCohort);
+    const others = grid.students.filter((s) => s.outsideCohort);
+    return [
+      ...sortDailyGridStudents(cohort, studentSortField, studentSortDirection),
+      ...sortDailyGridStudents(others, studentSortField, studentSortDirection),
+    ];
   }, [grid, studentSortField, studentSortDirection]);
+  const outsideCohortCount = grid?.students.filter((s) => s.outsideCohort).length ?? 0;
+  const firstOutsideId = sortedStudents.find((s) => s.outsideCohort)?.studentId;
 
   const toggleStudentSort = (field: StudentSortField) => {
     if (studentSortField === field) {
@@ -271,8 +279,8 @@ export default function DailyAttendanceGrid({
 
   const sortLabel =
     studentSortField === 'studentName'
-      ? `Student name (${studentSortDirection === 'asc' ? 'A?Z' : 'Z?A'})`
-      : `Reg. no. (${studentSortDirection === 'asc' ? 'A?Z' : 'Z?A'})`;
+      ? `Student name (${studentSortDirection === 'asc' ? 'A–Z' : 'Z–A'})`
+      : `Reg. no. (${studentSortDirection === 'asc' ? 'A–Z' : 'Z–A'})`;
 
   return (
     <Card className="border-[#015F2B]/20">
@@ -332,10 +340,11 @@ export default function DailyAttendanceGrid({
           <>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-gray-900">{grid.programIntakeLabel}</span>
-              {' ? '}
+              {' · '}
               {grid.dayName} ({grid.date})
-              {' ? '}
-              {grid.students.length} students ? {grid.slots.length} course units ? {sortLabel}
+              {' · '}
+              {grid.students.length - outsideCohortCount} students
+              {outsideCohortCount > 0 ? ` + ${outsideCohortCount} retakers/other cohorts` : ''} · {grid.slots.length} course units · {sortLabel}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -420,20 +429,34 @@ export default function DailyAttendanceGrid({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedStudents.map((student) => (
-                    <TableRow key={student.studentId}>
+                  {sortedStudents.map((student, rowIndex) => (
+                    <React.Fragment key={student.studentId}>
+                    {student.studentId === firstOutsideId ? (
+                      <TableRow className="bg-amber-50/70 hover:bg-amber-50/70">
+                        <TableCell colSpan={grid.slots.length + 4} className="py-1.5 text-xs font-medium text-amber-800">
+                          Retakers and students from other cohorts ({outsideCohortCount}). They can be marked only
+                          for the classes they are enrolled in.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    <TableRow>
                       <TableCell className="sticky left-0 z-10 bg-background font-medium text-muted-foreground">
-                        {student.serialNo}
+                        {rowIndex + 1}
                       </TableCell>
                       <TableCell className="sticky left-12 z-10 bg-background font-medium whitespace-nowrap">
                         {student.studentName}
+                        {student.outsideCohort ? (
+                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                            {student.cohortLabel || 'Other cohort'}
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell className="sticky left-[228px] z-10 bg-background text-sm whitespace-nowrap">
                         {student.registrationNumber}
                       </TableCell>
                       {grid.slots.map((slot) => {
                         const access = student.access?.[slot.classId];
-                        if (access === 'unenrolled' || access === 'other_stream') {
+                        if (access === 'unenrolled' || access === 'other_stream' || access === 'not_enrolled') {
                           return (
                             <TableCell
                               key={slot.classId}
@@ -441,11 +464,13 @@ export default function DailyAttendanceGrid({
                               title={
                                 access === 'unenrolled'
                                   ? 'This student was unenrolled from this class. Re-enroll them to mark attendance.'
-                                  : 'This class is for another specialization.'
+                                  : access === 'other_stream'
+                                    ? 'This class is for another specialization.'
+                                    : 'Not enrolled in this class.'
                               }
                             >
                               <span className="text-[11px] text-muted-foreground">
-                                {access === 'unenrolled' ? 'Unenrolled' : 'Not their stream'}
+                                {access === 'unenrolled' ? 'Unenrolled' : access === 'other_stream' ? 'Not their stream' : '—'}
                               </span>
                             </TableCell>
                           );
@@ -474,6 +499,7 @@ export default function DailyAttendanceGrid({
                         </Select>
                       </TableCell>
                     </TableRow>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>
