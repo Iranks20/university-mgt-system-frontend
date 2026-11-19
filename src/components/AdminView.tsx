@@ -215,6 +215,10 @@ function StudentsTab({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [currentEnrollments, setCurrentEnrollments] = useState<string[]>([]);
+  // Active enrollments of the student being edited (all classes, incl. retakes added from Classes).
+  const [editActiveEnrollments, setEditActiveEnrollments] = useState<any[]>([]);
+  // Other (outside program/semester) enrollments the admin unticked: removed on save.
+  const [otherEnrollmentRemoveIds, setOtherEnrollmentRemoveIds] = useState<string[]>([]);
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
   const [importPrograms, setImportPrograms] = useState<any[]>([]);
@@ -463,10 +467,19 @@ function StudentsTab({
 
   useEffect(() => {
     const loadPreview = async () => {
+      const activeOnly = (rows: unknown) =>
+        (Array.isArray(rows) ? rows : []).filter((e: any) => (e.status ?? 'Active') === 'Active');
+
       if (!editForm.programId || !editForm.year || !editingStudent) {
         setPreviewCourses([]);
         setSelectedCourseIds([]);
         setCurrentEnrollments([]);
+        if (editingStudent) {
+          const rows = await enrollmentService.getStudentEnrollments(editingStudent.id).catch(() => []);
+          setEditActiveEnrollments(activeOnly(rows));
+        } else {
+          setEditActiveEnrollments([]);
+        }
         return;
       }
 
@@ -487,13 +500,12 @@ function StudentsTab({
 
         setPreviewCourses(courses);
         // The API returns every enrollment row (Dropped/Inactive too); only Active ones are enrolled.
-        const enrolledClassIds = (enrollments as any[])
-          .filter((e: any) => (e.status ?? 'Active') === 'Active')
-          .map((e: any) => e.classId || e.class?.id)
-          .filter(Boolean);
+        const active = activeOnly(enrollments);
+        setEditActiveEnrollments(active);
+        const enrolledClassIds = active.map((e: any) => e.classId || e.class?.id).filter(Boolean);
         const enrollableIds = (courses as any[]).filter((c: any) => !c.noClass).map((c: any) => c.id);
-        // Only classes shown in this list can be changed here; other enrollments (retakes,
-        // other semesters) are left alone on save.
+        // The program/semester table manages only its own classes; everything else is listed
+        // under "Other enrollments" (see otherEnrollments) and is only removed if unticked there.
         const shownEnrolledIds = enrolledClassIds.filter((id: string) => enrollableIds.includes(id));
         setCurrentEnrollments(shownEnrolledIds);
         setSelectedCourseIds(shownEnrolledIds);
@@ -507,10 +519,25 @@ function StudentsTab({
       }
     };
 
+    setOtherEnrollmentRemoveIds([]);
     if (editOpen && editingStudent) {
       loadPreview();
     }
   }, [editForm.programId, editForm.departmentId, editForm.year, editForm.semester, editOpen, editingStudent]);
+
+  // Active enrollments outside the program/semester table above (retakes, classes added from
+  // Academic → Classes → Enrollments, other semesters) so the admin sees everything the student is in.
+  const otherEnrollments = useMemo(() => {
+    const shownIds = new Set(previewCourses.filter((c: any) => !c.noClass).map((c: any) => c.id));
+    return editActiveEnrollments
+      .filter((e: any) => {
+        const classId = e.classId || e.class?.id;
+        return classId && !shownIds.has(classId) && e.class?.isActive !== false;
+      })
+      .sort((a: any, b: any) =>
+        String(a.class?.course?.code ?? '').localeCompare(String(b.class?.course?.code ?? ''))
+      );
+  }, [editActiveEnrollments, previewCourses]);
 
   useEffect(() => {
     if (editOpen && editingStudent && programs.length > 0 && !editForm.programId && editingStudent.dept) {
@@ -1643,6 +1670,17 @@ function StudentsTab({
                 }
               }
 
+              // "Other enrollments" the admin unticked (retakes / classes outside the program table).
+              const otherToRemove = otherEnrollments.filter((e: any) => otherEnrollmentRemoveIds.includes(e.id));
+              for (const enrollment of otherToRemove) {
+                try {
+                  await enrollmentService.deleteEnrollment(enrollment.id);
+                } catch (error: any) {
+                  enrollmentErrors.push(`Failed to remove enrollment: ${error?.message || 'Unknown error'}`);
+                }
+              }
+              const removedCount = toRemove.length + otherToRemove.length;
+
               await loadStudents(1);
               
               setEditOpen(false);
@@ -1650,10 +1688,12 @@ function StudentsTab({
               setPreviewCourses([]);
               setSelectedCourseIds([]);
               setCurrentEnrollments([]);
+              setEditActiveEnrollments([]);
+              setOtherEnrollmentRemoveIds([]);
               setEditStudentPasswordVisible(false);
 
-              if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0) {
-                toast.success(`Student updated. Enrollments: ${enrollmentSuccessCount} added, ${enrollmentSkippedCount} skipped${toRemove.length > 0 ? `, ${toRemove.length} removed` : ''}`);
+              if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0 || removedCount > 0) {
+                toast.success(`Student updated. Enrollments: ${enrollmentSuccessCount} added, ${enrollmentSkippedCount} skipped${removedCount > 0 ? `, ${removedCount} removed` : ''}`);
               } else {
                 toast.success('Student updated successfully');
               }
@@ -2004,6 +2044,87 @@ function StudentsTab({
             </div>
                   )}
               </div>
+              )}
+
+              {/* Other enrollments: retakes / classes added from Academic → Classes → Enrollments */}
+              {!previewLoading && otherEnrollments.length > 0 && (
+                <div className="space-y-3">
+                  <div className="border-b pb-2">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Other enrollments ({otherEnrollments.length})
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Classes outside this program, year and semester, such as retakes or classes added from
+                      Academic → Classes → Enrollments. Untick a class to unenroll the student when you save.
+                    </p>
+                  </div>
+                  <div className="max-h-[40vh] overflow-y-auto border rounded-md">
+                    <Table className="w-full table-auto">
+                      <TableHeader className="sticky top-0 bg-white z-10 border-b">
+                        <TableRow>
+                          <TableHead className="w-12 px-3"></TableHead>
+                          <TableHead className="w-[120px] px-3">Course Code</TableHead>
+                          <TableHead className="min-w-[220px] px-3">Course Name</TableHead>
+                          <TableHead className="w-[140px] px-3">Class</TableHead>
+                          <TableHead className="min-w-[160px] px-3">Lecturer</TableHead>
+                          <TableHead className="w-[130px] px-3">Schedule</TableHead>
+                          <TableHead className="w-[140px] px-3">Venue</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {otherEnrollments.map((e: any) => {
+                          const cls = e.class ?? {};
+                          const keep = !otherEnrollmentRemoveIds.includes(e.id);
+                          const lecturerName = cls.lecturer
+                            ? `${cls.lecturer.firstName ?? ''} ${cls.lecturer.lastName ?? ''}`.trim()
+                            : '';
+                          return (
+                            <TableRow key={e.id} className={keep ? 'bg-amber-50/40' : 'opacity-60'}>
+                              <TableCell className="px-3">
+                                <Checkbox
+                                  checked={keep}
+                                  aria-label={`Keep enrollment in ${cls.course?.code ?? cls.name ?? 'class'}`}
+                                  onCheckedChange={(checked) =>
+                                    setOtherEnrollmentRemoveIds((prev) =>
+                                      checked ? prev.filter((id) => id !== e.id) : [...prev, e.id]
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
+                              <TableCell className="px-3">
+                                <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                {!keep ? <div className="text-xs text-red-600 mt-0.5">Will be unenrolled on save</div> : null}
+                              </TableCell>
+                              <TableCell className="text-sm px-3 break-words">{cls.name || '—'}</TableCell>
+                              <TableCell className="text-sm px-3 break-words">{lecturerName || '—'}</TableCell>
+                              <TableCell className="text-sm px-3 whitespace-nowrap">
+                                {cls.dayOfWeek != null && cls.startTime && cls.endTime ? (
+                                  <div>
+                                    <div className="font-medium">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][cls.dayOfWeek]}</div>
+                                    <div className="text-xs text-gray-500">{cls.startTime} - {cls.endTime}</div>
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                              <TableCell className="text-sm px-3 break-words">
+                                {cls.venue ? (
+                                  <div>
+                                    <div>{cls.venue.name}</div>
+                                    {cls.venue.code && <div className="text-xs text-gray-500">{cls.venue.code}</div>}
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
               )}
                   </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
