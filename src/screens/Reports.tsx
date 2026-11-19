@@ -26,6 +26,7 @@ import { studentService } from '@/services/student.service';
 import {
   exportClassAttendanceSummaryReport,
   exportCourseWiseAttendanceSummaryReport,
+  exportFilteredTableReport,
   exportLecturerPerformanceTable,
   exportLecturerStatsDetailReport,
 } from '@/utils/excel';
@@ -203,6 +204,10 @@ export default function Reports() {
     }>;
   } | null>(null);
   const [compReportLoading, setCompReportLoading] = useState(false);
+  // Filters a loaded report was generated with (exports describe the data, even if filters change later).
+  const [atRiskFilterLabels, setAtRiskFilterLabels] = useState<string[]>([]);
+  const [compReportRange, setCompReportRange] = useState<{ from: string; to: string } | null>(null);
+  const [schoolPerfFilterLabel, setSchoolPerfFilterLabel] = useState<string>('');
 
   const getSchoolPerfDateParams = (): { dateFrom?: string; dateTo?: string } | undefined => {
     if (reportsScopedDates) return reportsScopedDates;
@@ -347,6 +352,9 @@ export default function Reports() {
   useEffect(() => {
     setSchoolsLoading(true);
     const params = getSchoolPerfDateParams();
+    setSchoolPerfFilterLabel(
+      params?.dateFrom || params?.dateTo ? `${params?.dateFrom ?? '…'} – ${params?.dateTo ?? '…'}` : 'All time'
+    );
     const load = async () => {
       try {
         const list = await qaService.getSchoolSummaryReport(params);
@@ -848,14 +856,128 @@ export default function Reports() {
       toast.warning('Generate the report first.');
       return;
     }
+    const search = classAttendSearch.trim();
+    if (search && filteredClassAttendRows.length === 0) {
+      toast.warning('No students match the search, so there is nothing to export.');
+      return;
+    }
     setClassAttendExporting(true);
     try {
-      exportClassAttendanceSummaryReport(classAttendReport);
-      toast.success('Excel report downloaded');
+      // With a search, export only the matching students.
+      exportClassAttendanceSummaryReport(
+        search ? { ...classAttendReport, students: filteredClassAttendRows } : classAttendReport,
+        undefined,
+        { search }
+      );
+      toast.success(
+        search
+          ? `Excel report downloaded (${filteredClassAttendRows.length} matching student${filteredClassAttendRows.length !== 1 ? 's' : ''})`
+          : 'Excel report downloaded'
+      );
     } catch {
       toast.error('Export failed');
     } finally {
       setClassAttendExporting(false);
+    }
+  };
+
+  const handleExportAtRiskStudents = () => {
+    if (studentsReport.length === 0) {
+      toast.warning('Load the report first.');
+      return;
+    }
+    try {
+      exportFilteredTableReport({
+        title: 'Students at Risk (Low Attendance)',
+        filters: atRiskFilterLabels,
+        headers: ['No.', 'Student', 'Registration No.', 'Program', 'Attendance %', 'Attended', 'Missed', 'Excused', 'Not Marked', 'Expected'],
+        rows: studentsReport.map((s, i) => [
+          i + 1,
+          s.name,
+          s.registrationNumber ?? '',
+          s.program ?? '',
+          s.attendanceRate != null ? `${Number(s.attendanceRate).toFixed(2)}%` : '',
+          s.attendedSessions ?? '',
+          s.missed ?? 0,
+          s.excused ?? 0,
+          s.notMarked ?? 0,
+          s.expectedSessions ?? '',
+        ]),
+        sheetName: 'Students at Risk',
+        footerNote: 'Attendance % = Attended ÷ Expected × 100. Attended = Present + Late. Missed = marked Absent.',
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    }
+  };
+
+  const handleExportCompensationReport = () => {
+    if (!compReport || compReport.cancelledSessions === 0) {
+      toast.warning('Load the report first.');
+      return;
+    }
+    try {
+      const rows: (string | number)[][] = [
+        ...compReport.uncompensatedCancellations.map((u) => [u.date, u.className, u.courseUnit, u.lecturerName, 'No', '']),
+        ...compReport.compensatedCancellations.map((c) => [
+          c.date,
+          c.className,
+          c.courseUnit,
+          c.lecturerName,
+          'Yes',
+          c.compensationSessions.map((s) => `${s.date} ${s.startTime}–${s.endTime} @ ${s.venue}`).join('; '),
+        ]),
+      ].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      exportFilteredTableReport({
+        title: 'Compensation Tracking Report',
+        filters: [
+          compReportRange ? `Cancelled between: ${compReportRange.from} – ${compReportRange.to}` : null,
+          `${compReport.cancelledSessions} approved cancellations`,
+          `${compReport.compensationSessions} compensation sessions`,
+          `${compReport.uncompensatedCancellations.length} without compensation`,
+        ],
+        headers: ['Cancelled date', 'Class', 'Course', 'Lecturer', 'Compensated', 'Compensation sessions'],
+        rows,
+        sheetName: 'Compensation',
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
+    }
+  };
+
+  const handleExportSchoolPerformance = () => {
+    if (schoolPerformance.length === 0) {
+      toast.warning('No school data to export.');
+      return;
+    }
+    const withScheduled = schoolPerformance.some((s) => s.scheduled != null);
+    try {
+      exportFilteredTableReport({
+        title: 'School Performance Comparison',
+        filters: [schoolPerfFilterLabel ? `Period: ${schoolPerfFilterLabel}` : null],
+        headers: [
+          'School',
+          ...(withScheduled ? ['Scheduled', 'Rate (vs scheduled)'] : []),
+          'Sessions Recorded',
+          'Classes Taught',
+          'Total Untaught',
+          'Performance',
+        ],
+        rows: schoolPerformance.map((s) => [
+          s.name,
+          ...(withScheduled ? [s.scheduled ?? '', s.rateVsScheduled != null ? `${s.rateVsScheduled}%` : ''] : []),
+          s.taught + s.untaught,
+          s.taught,
+          s.untaught,
+          `${s.rate}%`,
+        ]),
+        sheetName: 'School Performance',
+      });
+      toast.success('Excel report downloaded');
+    } catch {
+      toast.error('Export failed');
     }
   };
 
@@ -972,12 +1094,37 @@ export default function Reports() {
     studentAttendDateRange,
   ]);
 
+  /** Readable list of the shared attendance filters (school, program, course, class, year, cohort, dates). */
+  const describeAttendFilters = (dateFrom?: string, dateTo?: string): string[] => {
+    const labelOf = (options: Array<{ value: string; label: string }>, value: string) =>
+      options.find((o) => o.value === value)?.label ?? value;
+    const parts: string[] = [];
+    if (attendSelectedSchool !== ALL_VALUE) parts.push(`School: ${labelOf(attendSchoolComboboxOptions, attendSelectedSchool)}`);
+    if (attendSelectedProgramId !== ALL_VALUE) parts.push(`Program: ${labelOf(attendProgramComboboxOptions, attendSelectedProgramId)}`);
+    if (attendSelectedCourseId !== ALL_VALUE) parts.push(`Course: ${labelOf(attendCourseComboboxOptions, attendSelectedCourseId)}`);
+    if (attendSelectedClassId !== ALL_VALUE) parts.push(`Class: ${labelOf(attendClassComboboxOptions, attendSelectedClassId)}`);
+    if (attendSelectedYear !== ALL_VALUE) parts.push(`Year: ${attendSelectedYear}`);
+    if (attendSelectedSemester !== ALL_VALUE) parts.push(`Semester: ${attendSelectedSemester}`);
+    if (attendSelectedProgramIntakeId !== ALL_VALUE) {
+      const intake = attendProgramIntakes.find((i) => i.id === attendSelectedProgramIntakeId);
+      parts.push(`Cohort: ${intake ? `${intake.year} · Sem ${intake.semester} · ${intake.intakeType}` : attendSelectedProgramIntakeId}`);
+    }
+    if (dateFrom || dateTo) parts.push(`Period: ${dateFrom || '…'} – ${dateTo || '…'}`);
+    return parts;
+  };
+
   const loadAtRiskStudents = async () => {
     setStudentsLoading(true);
     try {
+      const params = buildAtRiskReportParams();
       const { students, thresholdPercent, minSessions } =
-        await analyticsService.getWorstPerformingStudents(buildAtRiskReportParams());
+        await analyticsService.getWorstPerformingStudents(params);
       setAtRiskMeta({ thresholdPercent, minSessions });
+      setAtRiskFilterLabels([
+        ...describeAttendFilters(params.dateFrom, params.dateTo),
+        `Below ${thresholdPercent}% with at least ${minSessions} expected sessions`,
+        `Top ${params.limit}`,
+      ]);
       setStudentsReport(
         students.map((s: any) => ({
           id: s.studentId || s.id || '',
@@ -1051,7 +1198,12 @@ export default function Reports() {
     if (headerReportActionBusy) return;
     setExportAllLoading(true);
     try {
-      const result = await reportService.exportReport('all', 'xlsx');
+      // Respect the academic term picked at the top of the page.
+      const result = await reportService.exportReport(
+        'all',
+        'xlsx',
+        reportsScopedDates ? { start: reportsScopedDates.dateFrom, end: reportsScopedDates.dateTo } : undefined
+      );
                 if (result.downloadUrl) {
                   const link = document.createElement('a');
                   link.href = result.downloadUrl;
@@ -1518,7 +1670,18 @@ export default function Reports() {
             
             <Card>
               <CardHeader>
-                <CardTitle>Detailed School Statistics</CardTitle>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <CardTitle>Detailed School Statistics</CardTitle>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                    onClick={handleExportSchoolPerformance}
+                    disabled={schoolsLoading || schoolPerformance.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Excel
+                  </Button>
+                </div>
                 <CardDescription>
                   {schoolPerfDateRange !== 'all' ? 'Scheduled = timetable slots in period. Rate (vs scheduled) = taught ÷ scheduled.' : 'Select a date range to see scheduled counts and rate vs scheduled.'}
                 </CardDescription>
@@ -1847,20 +2010,13 @@ export default function Reports() {
                       disabled={classAttendExporting || !classAttendReport?.students.length}
                     >
                       <Download className="mr-2 h-4 w-4" />
-                      {classAttendExporting ? 'Exporting…' : 'Export Excel'}
+                      {classAttendExporting
+                        ? 'Exporting…'
+                        : classAttendSearch.trim() && classAttendReport
+                          ? `Export Excel (${filteredClassAttendRows.length})`
+                          : 'Export Excel'}
                     </Button>
                   </div>
-
-                  {classAttendReport && (
-                    <p className="text-sm text-muted-foreground">
-                      {classAttendReport.totals.studentCount} students ·{' '}
-                      {formatWeightedAttendedCount(classAttendReport.totals.totalAttendedClasses)} attended ·{' '}
-                      {classAttendReport.totals.totalLateClasses ?? 0} late · {classAttendReport.totals.totalMissedClasses} missed ·{' '}
-                      {classAttendReport.totals.totalNotMarkedClasses ?? 0} not marked ·{' '}
-                      {classAttendReport.totals.expectedAttendance} expected sessions · Percentage = attended (present + late) ÷
-                      expected; excused and not-marked sessions are shown separately and lower the percentage.
-                    </p>
-                  )}
 
                   {classAttendReport && classAttendReport.students.length > 0 && (
                     <div className="flex flex-wrap items-center gap-3">
@@ -2386,6 +2542,15 @@ export default function Reports() {
                   <Button className="bg-[#015F2B] hover:bg-[#014022]" onClick={loadAtRiskStudents} disabled={studentsLoading}>
                     {studentsLoading ? 'Loading…' : 'Load report'}
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                    onClick={handleExportAtRiskStudents}
+                    disabled={studentsLoading || studentsReport.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Excel
+                  </Button>
                 </div>
 
                 <div className="rounded-md border overflow-x-auto">
@@ -2471,9 +2636,11 @@ export default function Reports() {
                       try {
                         const data = await qaService.getCompensationTrackingReport(compDateFrom, compDateTo);
                         setCompReport(data);
+                        setCompReportRange({ from: compDateFrom, to: compDateTo });
                       } catch (e: any) {
                         toast.error(e?.message || 'Failed to load report');
                         setCompReport(null);
+                        setCompReportRange(null);
                       } finally {
                         setCompReportLoading(false);
                       }
@@ -2481,6 +2648,15 @@ export default function Reports() {
                     disabled={compReportLoading}
                   >
                     {compReportLoading ? 'Loading…' : 'Load report'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-[#015F2B] bg-emerald-50 text-[#015F2B] hover:bg-[#015F2B] hover:text-white"
+                    onClick={handleExportCompensationReport}
+                    disabled={compReportLoading || !compReport || compReport.cancelledSessions === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Excel
                   </Button>
                 </div>
                 {compReport && (

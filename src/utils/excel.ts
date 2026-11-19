@@ -145,9 +145,11 @@ function formatReportDateLabel(iso: string | null): string {
 
 export function exportClassAttendanceSummaryReport(
   report: ClassAttendanceSummaryReport,
-  filename?: string
+  filename?: string,
+  options?: { search?: string }
 ): void {
   const filterParts: string[] = [];
+  if (options?.search?.trim()) filterParts.push(`Search: "${options.search.trim()}"`);
   if (report.filters.schoolName) filterParts.push(`School: ${report.filters.schoolName}`);
   if (report.filters.programName) filterParts.push(`Program: ${report.filters.programName}`);
   if (report.filters.courseName) filterParts.push(`Course: ${report.filters.courseName}`);
@@ -1971,4 +1973,42 @@ export function exportLecturerStatsDetailReport(
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   saveAs(blob, filename || defaultFilename);
+}
+
+/**
+ * Simple filtered-table export used by report tabs (Students at Risk, Compensation, School Performance).
+ * Writes: university, title, a "filters applied" line, then the header row and data rows.
+ */
+export function exportFilteredTableReport(params: {
+  title: string;
+  filters: Array<string | null | undefined | false>;
+  headers: string[];
+  rows: (string | number)[][];
+  sheetName?: string;
+  footerNote?: string;
+  filename?: string;
+}): void {
+  const filterLine = [...params.filters.filter((f): f is string => Boolean(f)), `Generated: ${formatDate(new Date())}`].join(' | ');
+  const data: (string | number)[][] = [
+    [UNIVERSITY_NAME],
+    [params.title],
+    [filterLine],
+    [],
+    params.headers,
+    ...params.rows,
+  ];
+  if (params.footerNote) data.push([], [params.footerNote]);
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const colCount = Math.max(1, params.headers.length);
+  ws['!cols'] = params.headers.map((h, i) => {
+    const longest = Math.max(h.length, ...params.rows.slice(0, 500).map((r) => String(r[i] ?? '').length));
+    return { wch: Math.min(48, Math.max(8, longest + 2)) };
+  });
+  ws['!merges'] = [0, 1, 2].map((r) => ({ s: { r, c: 0 }, e: { r, c: colCount - 1 } }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (params.sheetName || 'Report').slice(0, 31));
+  const safeName = params.title.replace(/[<>:"/\|?*]+/g, '_').slice(0, 80);
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  saveAs(blob, params.filename || `${safeName}_${formatDate(new Date())}.xlsx`);
 }
