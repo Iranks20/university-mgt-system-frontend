@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { settingsService } from './settings.service';
 
 export const analyticsService = {
   getLecturerPerformance: async (
@@ -76,20 +77,30 @@ export const analyticsService = {
       if (options.classId) params.classId = options.classId;
       if (options.level != null) params.level = String(options.level);
       if (options.semester != null) params.semester = String(options.semester);
-      const response = await api.get<unknown>('/analytics/worst-students', params);
+      // The API sends { data: students[], meta }, but the api client unwraps `data`, so the response
+      // is usually the students array itself (and meta is dropped). Handle every shape.
+      const [response, thresholds] = await Promise.all([
+        api.get<unknown>('/analytics/worst-students', params),
+        settingsService.getPerformanceThresholds().catch(() => null),
+      ]);
       const r = response as {
         data?: unknown[] | { students?: unknown[] };
+        students?: unknown[];
         meta?: { thresholdPercent?: number; minSessions?: number };
       };
-      const rawData = r?.data;
-      const students = Array.isArray(rawData)
-        ? rawData
-        : Array.isArray((rawData as { students?: unknown[] })?.students)
-          ? (rawData as { students: unknown[] }).students
-          : [];
+      const students = Array.isArray(response)
+        ? response
+        : Array.isArray(r?.data)
+          ? r.data
+          : Array.isArray(r?.students)
+            ? r.students
+            : Array.isArray((r?.data as { students?: unknown[] })?.students)
+              ? (r.data as { students: unknown[] }).students
+              : [];
       return {
         students,
-        thresholdPercent: r?.meta?.thresholdPercent ?? 70,
+        // Same setting the backend uses (thresholds.student.good) when meta is unavailable.
+        thresholdPercent: r?.meta?.thresholdPercent ?? thresholds?.student?.good ?? 70,
         minSessions: r?.meta?.minSessions ?? 3,
       };
     } catch (error) {
