@@ -81,7 +81,8 @@ export const enrollmentService = {
     }
   },
 
-  previewCourses: async (params: { departmentId?: string; programId?: string; program?: string; year?: number; semester?: number }) => {
+  /** `programStreamId`: the student's specialization ('none' = no stream) to hide other streams' classes. */
+  previewCourses: async (params: { departmentId?: string; programId?: string; program?: string; year?: number; semester?: number; programStreamId?: string }) => {
     try {
       const response = await api.get('/enrollments/preview-courses', params);
       return Array.isArray(response) ? response : (response as any)?.data || [];

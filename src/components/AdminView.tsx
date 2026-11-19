@@ -63,6 +63,7 @@ import { AcademicRolloverPanel } from '@/components/admin/AcademicRolloverPanel'
 import { StudentStatusDialog } from '@/components/admin/StudentStatusDialog';
 import { LecturerLoginDialog } from '@/components/admin/LecturerLoginDialog';
 import { ProgramStreamsDialog } from '@/components/admin/ProgramStreamsDialog';
+import { CourseStreamSelect } from '@/components/admin/CourseStreamSelect';
 import { studentStatusBadgeClass, studentStatusLabel } from '@/lib/student-lifecycle';
 import { AcademicRolloverWizard } from '@/components/admin/AcademicRolloverWizard';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -86,6 +87,7 @@ type StudentRow = {
   programId?: string;
   departmentId?: string;
   semester?: number;
+  programStreamId?: string | null;
 };
 type StaffRow = {
   id: string;
@@ -443,6 +445,7 @@ function StudentsTab({
           programId: addForm.programId,
           year,
           semester,
+          programStreamId: addForm.programStreamId || 'none',
         });
 
         setAddPreviewCourses(courses);
@@ -459,7 +462,7 @@ function StudentsTab({
     if (addOpen) {
       loadAddPreview();
     }
-  }, [addForm.programId, addForm.departmentId, addForm.year, addForm.semester, addOpen]);
+  }, [addForm.programId, addForm.departmentId, addForm.year, addForm.semester, addForm.programStreamId, addOpen]);
 
   useEffect(() => {
     if (editForm.programId) {
@@ -501,6 +504,7 @@ function StudentsTab({
             programId: editForm.programId,
             year,
             semester,
+            programStreamId: editForm.programStreamId || 'none',
           }),
           enrollmentService.getStudentEnrollments(editingStudent.id),
         ]);
@@ -515,7 +519,14 @@ function StudentsTab({
         // under "Other enrollments" (see otherEnrollments) and is only removed if unticked there.
         const shownEnrolledIds = enrolledClassIds.filter((id: string) => enrollableIds.includes(id));
         setCurrentEnrollments(shownEnrolledIds);
-        setSelectedCourseIds(shownEnrolledIds);
+        // Specialization changed in the form: saving moves the student into the new stream's
+        // classes, so show them ticked.
+        const originalStream = ((editingStudent as any)?.programStreamId ?? '') as string;
+        const streamChanged = (editForm.programStreamId || '') !== originalStream;
+        const newStreamClassIds = streamChanged
+          ? (courses as any[]).filter((c: any) => !c.noClass && c.programStream).map((c: any) => c.id)
+          : [];
+        setSelectedCourseIds([...new Set([...shownEnrolledIds, ...newStreamClassIds])]);
       } catch (error) {
         console.error('Error loading preview courses:', error);
         setPreviewCourses([]);
@@ -530,7 +541,7 @@ function StudentsTab({
     if (editOpen && editingStudent) {
       loadPreview();
     }
-  }, [editForm.programId, editForm.departmentId, editForm.year, editForm.semester, editOpen, editingStudent]);
+  }, [editForm.programId, editForm.departmentId, editForm.year, editForm.semester, editForm.programStreamId, editOpen, editingStudent]);
 
   // Active enrollments outside the program/semester table above (retakes, classes added from
   // Academic → Classes → Enrollments, other semesters) so the admin sees everything the student is in.
@@ -773,7 +784,7 @@ function StudentsTab({
         }
       }
       
-      await loadStudents(1);
+      runQuery(1); // keep the current search and filters
       
       setAddForm({ name: '', email: '', studentId: '', schoolId: schools[0]?.id || '', departmentId: '', programId: '', programStreamId: '', year: 'Year 1', semester: '1', tempPassword: '' });
       setAddPreviewCourses([]);
@@ -826,7 +837,7 @@ function StudentsTab({
         toast.warning(`Some enrollment issues: ${resultData.enrollmentErrors.slice(0, 2).join(', ')}${resultData.enrollmentErrors.length > 2 ? '...' : ''}`);
       }
       
-      await loadStudents(1);
+      runQuery(1); // keep the current search and filters
       setImportOpen(false);
     } catch (error: any) {
       console.error('Error importing students:', error);
@@ -975,7 +986,13 @@ function StudentsTab({
               <SelectTrigger><SelectValue placeholder="Year (All)" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All years</SelectItem>
-                {Array.from({ length: 10 }).map((_, i) => (
+                {/* With a program selected, only that program's years (e.g. BBA: 1–3). */}
+                {Array.from({
+                  length:
+                    (filters.programId !== '__all__'
+                      ? Number((filterPrograms.find((p: any) => p.id === filters.programId) as any)?.duration) || 0
+                      : 0) || 10,
+                }).map((_, i) => (
                   <SelectItem key={i + 1} value={String(i + 1)}>{`Year ${i + 1}`}</SelectItem>
                 ))}
               </SelectContent>
@@ -1207,7 +1224,7 @@ function StudentsTab({
                           schoolId: dept?.schoolId ?? '',
                           departmentId: studentData?.departmentId ?? dept?.id ?? '',
                           programId: studentData?.programId ?? '',
-                          programStreamId: (studentData as any)?.programStreamId ?? '',
+                          programStreamId: studentData?.programStreamId ?? '',
                           year: `Year ${student.year}`,
                           semester: String(studentData?.semester ?? 1),
                           newPassword: '',
@@ -1508,6 +1525,11 @@ function StudentsTab({
                                   <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                                   <TableCell className="px-3">
                                     <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                    {cls.programStream ? (
+                                        <span className="ml-0 mt-0.5 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                          {cls.programStream.name} only
+                                        </span>
+                                      ) : null}
                                     {cls.course && (
                                       <div className="text-xs text-gray-500 mt-0.5">
                                         {cls.course.credits} credit{cls.course.credits !== 1 ? 's' : ''}
@@ -1837,7 +1859,7 @@ function StudentsTab({
                 }
               }
 
-              await loadStudents(1);
+              runQuery(studentsPage); // stay on the same page with the current filters
               
               setEditOpen(false);
               setEditingStudent(null);
@@ -2121,6 +2143,11 @@ function StudentsTab({
                                     <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                                     <TableCell className="px-3">
                                       <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                      {cls.programStream ? (
+                                        <span className="ml-0 mt-0.5 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                          {cls.programStream.name} only
+                                        </span>
+                                      ) : null}
                                       {cls.course && (
                                         <div className="text-xs text-gray-500 mt-0.5">
                                           {cls.course.credits} credit{cls.course.credits !== 1 ? 's' : ''}
@@ -2212,7 +2239,7 @@ function StudentsTab({
                         Other enrollments ({otherEnrollments.length + pendingExtraClasses.length})
                       </h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Classes outside this program, year and semester, such as retakes. Untick a class to unenroll the
+                        Classes outside this program, year and semester (such as retakes) and classes of another specialization. Untick a class to unenroll the
                         student, or add a class from any course unit. Changes apply when you save.
                       </p>
                     </div>
@@ -2335,7 +2362,21 @@ function StudentsTab({
                           ...pendingExtraClasses.map((cls: any) => ({ key: `new-${cls.id}`, pending: true, enrollmentId: null as string | null, cls })),
                           ...otherEnrollments.map((e: any) => ({ key: e.id, pending: false, enrollmentId: e.id as string | null, cls: e.class ?? {} })),
                         ].map(({ key, pending, enrollmentId, cls }) => {
-                          const keep = pending || !otherEnrollmentRemoveIds.includes(enrollmentId as string);
+                          // Specialization changed in the form: the old stream's classes of the student's
+                          // own program/year/semester are unenrolled by the server on save.
+                          const classStream = cls.programStreamId ?? cls.course?.programStreamId ?? null;
+                          const originalStream = (editingStudent?.programStreamId ?? null) || null;
+                          const newStream = editForm.programStreamId || null;
+                          const droppedByStreamChange =
+                            !pending &&
+                            newStream !== originalStream &&
+                            !!classStream &&
+                            classStream !== newStream &&
+                            cls.course?.programId === editForm.programId &&
+                            Number(cls.course?.level) === parseInt(editForm.year.replace('Year ', ''), 10) &&
+                            Number(cls.course?.semester) === parseInt(editForm.semester, 10);
+                          const keep =
+                            !droppedByStreamChange && (pending || !otherEnrollmentRemoveIds.includes(enrollmentId as string));
                           const lecturerName = cls.lecturer
                             ? `${cls.lecturer.firstName ?? ''} ${cls.lecturer.lastName ?? ''}`.trim()
                             : '';
@@ -2344,6 +2385,7 @@ function StudentsTab({
                               <TableCell className="px-3">
                                 <Checkbox
                                   checked={keep}
+                                  disabled={droppedByStreamChange}
                                   aria-label={`Keep enrollment in ${cls.course?.code ?? cls.name ?? 'class'}`}
                                   onCheckedChange={(checked) => {
                                     if (pending) {
@@ -2359,8 +2401,24 @@ function StudentsTab({
                               <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                               <TableCell className="px-3">
                                 <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                {(() => {
+                                  const sid = cls.programStreamId ?? cls.course?.programStreamId ?? null;
+                                  if (!sid) return null;
+                                  const st = programStreams.find((x) => x.id === sid);
+                                  const otherStream = sid !== (editForm.programStreamId || null);
+                                  return (
+                                    <div className={`text-xs mt-0.5 ${otherStream ? 'text-amber-700' : 'text-indigo-700'}`}>
+                                      {st ? `${st.name} (${st.code})` : 'Specialization'} class
+                                      {otherStream ? " · not the student's specialization" : ''}
+                                    </div>
+                                  );
+                                })()}
                                 {pending ? (
                                   <div className="text-xs text-green-700 mt-0.5">To add: enrolled when you save</div>
+                                ) : droppedByStreamChange ? (
+                                  <div className="text-xs text-red-600 mt-0.5">
+                                    Will be unenrolled on save (specialization changed)
+                                  </div>
                                 ) : !keep ? (
                                   <div className="text-xs text-red-600 mt-0.5">Will be unenrolled on save</div>
                                 ) : null}
@@ -3167,6 +3225,7 @@ function CoursesTab() {
     name: '',
     departmentId: '',
     programId: '',
+    programStreamId: '',
     lectureHours: 0,
     tutorialHours: 0,
     practicalHours: 0,
@@ -3254,6 +3313,7 @@ function CoursesTab() {
       name: '',
       departmentId: Object.keys(depts)[0] ?? '',
       programId: '',
+      programStreamId: '',
       lectureHours: 0,
       tutorialHours: 0,
       practicalHours: 0,
@@ -3278,6 +3338,7 @@ function CoursesTab() {
       name: courseData.name ?? course.name,
       departmentId: courseData.departmentId ?? course.departmentId,
       programId: courseData.programId ?? '',
+      programStreamId: courseData.programStreamId ?? '',
       lectureHours: courseData.lectureHours ?? course.lectureHours ?? 0,
       tutorialHours: courseData.tutorialHours ?? course.tutorialHours ?? 0,
       practicalHours: courseData.practicalHours ?? course.practicalHours ?? 0,
@@ -3306,6 +3367,7 @@ function CoursesTab() {
           name: courseForm.name,
           departmentId: courseForm.departmentId || undefined,
           programId: courseForm.programId || null,
+          programStreamId: courseForm.programId ? courseForm.programStreamId || null : null,
           ...hourPayload,
           level: courseForm.level,
           semester: courseForm.semester,
@@ -3317,6 +3379,7 @@ function CoursesTab() {
           name: courseForm.name,
           departmentId: courseForm.departmentId,
           programId: courseForm.programId || null,
+          programStreamId: courseForm.programId ? courseForm.programStreamId || null : null,
           ...hourPayload,
           level: courseForm.level,
           semester: courseForm.semester,
@@ -3500,6 +3563,12 @@ function CoursesTab() {
                 </Select>
               </div>
             </div>
+            <CourseStreamSelect
+              programId={courseForm.programId || null}
+              level={courseForm.level}
+              value={courseForm.programStreamId}
+              onChange={(v) => setCourseForm((f) => ({ ...f, programStreamId: v }))}
+            />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
                 <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
@@ -3652,6 +3721,12 @@ function CoursesTab() {
                 </Select>
               </div>
             </div>
+            <CourseStreamSelect
+              programId={courseForm.programId || null}
+              level={courseForm.level}
+              value={courseForm.programStreamId}
+              onChange={(v) => setCourseForm((f) => ({ ...f, programStreamId: v }))}
+            />
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
                 <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
@@ -4582,6 +4657,31 @@ function SchoolsTab() {
   const [deptForm, setDeptForm] = useState({ name: '', head: '', headStaffId: '', schoolId: '', levelId: '', duration: 4 });
   const [programForm, setProgramForm] = useState({ name: '', code: '', departmentId: '', duration: 4 });
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
+  // Specialization streams of the selected program (labels for stream-only course units).
+  const [nodeStreams, setNodeStreams] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const nodeProgramId = (selectedNode as any)?.programId as string | undefined;
+  useEffect(() => {
+    if (!nodeProgramId) {
+      setNodeStreams([]);
+      return;
+    }
+    let cancelled = false;
+    academicService
+      .getProgramStreams(nodeProgramId, { includeInactive: true })
+      .then((rows) => {
+        if (!cancelled) setNodeStreams(rows.map((r) => ({ id: r.id, code: r.code, name: r.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setNodeStreams([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nodeProgramId]);
+  const nodeStreamLabel = (id: string) => {
+    const st = nodeStreams.find((x) => x.id === id);
+    return st ? st.name : 'Specialization';
+  };
   const [coursesInNode, setCoursesInNode] = useState<any[]>([]);
   const [coursesInNodeLoading, setCoursesInNodeLoading] = useState(false);
   const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
@@ -4595,12 +4695,15 @@ function SchoolsTab() {
     tutorialHours: 0,
     practicalHours: 0,
     credits: 3,
+    programStreamId: '',
   });
   const [addCourseSaving, setAddCourseSaving] = useState(false);
   const [editingCourse, setEditingCourse] = useState<{
     id: string;
     code: string;
     name: string;
+    /** The course unit's own program (a stream can only be set there). */
+    programId?: string | null;
     lectureHours: number;
     tutorialHours: number;
     practicalHours: number;
@@ -4872,7 +4975,16 @@ function SchoolsTab() {
     tutorialHours: 0,
     practicalHours: 0,
     credits: 3,
+    programStreamId: '',
   });
+  /** The stream can be set only on a course unit's own program (not on one linked from another). */
+  const nodeCourseStreamProgramId = editingCourse
+    ? editingCourse.programId && selectedNode?.type === 'yearSemester' && editingCourse.programId === selectedNode.programId
+      ? editingCourse.programId
+      : null
+    : selectedNode?.type === 'yearSemester'
+      ? selectedNode.programId
+      : null;
 
   const handleAddCourseInNode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -4892,7 +5004,8 @@ function SchoolsTab() {
           code: addCourseForm.code.trim(),
           name: addCourseForm.name.trim(),
           ...hourPayload,
-        });
+          ...(nodeCourseStreamProgramId ? { programStreamId: addCourseForm.programStreamId || null } : {}),
+        } as any);
         toast.success('Course updated');
         setAddCourseOpen(false);
         setEditingCourse(null);
@@ -4917,7 +5030,8 @@ function SchoolsTab() {
         year: selectedNode.level,
         semester: selectedNode.semester,
         ...hourPayload,
-      });
+        programStreamId: addCourseForm.programStreamId || null,
+      } as any);
       toast.success(result.linked ? 'Existing course linked to this program' : 'Course created');
       setAddCourseOpen(false);
       setAddCourseForm(emptyAddCourseForm());
@@ -5418,6 +5532,11 @@ function SchoolsTab() {
                                                                                               <div className="flex-1 min-w-0">
                                                                                                 <div className="text-xs font-semibold text-gray-900 truncate">{c.code}</div>
                                                                                                 <div className="text-xs text-gray-700 truncate">{c.name}</div>
+                                                                                                {c.programStreamId ? (
+                                                                                                  <span className="mt-0.5 inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">
+                                                                                                    {nodeStreamLabel(c.programStreamId)} only
+                                                                                                  </span>
+                                                                                                ) : null}
                                                                                               </div>
                                                                                               <div className="flex items-center gap-1 shrink-0">
                                                                                                 <Button
@@ -5433,6 +5552,7 @@ function SchoolsTab() {
                                                                                                       id: c.id,
                                                                                                       code: c.code,
                                                                                                       name: c.name,
+                                                                                                      programId: c.programId ?? null,
                                                                                                       lectureHours,
                                                                                                       tutorialHours,
                                                                                                       practicalHours,
@@ -5445,6 +5565,7 @@ function SchoolsTab() {
                                                                                                       tutorialHours,
                                                                                                       practicalHours,
                                                                                                       credits,
+                                                                                                      programStreamId: c.programStreamId ?? '',
                                                                                                     });
                                                                                                     setAddCourseOpen(true);
                                                                                                   }}
@@ -6033,6 +6154,17 @@ function SchoolsTab() {
               <Label>Course name *</Label>
               <Input value={addCourseForm.name} onChange={e => setAddCourseForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Introduction to Programming" />
             </div>
+            <CourseStreamSelect
+              programId={nodeCourseStreamProgramId}
+              level={selectedNode?.type === 'yearSemester' ? selectedNode.level : 1}
+              value={addCourseForm.programStreamId}
+              onChange={(v) => setAddCourseForm((f) => ({ ...f, programStreamId: v }))}
+            />
+            {editingCourse && !nodeCourseStreamProgramId && selectedNode?.type === 'yearSemester' ? (
+              <p className="text-xs text-muted-foreground">
+                This course unit belongs to another program, so its specialization stream is set there.
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
                 <LabelWithInfo info="Lecture Hours (LH) from the NCHE curriculum. Entered manually.">
@@ -8959,6 +9091,8 @@ export default function AdminView({
         programId: s.programId,
         departmentId: s.departmentId,
         semester: s.semester,
+        // Needed by Edit Student: without it the form opened with "None" and saving cleared the stream.
+        programStreamId: s.programStreamId ?? null,
       })) : []);
       setStudentsTotal(res.total ?? 0);
       setStudentsPage(res.page ?? page);
