@@ -46,12 +46,22 @@ interface EnrollmentClassOption {
   courseId?: string;
   courseCode?: string;
   courseName?: string;
+  /** e.g. "Mon 08:00–11:00" */
+  schedule?: string;
 }
+
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const STATUS_OPTIONS = ['Present', 'Absent', 'Late', 'Excused'] as const;
 const YEAR_OPTIONS = [1, 2, 3, 4, 5] as const;
 const SEMESTER_OPTIONS = [1, 2] as const;
 const ALL_VALUE = '__all__';
+
+/** Local calendar day, YYYY-MM-DD. */
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function resolveCoverageDateParam(value: string | null): string | undefined {
   if (!value) return undefined;
@@ -284,7 +294,8 @@ export default function StudentRecords() {
     setStudentSearchLoading(true);
     try {
       const trimmed = query.trim();
-      const params = trimmed ? { search: trimmed, limit: 25 } : { limit: 25 };
+      // Only active students can have attendance recorded.
+      const params = trimmed ? { search: trimmed, limit: 25, status: 'Active' } : { limit: 25, status: 'Active' };
       const result = await studentService.getStudents(params);
       if (seq !== studentSearchSeqRef.current) return;
       setStudentResults(result.data || []);
@@ -316,22 +327,34 @@ export default function StudentRecords() {
       const data = await enrollmentService.getStudentEnrollments(studentId);
       if (seq !== enrollmentsSeqRef.current) return;
       const list = Array.isArray(data) ? (data as any[]) : [];
+      // Active enrollments in classes that are still running (closed/archived classes reject writes).
       const mapped: EnrollmentClassOption[] = list
-        .filter((row) => row?.classId && (row.status ? row.status === 'Active' : true))
-        .map((row) => ({
-          enrollmentId: row.id,
-          classId: row.classId,
-          status: row.status || 'Active',
-          className: row.class?.name || row.class?.code || row.classId,
-          courseId: row.class?.course?.id,
-          courseCode: row.class?.course?.code,
-          courseName: row.class?.course?.name,
-        }));
+        .filter((row) => row?.classId && row.status === 'Active' && row.class?.isActive !== false)
+        .map((row) => {
+          const cls = row.class ?? {};
+          return {
+            enrollmentId: row.id,
+            classId: row.classId,
+            status: row.status || 'Active',
+            className: cls.name || cls.code || row.classId,
+            courseId: cls.course?.id,
+            courseCode: cls.course?.code,
+            courseName: cls.course?.name,
+            schedule:
+              cls.dayOfWeek != null && cls.startTime
+                ? `${DAY_SHORT[cls.dayOfWeek] ?? ''} ${cls.startTime}${cls.endTime ? `–${cls.endTime}` : ''}`
+                : undefined,
+          };
+        });
       const unique = new Map<string, EnrollmentClassOption>();
       mapped.forEach((opt) => {
         if (!unique.has(opt.classId)) unique.set(opt.classId, opt);
       });
-      setStudentEnrollments(Array.from(unique.values()));
+      setStudentEnrollments(
+        Array.from(unique.values()).sort((a, b) =>
+          (a.courseCode || a.className).localeCompare(b.courseCode || b.className)
+        )
+      );
     } catch {
       if (seq !== enrollmentsSeqRef.current) return;
       setStudentEnrollments([]);
@@ -371,7 +394,7 @@ export default function StudentRecords() {
   const openAdd = () => {
     setAddStudentId('');
     setAddClassId('');
-    setAddDate(new Date().toISOString().slice(0, 10));
+    setAddDate(todayIso());
     setAddStatus('Present');
     setSelectedStudent(null);
     setStudentEnrollments([]);
@@ -380,8 +403,21 @@ export default function StudentRecords() {
     setAddOpen(true);
   };
 
+  const addAnotherRef = useRef(false);
+
+  /** Keep date and status for the next student (fast entry for several retakers). */
+  const resetForNextStudent = () => {
+    setAddStudentId('');
+    setAddClassId('');
+    setSelectedStudent(null);
+    setStudentEnrollments([]);
+    setStudentSearch('');
+  };
+
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const addAnother = addAnotherRef.current;
+    addAnotherRef.current = false;
     if (!addStudentId) {
       toast.error('Please select a student.');
       return;
@@ -394,18 +430,36 @@ export default function StudentRecords() {
       toast.error('Please choose a date.');
       return;
     }
+    if (addDate > todayIso()) {
+      toast.error('Attendance cannot be recorded for a future date.');
+      return;
+    }
     setAddSaving(true);
     try {
-      await studentService.createAttendanceRecord({
+      const saved: any = await studentService.createAttendanceRecord({
         studentId: addStudentId,
         classId: addClassId,
         date: addDate,
         status: addStatus,
       });
-      toast.success('Attendance record added.');
-      setAddOpen(false);
+      const who = selectedStudent ? `${selectedStudent.firstName} ${selectedStudent.lastName}` : 'Student';
+      if (saved?.updatedExisting) {
+        toast.success(
+          saved.previousStatus && saved.previousStatus !== addStatus
+            ? `${who} was already marked ${saved.previousStatus} on ${addDate} — changed to ${addStatus}.`
+            : `${who} was already marked ${addStatus} on ${addDate}. Record kept.`
+        );
+      } else {
+        toast.success(`${who} marked ${addStatus} on ${addDate}.`);
+      }
+      if (addAnother) {
+        resetForNextStudent();
+      } else {
+        setAddOpen(false);
+      }
       loadAttendanceRecords();
       loadAttendanceSummary();
+      setCoverageRefreshToken((token) => token + 1);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to add record.');
     } finally {
@@ -838,6 +892,9 @@ export default function StudentRecords() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -950,13 +1007,15 @@ export default function StudentRecords() {
                         {opt.courseCode ? `${opt.courseCode} — ` : ''}
                         {opt.courseName || opt.className}
                         {opt.className && opt.courseName ? ` · ${opt.className}` : ''}
+                        {opt.schedule ? ` · ${opt.schedule}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {addStudentId && !enrollmentsLoading && studentEnrollments.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    This student has no active class enrollments yet. Enrollments are derived from the student&apos;s program intake — confirm their program, year and semester are set.
+                    This student has no active class enrollments. For a retaker, first enroll them in the class
+                    (Academic → Classes → Enrollments, or Add class on the student&apos;s Edit screen), then record attendance.
                   </p>
                 )}
               </div>
@@ -968,9 +1027,13 @@ export default function StudentRecords() {
                     id="add-date"
                     type="date"
                     value={addDate}
+                    max={todayIso()}
                     onChange={e => setAddDate(e.target.value)}
                     required
                   />
+                  <p className="text-xs text-muted-foreground">
+                    The lecture must already be recorded as Taught, Substituted or Compensation on this date.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="add-status">Status</Label>
@@ -991,8 +1054,23 @@ export default function StudentRecords() {
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
               <Button
                 type="submit"
+                variant="outline"
+                className="border-[#015F2B]/40 text-[#015F2B]"
+                disabled={addSaving || !addStudentId || !addClassId}
+                onClick={() => {
+                  addAnotherRef.current = true;
+                }}
+                title="Save, then pick the next student with the same date and status"
+              >
+                Save &amp; add another
+              </Button>
+              <Button
+                type="submit"
                 className="bg-[#015F2B] hover:bg-[#014022]"
                 disabled={addSaving || !addStudentId || !addClassId}
+                onClick={() => {
+                  addAnotherRef.current = false;
+                }}
               >
                 {addSaving ? 'Saving…' : 'Add record'}
               </Button>
@@ -1000,8 +1078,6 @@ export default function StudentRecords() {
           </form>
         </DialogContent>
       </Dialog>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }

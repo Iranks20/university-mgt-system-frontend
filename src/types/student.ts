@@ -210,9 +210,13 @@ export interface DailyMarkingGridStudent {
    * the student); other_stream (class for another specialization, cannot be marked).
    */
   access?: Record<string, DailyGridCellAccess>;
+  /** Retaker / other-cohort student actively enrolled in at least one of the day's classes. */
+  outsideCohort?: boolean;
+  /** Their own cohort, e.g. "BBA Y3S1" (outside-cohort rows only). */
+  cohortLabel?: string | null;
 }
 
-export type DailyGridCellAccess = 'enrolled' | 'unenrolled' | 'auto' | 'other_stream';
+export type DailyGridCellAccess = 'enrolled' | 'unenrolled' | 'auto' | 'other_stream' | 'not_enrolled';
 
 export interface DailyMarkingGridSaveResult {
   count: number;
