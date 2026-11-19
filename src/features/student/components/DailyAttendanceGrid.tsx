@@ -67,6 +67,11 @@ export default function DailyAttendanceGrid({
   const cellKey = (studentId: string, classId: string) => `${studentId}|${classId}`;
   const slotAllowsAttendance = (slot: DailyMarkingGrid['slots'][number]) =>
     slot.attendanceAllowed !== false;
+  /** Unenrolled students and other-specialization classes cannot be marked. */
+  const cellLocked = (student: DailyMarkingGrid['students'][number], classId: string) => {
+    const access = student.access?.[classId];
+    return access === 'unenrolled' || access === 'other_stream';
+  };
 
   useEffect(() => {
     const programId = intakeScope.programId;
@@ -161,10 +166,12 @@ export default function DailyAttendanceGrid({
 
   const setRowAll = (studentId: string, value: AttendanceStatus) => {
     if (!grid) return;
+    const student = grid.students.find((s) => s.studentId === studentId);
     setCellMap((prev) => {
       const next = { ...prev };
       for (const slot of grid.slots) {
         if (!slotAllowsAttendance(slot)) continue;
+        if (student && cellLocked(student, slot.classId)) continue;
         next[cellKey(studentId, slot.classId)] = value;
       }
       return next;
@@ -181,6 +188,7 @@ export default function DailyAttendanceGrid({
     setCellMap((prev) => {
       const next = { ...prev };
       for (const student of grid.students) {
+        if (cellLocked(student, classId)) continue;
         next[cellKey(student.studentId, classId)] = value;
       }
       return next;
@@ -193,6 +201,7 @@ export default function DailyAttendanceGrid({
     for (const student of grid.students) {
       for (const slot of grid.slots) {
         if (!slotAllowsAttendance(slot)) continue;
+        if (cellLocked(student, slot.classId)) continue;
         const value = cellMap[cellKey(student.studentId, slot.classId)];
         if (!value) continue;
         records.push({
@@ -213,7 +222,13 @@ export default function DailyAttendanceGrid({
         date: markDate,
         records,
       });
-      toast.success(`Attendance saved for ${result.count} entries.`);
+      const notes: string[] = [];
+      if (result.enrolled > 0) {
+        notes.push(`${result.enrolled} student enrollment(s) were added to class lists`);
+      }
+      const skipped = result.skippedUnenrolled + result.skippedOtherStream;
+      if (skipped > 0) notes.push(`${skipped} entry(ies) skipped (student not in that class)`);
+      toast.success(`Attendance saved for ${result.count} entries.`, notes.length ? { description: notes.join(' · ') } : undefined);
       onSaved?.();
       await loadGrid();
     } catch (e: any) {
@@ -416,16 +431,36 @@ export default function DailyAttendanceGrid({
                       <TableCell className="sticky left-[228px] z-10 bg-background text-sm whitespace-nowrap">
                         {student.registrationNumber}
                       </TableCell>
-                      {grid.slots.map((slot) => (
-                        <TableCell key={slot.classId} className="text-center p-1.5">
-                          <AttendanceStatusSelect
-                            value={cellMap[cellKey(student.studentId, slot.classId)] ?? null}
-                            allowUnset
-                            disabled={!slotAllowsAttendance(slot)}
-                            onValueChange={(v) => setCell(student.studentId, slot.classId, v)}
-                          />
-                        </TableCell>
-                      ))}
+                      {grid.slots.map((slot) => {
+                        const access = student.access?.[slot.classId];
+                        if (access === 'unenrolled' || access === 'other_stream') {
+                          return (
+                            <TableCell
+                              key={slot.classId}
+                              className="text-center p-1.5 bg-muted/40"
+                              title={
+                                access === 'unenrolled'
+                                  ? 'This student was unenrolled from this class. Re-enroll them to mark attendance.'
+                                  : 'This class is for another specialization.'
+                              }
+                            >
+                              <span className="text-[11px] text-muted-foreground">
+                                {access === 'unenrolled' ? 'Unenrolled' : 'Not their stream'}
+                              </span>
+                            </TableCell>
+                          );
+                        }
+                        return (
+                          <TableCell key={slot.classId} className="text-center p-1.5">
+                            <AttendanceStatusSelect
+                              value={cellMap[cellKey(student.studentId, slot.classId)] ?? null}
+                              allowUnset
+                              disabled={!slotAllowsAttendance(slot)}
+                              onValueChange={(v) => setCell(student.studentId, slot.classId, v)}
+                            />
+                          </TableCell>
+                        );
+                      })}
                       <TableCell className="text-center p-1.5">
                         <Select onValueChange={(v) => setRowAll(student.studentId, v as AttendanceStatus)}>
                           <SelectTrigger className="h-8 w-[112px] text-xs">

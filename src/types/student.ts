@@ -205,6 +205,21 @@ export interface DailyMarkingGridStudent {
   registrationNumber: string;
   programStreamId?: string | null;
   attendance: Record<string, string | null>;
+  /**
+   * Per class: enrolled; unenrolled (cannot be marked); auto (not enrolled yet, marking enrolls
+   * the student); other_stream (class for another specialization, cannot be marked).
+   */
+  access?: Record<string, DailyGridCellAccess>;
+}
+
+export type DailyGridCellAccess = 'enrolled' | 'unenrolled' | 'auto' | 'other_stream';
+
+export interface DailyMarkingGridSaveResult {
+  count: number;
+  /** Students enrolled into their cohort class because they were marked. */
+  enrolled: number;
+  skippedUnenrolled: number;
+  skippedOtherStream: number;
 }
 
 export interface DailyMarkingGrid {
@@ -428,5 +443,14 @@ export interface ClassAttendanceStudentBreakdown {
     remarks: string | null;
     classNames: string[];
     marks: Array<{ classId: string; className: string; status: string; enrolled: boolean }>;
+  }>;
+  /** Course units the student was unenrolled from: marks kept in the system but not counted. */
+  excludedCourses?: Array<{
+    courseKey: string;
+    courseId: string | null;
+    courseCode: string | null;
+    courseName: string | null;
+    classNames: string[];
+    marks: number;
   }>;
 }

@@ -194,11 +194,32 @@ export default function ClassAttendanceStudentBreakdownDialog({ open, onOpenChan
               ) : null}
               {summary.marksWithoutActiveEnrollment > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {summary.marksWithoutActiveEnrollment} mark(s) are in classes where the student&apos;s enrollment is
-                  dropped or missing; they are still counted because the student was marked.
+                  {summary.marksWithoutActiveEnrollment} counted mark(s) are in classes where the student is not
+                  enrolled (no enrollment, or moved to another class of the same course unit).
                 </p>
               ) : null}
             </div>
+
+            {(data.excludedCourses?.length ?? 0) > 0 ? (
+              <div className="space-y-1 rounded-md border border-dashed bg-muted/30 p-3">
+                <h3 className="text-sm font-semibold">Unenrolled, not counted ({data.excludedCourses!.length})</h3>
+                <p className="text-xs text-muted-foreground">
+                  The student was unenrolled from these course units. Their marks are kept and come back if the
+                  student is re-enrolled.
+                </p>
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  {data.excludedCourses!.map((c) => (
+                    <li key={c.courseKey}>
+                      <span className="font-medium">{courseLabel(c)}</span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        · {c.classNames.join(', ')} · {c.marks} mark(s)
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">By course unit</h3>
