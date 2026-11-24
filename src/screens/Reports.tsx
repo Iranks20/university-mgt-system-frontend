@@ -41,6 +41,7 @@ import { UNIVERSITY_NAME } from '@/lib/institution';
 import { lectureCommentLabel } from '@/lib/lecture-outcome';
 import type { ClassAttendanceSummaryReport, ClassAttendanceSummaryRow, CourseWiseAttendanceSummaryReport } from '@/types/student';
 import ClassAttendanceStudentBreakdownDialog from '@/features/student/components/ClassAttendanceStudentBreakdownDialog';
+import RetakeRegisterPanel from '@/features/reports/RetakeRegisterPanel';
 import { useAuth } from '@/contexts/AuthContext';
 import type { School, Department, Level, Course, Class } from '@/types';
 import { toast } from 'sonner';
@@ -1302,7 +1303,12 @@ export default function Reports() {
             <TabsTrigger value="weekly-matrix">Weekly Matrix</TabsTrigger>
             <TabsTrigger value="students-at-risk">Students at Risk</TabsTrigger>
             <TabsTrigger value="compensation">Compensation Tracking</TabsTrigger>
+            <TabsTrigger value="retakers">Retakers</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="retakers" className="space-y-4">
+            <RetakeRegisterPanel academicTermId={academicTermId} />
+          </TabsContent>
 
           <TabsContent value="reconciliation" className="space-y-4">
             <Card>
@@ -2094,7 +2100,14 @@ export default function Reports() {
                               <TableCell className="text-muted-foreground">
                                 {(classAttendPage - 1) * REPORT_TABLE_PAGE_SIZE + idx + 1}
                               </TableCell>
-                              <TableCell className="font-medium">{row.studentName}</TableCell>
+                              <TableCell className="font-medium">
+                                {row.studentName}
+                                {row.isRetake ? (
+                                  <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                                    Retake
+                                  </span>
+                                ) : null}
+                              </TableCell>
                               <TableCell>{row.registrationNumber}</TableCell>
                               <TableCell className="text-right">
                                 {formatWeightedAttendedCount(row.totalAttendedClasses)}

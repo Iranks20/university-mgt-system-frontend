@@ -277,11 +277,14 @@ export function exportWeeklyAttendanceMatrixReport(
     ...report.students.map((row) => {
       const line: (string | number)[] = [
         row.serialNo,
-        row.studentName,
+        row.outsideCohortKind
+          ? `${row.studentName} (${row.outsideCohortKind === 'retaker' ? 'Retake' : 'Extra'}${row.cohortLabel ? ` · ${row.cohortLabel}` : ''})`
+          : row.studentName,
         row.registrationNumber,
       ];
       for (const slot of slots) {
-        line.push(row.cells[slot.classId]?.value ?? 0);
+        // '-' = retaker not enrolled in that class (not expected there).
+        line.push(row.cells[slot.classId]?.notEnrolled ? '-' : row.cells[slot.classId]?.value ?? 0);
       }
       line.push(row.totalAttended, row.expected);
       return line;

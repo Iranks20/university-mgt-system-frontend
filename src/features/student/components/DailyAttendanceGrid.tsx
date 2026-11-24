@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   AttendanceStatusSelect,
@@ -26,6 +27,7 @@ import { ProgramIntakeScopeFilter } from '@/components/ProgramIntakeScopeFilter'
 import { useProgramIntakeScope } from '@/hooks/useProgramIntakeScope';
 
 const BULK_STATUSES: AttendanceStatus[] = ['Present', 'Absent', 'Late'];
+const SHOW_COMBINED_KEY = 'kcu-daily-grid-show-combined';
 
 interface DailyAttendanceGridProps {
   schools: Array<{ id: string; name: string }>;
@@ -63,6 +65,22 @@ export default function DailyAttendanceGrid({
   const [studentSortDirection, setStudentSortDirection] = useState<StudentSortDirection>('asc');
   const [programStreams, setProgramStreams] = useState<Array<{ id: string; code: string; name: string }>>([]);
   const [selectedStreamId, setSelectedStreamId] = useState<string>('__all__');
+  // Combined classes: show the other cohort(s) sharing the lecture (remembered per browser).
+  const [showCombined, setShowCombined] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SHOW_COMBINED_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const toggleShowCombined = (value: boolean) => {
+    setShowCombined(value);
+    try {
+      localStorage.setItem(SHOW_COMBINED_KEY, String(value));
+    } catch {
+      /* storage unavailable: keep the in-memory choice */
+    }
+  };
 
   const cellKey = (studentId: string, classId: string) => `${studentId}|${classId}`;
   const slotAllowsAttendance = (slot: DailyMarkingGrid['slots'][number]) =>
@@ -90,6 +108,12 @@ export default function DailyAttendanceGrid({
   const loadGrid = useCallback(async () => {
     if (!intakeScope.isComplete) {
       toast.error('Select a class cohort (program intake) first.');
+      return;
+    }
+    // A mistyped date (e.g. year 192026) would otherwise load a grid for a day that does not exist.
+    const year = Number(markDate.slice(0, 4));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(markDate) || year < 2000 || year > 2100) {
+      toast.error('Enter a valid date.');
       return;
     }
     setLoading(true);
@@ -189,6 +213,8 @@ export default function DailyAttendanceGrid({
       const next = { ...prev };
       for (const student of grid.students) {
         if (cellLocked(student, classId)) continue;
+        // "Set all" applies only to the rows on screen.
+        if (!showCombined && student.outsideCohort && student.outsideCohortKind === 'combined') continue;
         next[cellKey(student.studentId, classId)] = value;
       }
       return next;
@@ -255,18 +281,30 @@ export default function DailyAttendanceGrid({
     setStudentSortDirection('asc');
   };
 
-  // Cohort students first, then retakers / other cohorts (each group sorted).
+  // Cohort students first, then the other cohort(s) of combined classes, then retakers (each sorted).
+  const isCombined = (s: DailyMarkingGrid['students'][number]) =>
+    !!s.outsideCohort && s.outsideCohortKind === 'combined';
+  const isRetaker = (s: DailyMarkingGrid['students'][number]) =>
+    !!s.outsideCohort && s.outsideCohortKind !== 'combined';
   const sortedStudents = useMemo(() => {
     if (!grid) return [];
-    const cohort = grid.students.filter((s) => !s.outsideCohort);
-    const others = grid.students.filter((s) => s.outsideCohort);
+    const sort = (rows: DailyMarkingGrid['students']) =>
+      sortDailyGridStudents(rows, studentSortField, studentSortDirection);
     return [
-      ...sortDailyGridStudents(cohort, studentSortField, studentSortDirection),
-      ...sortDailyGridStudents(others, studentSortField, studentSortDirection),
+      ...sort(grid.students.filter((s) => !s.outsideCohort)),
+      ...sort(grid.students.filter(isCombined)),
+      ...sort(grid.students.filter(isRetaker)),
     ];
   }, [grid, studentSortField, studentSortDirection]);
   const outsideCohortCount = grid?.students.filter((s) => s.outsideCohort).length ?? 0;
-  const firstOutsideId = sortedStudents.find((s) => s.outsideCohort)?.studentId;
+  const combinedCount = grid?.students.filter(isCombined).length ?? 0;
+  const retakerCount = outsideCohortCount - combinedCount;
+  const combinedCohorts = [
+    ...new Set((grid?.students ?? []).filter(isCombined).map((s) => s.cohortLabel).filter(Boolean)),
+  ].join(', ');
+  const visibleStudents = showCombined ? sortedStudents : sortedStudents.filter((s) => !isCombined(s));
+  const firstCombinedId = visibleStudents.find(isCombined)?.studentId;
+  const firstRetakerId = visibleStudents.find(isRetaker)?.studentId;
 
   const toggleStudentSort = (field: StudentSortField) => {
     if (studentSortField === field) {
@@ -306,7 +344,7 @@ export default function DailyAttendanceGrid({
             <>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Date</Label>
-                <Input type="date" className="w-[150px] h-9" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
+                <Input type="date" min="2000-01-01" max="2100-12-31" className="w-[150px] h-9" value={markDate} onChange={(e) => setMarkDate(e.target.value)} />
               </div>
               {programStreams.length > 0 ? (
                 <div className="space-y-1">
@@ -344,7 +382,8 @@ export default function DailyAttendanceGrid({
               {grid.dayName} ({grid.date})
               {' · '}
               {grid.students.length - outsideCohortCount} students
-              {outsideCohortCount > 0 ? ` + ${outsideCohortCount} retakers/other cohorts` : ''} · {grid.slots.length} course units · {sortLabel}
+              {combinedCount > 0 ? ` + ${combinedCount} from combined classes (${combinedCohorts})` : ''}
+              {retakerCount > 0 ? ` + ${retakerCount} retakers/extra` : ''} · {grid.slots.length} course units · {sortLabel}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -361,7 +400,21 @@ export default function DailyAttendanceGrid({
                 )}
                 Save all
               </Button>
+              {combinedCount > 0 ? (
+                <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+                  <Switch checked={showCombined} onCheckedChange={toggleShowCombined} />
+                  <span>
+                    Show combined-class students ({combinedCount})
+                  </span>
+                </label>
+              ) : null}
             </div>
+            {!showCombined && combinedCount > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {combinedCount} student(s) of {combinedCohorts} who share these lectures are hidden. Mark them here or on
+                their own cohort&apos;s grid; marks you already set for them are still saved.
+              </p>
+            ) : null}
             <div className="rounded-md border overflow-x-auto max-h-[70vh]">
               <Table>
                 <TableHeader>
@@ -429,13 +482,22 @@ export default function DailyAttendanceGrid({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedStudents.map((student, rowIndex) => (
+                  {visibleStudents.map((student, rowIndex) => (
                     <React.Fragment key={student.studentId}>
-                    {student.studentId === firstOutsideId ? (
+                    {student.studentId === firstCombinedId ? (
+                      <TableRow className="bg-sky-50/70 hover:bg-sky-50/70">
+                        <TableCell colSpan={grid.slots.length + 4} className="py-1.5 text-xs font-medium text-sky-800">
+                          Combined classes: students of {combinedCohorts} ({combinedCount}) who share these lectures
+                          with this cohort. Marks here are the same as on their own cohort&apos;s grid; they can be
+                          marked only for the shared classes.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    {student.studentId === firstRetakerId ? (
                       <TableRow className="bg-amber-50/70 hover:bg-amber-50/70">
                         <TableCell colSpan={grid.slots.length + 4} className="py-1.5 text-xs font-medium text-amber-800">
-                          Retakers and students from other cohorts ({outsideCohortCount}). They can be marked only
-                          for the classes they are enrolled in.
+                          Retakers and extra students ({retakerCount}) enrolled in these classes (see Reports → Retakers).
+                          They can be marked only for the classes they are enrolled in.
                         </TableCell>
                       </TableRow>
                     ) : null}
@@ -446,7 +508,12 @@ export default function DailyAttendanceGrid({
                       <TableCell className="sticky left-12 z-10 bg-background font-medium whitespace-nowrap">
                         {student.studentName}
                         {student.outsideCohort ? (
-                          <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                          <span
+                            className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              isCombined(student) ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {isCombined(student) ? 'Combined · ' : student.outsideCohortKind === 'extra' ? 'Extra · ' : 'Retake · '}
                             {student.cohortLabel || 'Other cohort'}
                           </span>
                         ) : null}
