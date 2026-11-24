@@ -240,11 +240,27 @@ export default function WeeklyAttendanceMatrixPanel({
                 report.students.map((row) => (
                   <TableRow key={row.studentId}>
                     <TableCell className="sticky left-0 z-10 bg-background text-muted-foreground">{row.serialNo}</TableCell>
-                    <TableCell className="sticky left-12 z-10 bg-background font-medium whitespace-nowrap">{row.studentName}</TableCell>
+                    <TableCell className="sticky left-12 z-10 bg-background font-medium whitespace-nowrap">
+                      {row.studentName}
+                      {row.outsideCohortKind ? (
+                        <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                          {row.outsideCohortKind === 'retaker' ? 'Retake' : 'Extra'}
+                          {row.cohortLabel ? ` · ${row.cohortLabel}` : ''}
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="sticky left-[172px] z-10 bg-background text-sm whitespace-nowrap">{row.registrationNumber}</TableCell>
                     {report.slots.map((slot) => {
                       const value = row.cells[slot.classId]?.value ?? 0;
                       const dow = slotDayMap.get(slot.classId) ?? 0;
+                      if (row.cells[slot.classId]?.notEnrolled) {
+                        // Retaker not enrolled in this class: not expected here.
+                        return (
+                          <TableCell key={slot.classId} className="text-center text-xs text-muted-foreground bg-muted/30">
+                            —
+                          </TableCell>
+                        );
+                      }
                       return (
                         <TableCell
                           key={slot.classId}

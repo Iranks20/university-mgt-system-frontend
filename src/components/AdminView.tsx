@@ -227,6 +227,10 @@ function StudentsTab({
   const [addClassResults, setAddClassResults] = useState<any[]>([]);
   const [addClassLoading, setAddClassLoading] = useState(false);
   const [pendingExtraClasses, setPendingExtraClasses] = useState<any[]>([]);
+  // How "+ Add class" registers the classes: auto (server decides Regular / Retake / Extra) or forced.
+  const [addClassType, setAddClassType] = useState<'auto' | 'Retake' | 'Extra'>('auto');
+  const [addClassReason, setAddClassReason] = useState('');
+  const [addClassOverride, setAddClassOverride] = useState(false);
   const [intakeLabelMap, setIntakeLabelMap] = useState<Map<string, string>>(new Map());
   const [importCreateAccounts, setImportCreateAccounts] = useState(true);
   const [importScope, setImportScope] = useState<{ programId: string; year: number; semester: number }>({ programId: '', year: 1, semester: 1 });
@@ -1842,14 +1846,23 @@ function StudentsTab({
               const removedCount = toRemove.length + otherToRemove.length;
 
               // Classes added with "+ Add class" (retakes / extra course units).
+              let pendingRetakeCount = 0;
               for (const cls of pendingExtraClasses) {
                 try {
                   // Enrolling refuses a full class; raise its capacity by one first (same as Classes → Enrollments).
                   if (typeof cls.capacity === 'number' && typeof cls.enrolledCount === 'number' && cls.enrolledCount >= cls.capacity) {
                     await academicService.updateClass(cls.id, { capacity: cls.enrolledCount + 1 } as any);
                   }
-                  await enrollmentService.createEnrollment({ studentId: editingStudent.id, classId: cls.id, status: 'Active' });
+                  const created: any = await enrollmentService.createEnrollment({
+                    studentId: editingStudent.id,
+                    classId: cls.id,
+                    status: 'Active',
+                    ...(addClassType !== 'auto' ? { enrollmentType: addClassType } : {}),
+                    ...(addClassReason.trim() ? { reason: addClassReason.trim() } : {}),
+                    ...(addClassOverride ? { overrideRetakeRules: true } : {}),
+                  });
                   enrollmentSuccessCount++;
+                  if (created?.status === 'Pending') pendingRetakeCount++;
                 } catch (error: any) {
                   if (error?.code === 'ENROLLMENT_ALREADY_EXISTS') {
                     enrollmentSkippedCount++;
@@ -1859,6 +1872,11 @@ function StudentsTab({
                 }
               }
 
+              if (pendingRetakeCount > 0) {
+                toast.info(
+                  `${pendingRetakeCount} retake(s) sent for approval. They appear on class lists once approved (Reports → Retakers).`
+                );
+              }
               runQuery(studentsPage); // stay on the same page with the current filters
               
               setEditOpen(false);
@@ -1869,6 +1887,9 @@ function StudentsTab({
               setEditActiveEnrollments([]);
               setOtherEnrollmentRemoveIds([]);
               setPendingExtraClasses([]);
+              setAddClassType('auto');
+              setAddClassReason('');
+              setAddClassOverride(false);
               setEditStudentPasswordVisible(false);
 
               if (enrollmentSuccessCount > 0 || enrollmentSkippedCount > 0 || removedCount > 0) {
@@ -2269,6 +2290,34 @@ function StudentsTab({
                           }}
                         />
                       </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Register as</Label>
+                          <Select value={addClassType} onValueChange={(v) => setAddClassType(v as 'auto' | 'Retake' | 'Extra')}>
+                            <SelectTrigger className="h-8 w-[200px] bg-white text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="auto">Automatic (retake if repeated)</SelectItem>
+                              <SelectItem value="Retake">Retake</SelectItem>
+                              <SelectItem value="Extra">Extra (elective / special)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="min-w-[200px] flex-1 space-y-1">
+                          <Label className="text-xs">Reason (optional)</Label>
+                          <Input
+                            className="h-8 bg-white text-xs"
+                            placeholder="e.g. Failed in 2025/26 Sem 1"
+                            value={addClassReason}
+                            onChange={(e) => setAddClassReason(e.target.value)}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 pb-1 text-xs">
+                          <Checkbox checked={addClassOverride} onCheckedChange={(v) => setAddClassOverride(v === true)} />
+                          Override retake limits (needs a reason)
+                        </label>
+                      </div>
                       <div className="max-h-[38vh] overflow-y-auto rounded-md border bg-white">
                         {addClassLoading ? (
                           <div className="py-6 text-center">
@@ -2360,8 +2409,17 @@ function StudentsTab({
                       <TableBody>
                         {[
                           ...pendingExtraClasses.map((cls: any) => ({ key: `new-${cls.id}`, pending: true, enrollmentId: null as string | null, cls })),
-                          ...otherEnrollments.map((e: any) => ({ key: e.id, pending: false, enrollmentId: e.id as string | null, cls: e.class ?? {} })),
-                        ].map(({ key, pending, enrollmentId, cls }) => {
+                          ...otherEnrollments.map((e: any) => ({
+                            key: e.id,
+                            pending: false,
+                            enrollmentId: e.id as string | null,
+                            cls: e.class ?? {},
+                            enrollmentType: (e.enrollmentType ?? 'Regular') as string,
+                            attemptNumber: (e.attemptNumber ?? 1) as number,
+                          })),
+                        ].map(({ key, pending, enrollmentId, cls, ...rowMeta }) => {
+                          const rowType = (rowMeta as any).enrollmentType as string | undefined;
+                          const rowAttempt = (rowMeta as any).attemptNumber as number | undefined;
                           // Specialization changed in the form: the old stream's classes of the student's
                           // own program/year/semester are unenrolled by the server on save.
                           const classStream = cls.programStreamId ?? cls.course?.programStreamId ?? null;
@@ -2400,7 +2458,18 @@ function StudentsTab({
                               </TableCell>
                               <TableCell className="font-medium px-3">{cls.course?.code || '—'}</TableCell>
                               <TableCell className="px-3">
-                                <div className="text-sm break-words">{cls.course?.name || '—'}</div>
+                                <div className="text-sm break-words">
+                                  {cls.course?.name || '—'}
+                                  {!pending && rowType && rowType !== 'Regular' ? (
+                                    <span
+                                      className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                        rowType === 'Retake' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                                      }`}
+                                    >
+                                      {rowType === 'Retake' ? `Retake · attempt ${rowAttempt ?? 2}` : 'Extra'}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {(() => {
                                   const sid = cls.programStreamId ?? cls.course?.programStreamId ?? null;
                                   if (!sid) return null;
@@ -6838,6 +6907,15 @@ function ClassesTab({
           cohortLabel: (s.programIntakeId && intakeLabelById.get(s.programIntakeId)) || 'Other cohort',
         });
       }
+      // Show each enrolled student's enrollment type (Retake / Extra badge).
+      for (const row of enrollmentRows as Array<{ isImplicit?: boolean; studentId?: string; student?: { id?: string }; enrollmentType?: string; attemptNumber?: number }>) {
+        if (row.isImplicit) continue;
+        const cand = candidateMap.get(row.studentId ?? row.student?.id ?? '');
+        if (cand) {
+          cand.enrollmentType = row.enrollmentType;
+          cand.attemptNumber = row.attemptNumber;
+        }
+      }
       const candidates = [...candidateMap.values()].sort((a, b) => a.name.localeCompare(b.name));
       if (candidates.length === 0 && !primaryProgramIntakeId) {
         toast.warning('This class has no intake scope. Link it to a program intake in Timetable Builder first.');
@@ -7557,9 +7635,17 @@ function ClassesTab({
                               <TableCell className="font-medium">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <span>{st.name}</span>
-                                  {st.outsideCohort ? (
+                                  {st.enrollmentType === 'Retake' ? (
                                     <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 font-normal">
-                                      Other cohort
+                                      Retake · attempt {st.attemptNumber ?? 2}
+                                    </Badge>
+                                  ) : st.enrollmentType === 'Extra' ? (
+                                    <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700 font-normal">
+                                      Extra
+                                    </Badge>
+                                  ) : st.outsideCohort ? (
+                                    <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800 font-normal">
+                                      {st.enrollmentType === 'Regular' ? 'Combined class' : 'Other cohort'}
                                     </Badge>
                                   ) : null}
                                   {enrollPendingAdds.includes(st.id) ? (

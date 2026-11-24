@@ -124,6 +124,8 @@ export interface ClassAttendanceSummaryRow {
   studentId: string;
   studentName: string;
   registrationNumber: string;
+  /** Retaking a course unit in the report's classes. */
+  isRetake?: boolean;
   totalAttendedClasses: number;
   totalLateClasses: number;
   totalMissedClasses: number;
@@ -212,6 +214,8 @@ export interface DailyMarkingGridStudent {
   access?: Record<string, DailyGridCellAccess>;
   /** Retaker / other-cohort student actively enrolled in at least one of the day's classes. */
   outsideCohort?: boolean;
+  /** combined = their cohort shares a combined class with this cohort; retaker = anyone else. */
+  outsideCohortKind?: 'combined' | 'retaker' | 'extra' | null;
   /** Their own cohort, e.g. "BBA Y3S1" (outside-cohort rows only). */
   cohortLabel?: string | null;
 }
@@ -332,10 +336,13 @@ export interface WeeklyAttendanceMatrixStudent {
   studentId: string;
   studentName: string;
   registrationNumber: string;
-  cells: Record<string, { value: number; status: string | null }>;
+  cells: Record<string, { value: number; status: string | null; notEnrolled?: boolean }>;
   totalAttended: number;
   expected: number;
   presentPercentage: number;
+  /** Retaker / extra student enrolled in some of this cohort's classes. */
+  outsideCohortKind?: 'retaker' | 'extra';
+  cohortLabel?: string | null;
 }
 
 export interface WeeklyAttendanceMatrixReport {

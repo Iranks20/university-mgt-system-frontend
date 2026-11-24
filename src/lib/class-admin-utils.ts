@@ -9,6 +9,9 @@ export type EnrollCandidateRow = {
   email: string;
   /** Set for students who are not in the class's own intake cohort (e.g. retakers). */
   outsideCohort?: boolean;
+  /** Type of the student's current enrollment in this class (Regular / Retake / Extra). */
+  enrollmentType?: string;
+  attemptNumber?: number;
   /** Their own cohort, shown as a hint for outside-cohort students. */
   cohortLabel?: string;
 };
